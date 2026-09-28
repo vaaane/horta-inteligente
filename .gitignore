@@ -8,3 +8,6 @@ firmware/teste-acende/secrets.h
 
 # Dependências do npm
 node_modules/
+
+# Configurações pessoais do Claude Code
+.claude/settings.local.json

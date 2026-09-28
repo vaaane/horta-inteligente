@@ -5,6 +5,36 @@
       ".write": true
     },
 
+    "clima": {
+      ".read": true,
+      ".write": true,
+      ".validate": "newData.hasChildren(['temperatura', 'umidadeAr', 'chuvaAgoraMm', 'chanceChuva6h', 'et0', 'horaPrevisao'])",
+      "temperatura": {
+        ".validate": "newData.isNumber()"
+      },
+      "umidadeAr": {
+        ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+      },
+      "chuvaAgoraMm": {
+        ".validate": "newData.isNumber() && newData.val() >= 0"
+      },
+      "chanceChuva6h": {
+        ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+      },
+      "et0": {
+        ".validate": "newData.isNumber() && newData.val() >= 0"
+      },
+      "horaPrevisao": {
+        ".validate": "newData.isString()"
+      },
+      "atualizadoEm": {
+        ".validate": "newData.isNumber() && newData.val() <= now"
+      },
+      "$outro": {
+        ".validate": false
+      }
+    },
+
     "horta": {
       ".read": true,
 

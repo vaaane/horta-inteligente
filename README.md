@@ -89,7 +89,17 @@ O Serial Monitor mostra o código HTTP de cada envio: **200 = deu certo**.
 
 💡 **Dica:** dá para testar só o site, sem o ESP32: no console do Firebase (Realtime Database → Dados), crie `teste/led` com o valor `true`.
 
-⚠️ **Temporário:** o nó `/teste` tem leitura **e escrita** abertas para qualquer pessoa, só para facilitar o teste. Depois que tudo funcionar, apague o bloco `"teste"` das regras e publique de novo.
+### Clima (Open-Meteo)
+
+O `teste-acende` também consulta a previsão do tempo no [Open-Meteo](https://open-meteo.com) logo que o Wi-Fi conecta e depois a cada 30 min (se falhar, tenta de novo em 5 min). O resumo vai para `/clima` no Firebase e aparece no cartão **"Clima agora"** da `/teste.html`:
+
+- temperatura e umidade do ar;
+- maior chance de chuva nas próximas 6 horas;
+- **ET₀** (evapotranspiração de referência): quanta água, em mm, uma planta de referência perde no dia. 1 mm = 1 litro por m².
+
+No Serial Monitor aparece um bloco de linhas começando com `[CLIMA]`.
+
+⚠️ **Temporário:** os nós `/teste` e `/clima` têm leitura **e escrita** abertas para qualquer pessoa, porque esse teste do ESP32 não faz login. Depois que tudo funcionar, apague esses blocos das regras e publique de novo.
 
 ---
 
