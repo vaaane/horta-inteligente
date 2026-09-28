@@ -25,6 +25,14 @@
 
 const int PINO_LED = 2;  // LED embutido da maioria das placas ESP32 DevKit
 
+// LEDs de status na protoboard (cada um com resistor em série)
+const int PINO_LED_WIFI     = 25;
+const int PINO_LED_FIREBASE = 26;
+const int PINO_LED_CLIMA    = 27;
+
+const unsigned long PISCA_LENTO_MS  = 500;  // em andamento
+const unsigned long PISCA_RAPIDO_MS = 100;  // erro
+
 // Local da horta (CED São Bartolomeu, DF)
 const char* LATITUDE  = "-15.90";
 const char* LONGITUDE = "-47.78";
@@ -67,6 +75,55 @@ DadosClima clima;
 unsigned long ultimaTentativaWiFi = 0;
 unsigned long ultimaConsultaClima = 0;
 unsigned long esperaClima = 0;  // quanto esperar até a próxima consulta
+bool wifiJaConectou = false;    // antes da 1ª conexão, Firebase e Clima ficam apagados
+
+
+// =====================================================================
+//  LEDS DE STATUS — mostram o estado do sistema sem Serial Monitor
+// =====================================================================
+enum EstadoLed { APAGADO, PISCA_LENTO, ACESO, PISCA_RAPIDO };
+enum LedStatus { LED_WIFI, LED_FIREBASE, LED_CLIMA, TOTAL_LEDS };
+
+const int pinosStatus[TOTAL_LEDS] = { PINO_LED_WIFI, PINO_LED_FIREBASE, PINO_LED_CLIMA };
+EstadoLed estadoStatus[TOTAL_LEDS] = { APAGADO, APAGADO, APAGADO };
+bool faseLigada[TOTAL_LEDS] = { false, false, false };  // o LED está aceso neste instante?
+unsigned long ultimaTroca[TOTAL_LEDS] = { 0, 0, 0 };
+
+// Muda o estado de um LED. Já acende na hora (mesmo se for piscar),
+// para o LED não ficar apagado durante uma operação que trava alguns segundos.
+void definirEstadoLed(LedStatus led, EstadoLed estado) {
+  if (estadoStatus[led] == estado) return;
+  estadoStatus[led] = estado;
+  faseLigada[led] = (estado != APAGADO);
+  ultimaTroca[led] = millis();
+  digitalWrite(pinosStatus[led], faseLigada[led] ? HIGH : LOW);
+}
+
+// Faz as piscadas com millis(), sem delay(). Chamada no loop().
+void atualizarLedsStatus() {
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    unsigned long intervalo;
+    if (estadoStatus[i] == PISCA_LENTO)       intervalo = PISCA_LENTO_MS;
+    else if (estadoStatus[i] == PISCA_RAPIDO) intervalo = PISCA_RAPIDO_MS;
+    else continue;  // APAGADO e ACESO não piscam
+
+    if (millis() - ultimaTroca[i] >= intervalo) {
+      ultimaTroca[i] = millis();
+      faseLigada[i] = !faseLigada[i];
+      digitalWrite(pinosStatus[i], faseLigada[i] ? HIGH : LOW);
+    }
+  }
+}
+
+// Teste de ligação: acende os três LEDs juntos por 1 s e apaga
+void testarLedsStatus() {
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    pinMode(pinosStatus[i], OUTPUT);
+    digitalWrite(pinosStatus[i], HIGH);
+  }
+  delay(1000);  // único delay() do programa: só no boot
+  for (int i = 0; i < TOTAL_LEDS; i++) digitalWrite(pinosStatus[i], LOW);
+}
 
 
 // =====================================================================
@@ -83,11 +140,15 @@ int gravarNoFirebase(const char* caminho, const String& json) {
   http.setConnectTimeout(TIMEOUT_HTTP);
   http.setTimeout(TIMEOUT_HTTP);
   String url = String(FIREBASE_DB_URL) + caminho + ".json";
-  if (!http.begin(cliente, url)) return -1;
-  http.addHeader("Content-Type", "application/json");
+  int codigo = -1;
+  if (http.begin(cliente, url)) {
+    http.addHeader("Content-Type", "application/json");
+    codigo = http.PUT(json);
+    http.end();
+  }
 
-  int codigo = http.PUT(json);
-  http.end();
+  // LED do Firebase: aceso se a gravação deu certo, pisca rápido se falhou
+  definirEstadoLed(LED_FIREBASE, codigo == 200 ? ACESO : PISCA_RAPIDO);
   return codigo;
 }
 
@@ -102,11 +163,16 @@ void conectarWifi() {
   if (conectado && !estavaConectado) {
     Serial.printf("[Wi-Fi] Conectado! IP: %s\n", WiFi.localIP().toString().c_str());
     Serial.println("Digite: acende  ou  apaga");
+    definirEstadoLed(LED_WIFI, ACESO);
+    // 1ª conexão: o Firebase "inicia" até a primeira gravação
+    if (!wifiJaConectou) definirEstadoLed(LED_FIREBASE, PISCA_LENTO);
+    wifiJaConectou = true;
     // Ainda sem clima? Consulta logo que o Wi-Fi conectar.
     if (!clima.valido) esperaClima = 0;
   }
   if (!conectado && estavaConectado) {
     Serial.println("[Wi-Fi] Conexão perdida.");
+    definirEstadoLed(LED_WIFI, PISCA_RAPIDO);  // caiu: pisca rápido até voltar
   }
   estavaConectado = conectado;
 
@@ -263,9 +329,13 @@ void atualizarClima() {
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[CLIMA] Erro: sem Wi-Fi. Tento de novo em 5 min.");
+    if (wifiJaConectou) definirEstadoLed(LED_CLIMA, PISCA_RAPIDO);
     esperaClima = INTERVALO_CLIMA_ERRO;
     return;
   }
+
+  // Começou a consultar: o LED já acende aqui, antes da espera pela resposta
+  definirEstadoLed(LED_CLIMA, PISCA_LENTO);
 
   // Uma conexão segura de cada vez: acompanhamos a memória livre
   unsigned long heapAntes = ESP.getFreeHeap();
@@ -276,6 +346,7 @@ void atualizarClima() {
     // Mantém os últimos valores válidos e não grava nada no Firebase
     Serial.printf("[CLIMA] Heap livre: antes %lu / depois %lu\n", heapAntes, heapDepois);
     Serial.println("[CLIMA] Tento de novo em 5 min.");
+    definirEstadoLed(LED_CLIMA, PISCA_RAPIDO);
     esperaClima = INTERVALO_CLIMA_ERRO;
     return;
   }
@@ -286,7 +357,11 @@ void atualizarClima() {
   Serial.printf("[CLIMA] Chance máx. de chuva nas próximas %d h: %d %%\n", HORAS_CHUVA, clima.chanceChuva6h);
   Serial.printf("[CLIMA] ET0 hoje: %.2f mm\n", clima.et0);
   Serial.printf("[CLIMA] Heap livre: antes %lu / depois %lu\n", heapAntes, heapDepois);
-  Serial.printf("[CLIMA] Enviado ao Firebase: %s\n", enviarClimaFirebase() ? "OK" : "ERRO");
+  bool enviado = enviarClimaFirebase();
+  Serial.printf("[CLIMA] Enviado ao Firebase: %s\n", enviado ? "OK" : "ERRO");
+
+  // LED do Clima: aceso só se consultou E gravou no Firebase
+  definirEstadoLed(LED_CLIMA, enviado ? ACESO : PISCA_RAPIDO);
 
   esperaClima = INTERVALO_CLIMA;
 }
@@ -300,9 +375,13 @@ void setup() {
   pinMode(PINO_LED, OUTPUT);
   digitalWrite(PINO_LED, LOW);
 
+  // Teste dos LEDs de status: os três acendem juntos por 1 s
+  testarLedsStatus();
+
   Serial.println();
   Serial.println("===== Teste acende/apaga + clima =====");
   Serial.printf("[Wi-Fi] Conectando em \"%s\"...\n", WIFI_SSID);
+  definirEstadoLed(LED_WIFI, PISCA_LENTO);  // tentando conectar
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   ultimaTentativaWiFi = millis();
@@ -316,4 +395,5 @@ void loop() {
   conectarWifi();
   lerComandoSerial();
   atualizarClima();
+  atualizarLedsStatus();
 }
