@@ -268,13 +268,13 @@ void atualizarClima() {
   }
 
   // Uma conexão segura de cada vez: acompanhamos a memória livre
-  uint32_t heapAntes = ESP.getFreeHeap();
+  unsigned long heapAntes = ESP.getFreeHeap();
   bool ok = consultarOpenMeteo();
-  uint32_t heapDepois = ESP.getFreeHeap();
+  unsigned long heapDepois = ESP.getFreeHeap();
 
   if (!ok) {
     // Mantém os últimos valores válidos e não grava nada no Firebase
-    Serial.printf("[CLIMA] Heap livre: antes %u / depois %u\n", heapAntes, heapDepois);
+    Serial.printf("[CLIMA] Heap livre: antes %lu / depois %lu\n", heapAntes, heapDepois);
     Serial.println("[CLIMA] Tento de novo em 5 min.");
     esperaClima = INTERVALO_CLIMA_ERRO;
     return;
@@ -285,7 +285,7 @@ void atualizarClima() {
   Serial.printf("[CLIMA] Chovendo agora: %.2f mm\n", clima.chuvaAgoraMm);
   Serial.printf("[CLIMA] Chance máx. de chuva nas próximas %d h: %d %%\n", HORAS_CHUVA, clima.chanceChuva6h);
   Serial.printf("[CLIMA] ET0 hoje: %.2f mm\n", clima.et0);
-  Serial.printf("[CLIMA] Heap livre: antes %u / depois %u\n", heapAntes, heapDepois);
+  Serial.printf("[CLIMA] Heap livre: antes %lu / depois %lu\n", heapAntes, heapDepois);
   Serial.printf("[CLIMA] Enviado ao Firebase: %s\n", enviarClimaFirebase() ? "OK" : "ERRO");
 
   esperaClima = INTERVALO_CLIMA;
