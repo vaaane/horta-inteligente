@@ -1,0 +1,60 @@
+{
+  "rules": {
+    "horta": {
+      ".read": true,
+
+      "estado": {
+        ".write": "auth != null && auth.uid === 'UID_DO_ESP32'",
+        ".validate": "newData.hasChildren(['umidade', 'umidadeBruta', 'bomba', 'ts'])",
+        "umidade": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+        },
+        "umidadeBruta": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 4095"
+        },
+        "bomba": {
+          ".validate": "newData.isBoolean()"
+        },
+        "ts": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "$outro": {
+          ".validate": false
+        }
+      },
+
+      "leituras": {
+        ".write": "auth != null && auth.uid === 'UID_DO_ESP32'",
+        ".indexOn": ["ts"],
+        "$leituraId": {
+          ".validate": "newData.hasChildren(['umidade', 'bomba', 'ts'])",
+          "umidade": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+          },
+          "bomba": {
+            ".validate": "newData.isBoolean()"
+          },
+          "ts": {
+            ".validate": "newData.isNumber() && newData.val() <= now"
+          },
+          "$outro": {
+            ".validate": false
+          }
+        }
+      },
+
+      "comandos": {
+        ".write": "auth != null",
+        "modo": {
+          ".validate": "newData.isString() && (newData.val() === 'auto' || newData.val() === 'manual')"
+        },
+        "bombaManual": {
+          ".validate": "newData.isBoolean()"
+        },
+        "$outro": {
+          ".validate": false
+        }
+      }
+    }
+  }
+}

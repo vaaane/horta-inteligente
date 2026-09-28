@@ -1,0 +1,9 @@
+# Senhas do Wi-Fi e do Firebase do ESP32 (nunca vai para o GitHub)
+firmware/esp32-horta/secrets.h
+
+# Arquivos do sistema e de editores
+.DS_Store
+.vscode/
+
+# Dependências do npm
+node_modules/

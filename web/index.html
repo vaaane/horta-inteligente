@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Horta Inteligente</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>🌱 Horta Inteligente</h1>
+    <p class="subtitulo">CED São Bartolomeu · Feira de Ciências</p>
+  </header>
+
+  <main>
+    <div id="offline" class="aviso" hidden>
+      ⚠️ ESP32 offline — nenhum dado novo há mais de 2 minutos.
+    </div>
+
+    <div class="cartoes">
+      <section class="cartao">
+        <h2>Umidade do solo</h2>
+        <p class="numero"><span id="umidade">--</span><small>%</small></p>
+        <div class="trilho"><div id="barra" class="barra"></div></div>
+        <div class="escala"><span>Seco</span><span>Molhado</span></div>
+      </section>
+
+      <section class="cartao">
+        <h2>Bomba d'água</h2>
+        <p id="bomba" class="bomba">--</p>
+      </section>
+    </div>
+
+    <p id="atualizacao" class="atualizacao">Conectando ao Firebase...</p>
+
+    <section class="cartao">
+      <h2>Umidade nas últimas leituras</h2>
+      <div class="area-grafico"><canvas id="grafico"></canvas></div>
+    </section>
+  </main>
+
+  <!-- Chart.js: biblioteca que desenha o gráfico -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
