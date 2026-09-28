@@ -4,7 +4,10 @@
 //  1. LED: digite no Serial Monitor (115200, "Nova linha"):
 //       acende  -> grava true  em /teste/led
 //       apaga   -> grava false em /teste/led
-//     A página teste.html muda na hora, e o LED azul da placa também.
+//     ou aperte o BOTÃO (GPIO 32 ligado ao GND): cada aperto alterna o LED.
+//     O LED azul da placa muda na hora e a página teste.html muda logo
+//     depois. Sem Wi-Fi, o LED muda mesmo assim e o estado fica pendente:
+//     o ESP32 tenta enviar de novo a cada 10 s, sempre o último estado.
 //
 //  2. CLIMA: a cada 30 min o ESP32 consulta a previsão do tempo no
 //     Open-Meteo e grava o resumo em /clima (o site mostra num cartão).
@@ -24,6 +27,11 @@
 // ---------------------------------------------------------------------
 
 const int PINO_LED = 2;  // LED embutido da maioria das placas ESP32 DevKit
+
+// Botão entre o GPIO 32 e o GND (usa o resistor interno: apertado = LOW)
+const int PINO_BOTAO = 32;
+const unsigned long DEBOUNCE_MS = 50;             // ignora os "tremidos" do contato
+const unsigned long INTERVALO_REENVIO_LED = 10000; // reenvio do estado pendente a cada 10 s
 
 // LEDs de status na protoboard (cada um com resistor em série)
 const int PINO_LED_WIFI     = 25;
@@ -76,6 +84,16 @@ unsigned long ultimaTentativaWiFi = 0;
 unsigned long ultimaConsultaClima = 0;
 unsigned long esperaClima = 0;  // quanto esperar até a próxima consulta
 bool wifiJaConectou = false;    // antes da 1ª conexão, Firebase e Clima ficam apagados
+
+// Estado do LED do site
+bool ledAceso = false;               // estado atual do LED (GPIO 2)
+bool ledPendente = false;            // true = ainda falta gravar esse estado no Firebase
+unsigned long ultimaTentativaLed = 0;
+
+// Leitura do botão (debounce)
+int leituraBotaoAnterior = HIGH;     // última leitura "crua" do pino
+int estadoBotao = HIGH;              // estado já confirmado (sem tremidos)
+unsigned long ultimaMudancaBotao = 0;
 
 
 // =====================================================================
@@ -141,10 +159,18 @@ int gravarNoFirebase(const char* caminho, const String& json) {
   http.setTimeout(TIMEOUT_HTTP);
   String url = String(FIREBASE_DB_URL) + caminho + ".json";
   int codigo = -1;
+  String resposta = "";
   if (http.begin(cliente, url)) {
     http.addHeader("Content-Type", "application/json");
     codigo = http.PUT(json);
+    // Se deu erro, guarda o motivo (tem que ler antes do http.end())
+    if (codigo > 0 && codigo != 200) resposta = http.getString();
+    else if (codigo < 0) resposta = http.errorToString(codigo);
     http.end();
+  }
+
+  if (codigo != 200) {
+    Serial.printf("[Firebase] Erro ao gravar %s: %d %s\n", caminho, codigo, resposta.c_str());
   }
 
   // LED do Firebase: aceso se a gravação deu certo, pisca rápido se falhou
@@ -201,19 +227,64 @@ void lerComandoSerial() {
   else Serial.println("Comando desconhecido. Comandos válidos: acende, apaga");
 }
 
-// Grava o estado do LED no Firebase e espelha no LED da placa
+// Muda o LED na hora e grava no Firebase (usada pelo Serial e pelo botão)
 void atualizarLed(bool aceso) {
+  ledAceso = aceso;
+  digitalWrite(PINO_LED, aceso ? HIGH : LOW);  // resposta instantânea
+  ledPendente = true;                          // falta avisar o Firebase
+
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[Wi-Fi] Sem conexão, tente de novo em alguns segundos.");
+    Serial.println("[LED] Sem Wi-Fi: estado pendente, envio quando a conexão voltar.");
+    ultimaTentativaLed = millis();
     return;
   }
+  enviarEstadoLed();
+}
 
-  Serial.printf("Enviando %s para o Firebase...\n", aceso ? "true" : "false");
-  int codigo = gravarNoFirebase("/teste/led", aceso ? "true" : "false");
+// Grava o estado atual (sempre o último) em /teste/led
+void enviarEstadoLed() {
+  ultimaTentativaLed = millis();
+  Serial.printf("Enviando %s para o Firebase...\n", ledAceso ? "true" : "false");
+  int codigo = gravarNoFirebase("/teste/led", ledAceso ? "true" : "false");
   Serial.printf("Código HTTP: %d %s\n", codigo, codigo == 200 ? "(ok!)" : "(erro)");
 
-  // Só muda o LED da placa se o Firebase aceitou
-  if (codigo == 200) digitalWrite(PINO_LED, aceso ? HIGH : LOW);
+  if (codigo == 200) ledPendente = false;
+  else Serial.println("[LED] Envio pendente: tento de novo em 10 s.");
+}
+
+// Se ficou algo pendente, tenta de novo a cada 10 s (sem travar o loop)
+void reenviarLedPendente() {
+  if (!ledPendente) return;
+  if (millis() - ultimaTentativaLed < INTERVALO_REENVIO_LED) return;
+  if (WiFi.status() != WL_CONNECTED) {
+    ultimaTentativaLed = millis();  // ainda sem Wi-Fi: espera mais 10 s
+    return;
+  }
+  Serial.println("[LED] Reenviando estado pendente...");
+  enviarEstadoLed();
+}
+
+
+// =====================================================================
+//  BOTÃO — cada aperto alterna o LED do site uma vez
+// =====================================================================
+void verificarBotao() {
+  int leitura = digitalRead(PINO_BOTAO);
+
+  // O contato "treme" ao apertar: espera a leitura ficar parada 50 ms
+  if (leitura != leituraBotaoAnterior) {
+    leituraBotaoAnterior = leitura;
+    ultimaMudancaBotao = millis();
+  }
+  if (millis() - ultimaMudancaBotao < DEBOUNCE_MS) return;
+  if (leitura == estadoBotao) return;  // nada mudou (segurar não repete)
+
+  estadoBotao = leitura;
+  if (estadoBotao == LOW) {  // acabou de apertar (HIGH -> LOW)
+    bool novoEstado = !ledAceso;
+    Serial.println(novoEstado ? "[BOTAO] LED aceso" : "[BOTAO] LED apagado");
+    atualizarLed(novoEstado);
+  }
 }
 
 
@@ -305,8 +376,9 @@ bool consultarOpenMeteo() {
   return true;
 }
 
-// Grava o clima no Firebase em /clima, tudo numa escrita só
-bool enviarClimaFirebase() {
+// Grava o clima no Firebase em /clima, tudo numa escrita só.
+// Devolve o código HTTP (200 = deu certo).
+int enviarClimaFirebase() {
   JsonDocument doc;
   // serialized(String(valor, casas)) evita números como 27.2999992
   doc["temperatura"] = serialized(String(clima.temperatura, 1));
@@ -319,7 +391,7 @@ bool enviarClimaFirebase() {
   String json;
   serializeJson(doc, json);
 
-  return gravarNoFirebase("/clima", json) == 200;
+  return gravarNoFirebase("/clima", json);
 }
 
 // Confere se já está na hora de consultar o clima
@@ -357,8 +429,9 @@ void atualizarClima() {
   Serial.printf("[CLIMA] Chance máx. de chuva nas próximas %d h: %d %%\n", HORAS_CHUVA, clima.chanceChuva6h);
   Serial.printf("[CLIMA] ET0 hoje: %.2f mm\n", clima.et0);
   Serial.printf("[CLIMA] Heap livre: antes %lu / depois %lu\n", heapAntes, heapDepois);
-  bool enviado = enviarClimaFirebase();
-  Serial.printf("[CLIMA] Enviado ao Firebase: %s\n", enviado ? "OK" : "ERRO");
+  int codigo = enviarClimaFirebase();
+  bool enviado = (codigo == 200);
+  Serial.printf("[CLIMA] Enviado ao Firebase: %s (%d)\n", enviado ? "OK" : "ERRO", codigo);
 
   // LED do Clima: aceso só se consultou E gravou no Firebase
   definirEstadoLed(LED_CLIMA, enviado ? ACESO : PISCA_RAPIDO);
@@ -374,6 +447,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(PINO_LED, OUTPUT);
   digitalWrite(PINO_LED, LOW);
+  pinMode(PINO_BOTAO, INPUT_PULLUP);  // resistor interno: solto = HIGH, apertado = LOW
 
   // Teste dos LEDs de status: os três acendem juntos por 1 s
   testarLedsStatus();
@@ -393,7 +467,9 @@ void setup() {
 void loop() {
   // Nada de delay(): cada tarefa confere se já chegou a sua hora
   conectarWifi();
+  verificarBotao();
   lerComandoSerial();
+  reenviarLedPendente();
   atualizarClima();
   atualizarLedsStatus();
 }
