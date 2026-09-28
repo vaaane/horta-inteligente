@@ -129,3 +129,11 @@ main {
   position: relative;
   height: 280px;
 }
+
+/* Rodapé com o link discreto para a página de teste */
+.rodape {
+  text-align: center;
+  padding: 0 16px 24px;
+  font-size: 0.85rem;
+}
+.rodape a { color: var(--texto-suave); }

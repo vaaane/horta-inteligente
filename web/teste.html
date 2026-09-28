@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Teste Acende/Apaga</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💡</text></svg>">
+  <style>
+    :root {
+      --verde: #2e7d32;
+      --verde-brilho: #4caf50;
+      --cinza: #b0bec5;
+      --fundo: #f4f8f3;
+      --texto: #1b2a1c;
+      --texto-suave: #5b6b5c;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 24px 16px;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--fundo);
+      color: var(--texto);
+      text-align: center;
+    }
+
+    h1 { margin: 0; font-size: clamp(1.4rem, 4vw, 2rem); }
+
+    /* O "LED" da tela */
+    .led {
+      width: min(60vw, 280px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--cinza);
+      transition: background 0.5s ease, box-shadow 0.5s ease;
+    }
+    .led.aceso {
+      background: var(--verde-brilho);
+      box-shadow: 0 0 40px 10px rgba(76, 175, 80, 0.6),
+                  0 0 100px 30px rgba(76, 175, 80, 0.3);
+    }
+
+    .estado {
+      margin: 0;
+      font-size: clamp(2rem, 8vw, 3.5rem);
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--texto-suave);
+      transition: color 0.5s ease;
+    }
+    .estado.aceso { color: var(--verde); }
+
+    .hora { margin: 0; color: var(--texto-suave); }
+
+    a { color: var(--texto-suave); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>💡 Teste: ESP32 → Firebase → site</h1>
+
+  <div id="led" class="led"></div>
+  <p id="estado" class="estado">APAGADO</p>
+  <p id="hora" class="hora">Conectando ao Firebase...</p>
+
+  <a href="index.html">← Voltar para a horta</a>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+    import { firebaseConfig } from "./firebase-config.js";
+
+    const db = getDatabase(initializeApp(firebaseConfig));
+
+    const elLed = document.getElementById("led");
+    const elEstado = document.getElementById("estado");
+    const elHora = document.getElementById("hora");
+
+    // Toda vez que teste/led mudar no Firebase, esta função roda
+    onValue(ref(db, "teste/led"), (snap) => {
+      const aceso = snap.val() === true;  // vazio ou false = apagado
+
+      elLed.classList.toggle("aceso", aceso);
+      elEstado.classList.toggle("aceso", aceso);
+      elEstado.textContent = aceso ? "ACESO" : "APAGADO";
+
+      const hora = new Date().toLocaleTimeString("pt-BR");
+      elHora.textContent = `Última mudança: ${hora}`;
+    });
+  </script>
+</body>
+</html>

@@ -76,6 +76,23 @@ O `secrets.h` não vai para o GitHub (está no `.gitignore`).
 
 ---
 
+## Teste rápido (acende/apaga)
+
+Um teste mínimo para conferir que o caminho **ESP32 → Firebase → site** está funcionando, antes de montar o sensor e a bomba.
+
+1. **Publique as regras** (`firebase/database.rules.json`) no console do Firebase, como no passo 2.
+2. Abra **`/teste.html`** no site (ou pelo link "Página de teste" no rodapé da página principal).
+3. Na pasta `firmware/teste-acende/`, copie `secrets.example.h` para **`secrets.h`**, preencha o Wi-Fi e o endereço do banco e grave o `teste-acende.ino` no ESP32.
+4. Abra o **Serial Monitor em 115200** (final de linha: "Nova linha") e digite **`acende`**. O círculo do site fica verde e o LED azul da placa acende. Digite **`apaga`** para desligar.
+
+O Serial Monitor mostra o código HTTP de cada envio: **200 = deu certo**.
+
+💡 **Dica:** dá para testar só o site, sem o ESP32: no console do Firebase (Realtime Database → Dados), crie `teste/led` com o valor `true`.
+
+⚠️ **Temporário:** o nó `/teste` tem leitura **e escrita** abertas para qualquer pessoa, só para facilitar o teste. Depois que tudo funcionar, apague o bloco `"teste"` das regras e publique de novo.
+
+---
+
 ## Como a rega funciona
 - Abaixo de **35%** de umidade → liga a bomba.
 - Acima de **60%** → desliga.
