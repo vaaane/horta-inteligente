@@ -4,8 +4,11 @@
 //
 // Cada planta escolhida vira um retângulo alinhado à grade do terreno
 // (x, y, w, h em metros; x para a direita, y para baixo), com a área escolhida.
+// A cor diz se o lugar é bom para ela, pelas horas de sol (culturas.js):
+// verde ✓ Recomendado, amarelo ! Aceitável, vermelho ✕ Não recomendado.
 import {
-  CULTURAS, tamanhoDoCanteiro, encaixar, validarCanteiro, melhorPosicao, sugerirCanteiros, descreverLugar
+  CULTURAS, NIVEIS, avaliarRegiao, textoAvaliacao, tamanhoDoCanteiro, encaixar, validarCanteiro,
+  melhorPosicao, sugerirCanteiros, descreverLugar
 } from "./culturas.js";
 
 const culturaDe = (id) => CULTURAS.find((c) => c.id === id);
@@ -16,6 +19,7 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
   let mapa = null;          // horas de sol (sol.js)
   let terreno = null;       // terreno do cálculo
   let escolhidas = {};      // { tomate: 0.5 } (área em m²)
+  let anoTodo = false;      // as horas são do pior mês?
   let posicoes = {};        // { tomate: { x, y, w, h, girada } }
   let sugestoes = {};       // o que o site sugeriu (para "Voltar à sugestão")
   let selecionada = null;   // planta tocada (mostra o botão de girar)
@@ -30,12 +34,15 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
   }
   const valido = (r) => validarCanteiro(mapa, terreno, r);
   const celulasDe = (r) => (r ? valido(r).celulas : []);
+  // Avaliação de um lugar para a planta (com as horas de sol já calculadas)
+  const avaliar = (id, r) => avaliarRegiao(celulasDe(r).map((i) => mapa.horas[i]), culturaDe(id));
 
   // ---------- Depois de cada cálculo do mapa de sol (ou quando mudam as plantas) ----------
-  function atualizar(novoMapa, novoTerreno, novasEscolhidas) {
+  function atualizar(novoMapa, novoTerreno, novasEscolhidas, novoAnoTodo = false) {
     mapa = novoMapa;
     terreno = novoTerreno;
     escolhidas = novasEscolhidas;
+    anoTodo = novoAnoTodo;
     for (const id of Object.keys(posicoes)) if (!(id in escolhidas)) delete posicoes[id];
     if (selecionada && !(selecionada in escolhidas)) selecionada = null;
     if (!mapa || !terreno) { mostrarLista(); return; }
@@ -65,9 +72,11 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
 
   // ---------- Desenho (o mesmo nos dois modos) ----------
   // pt(x, y): metros no terreno -> pixel na tela
+  let balaoDepois = null;   // o balão é desenhado por último (por cima de tudo)
   function desenhar(ctx, pt) {
     caixasNomes = [];
     botaoGirar = null;
+    balaoDepois = null;
     if (!mapa || !terreno) return;
     for (const id of Object.keys(escolhidas)) {
       const emArraste = arraste && arraste.id === id;
@@ -79,20 +88,31 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
       cantos.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
       ctx.closePath();
       const invalido = emArraste && !arraste.valido;
+      const nivel = invalido ? null : NIVEIS[avaliar(id, r).nivel];
+      const cor = invalido ? "#616161" : nivel.cor;
       ctx.save();
-      ctx.globalAlpha = invalido ? 0.35 : 0.75;
-      ctx.fillStyle = invalido ? "#9e9e9e" : cultura.cor;
+      ctx.globalAlpha = invalido ? 0.3 : 0.4;       // preenchimento semitransparente
+      ctx.fillStyle = invalido ? "#9e9e9e" : nivel.cor;
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.lineWidth = id === selecionada || emArraste ? 3 : 2;
-      ctx.strokeStyle = invalido ? "#616161" : "#ffffff";
-      if (invalido) ctx.setLineDash([6, 4]);
+      ctx.lineWidth = id === selecionada || emArraste ? 4 : 3;
+      ctx.strokeStyle = cor;
+      if (invalido) ctx.setLineDash([6, 4]);        // cinza tracejado: aqui não dá
       ctx.stroke();
       ctx.restore();
 
+      // Nome com o ícone (✓ ! ✕): a avaliação nunca depende só da cor
       const meio = pt(r.x + r.w / 2, r.y + r.h / 2);
-      const texto = invalido ? `${cultura.nome} · ${MOTIVOS[arraste.motivo]}` : cultura.nome;
-      caixasNomes.push({ id, ...etiqueta(ctx, texto, meio.x, meio.y, cultura.cor) });
+      const texto = invalido ? `${cultura.nome} · ${MOTIVOS[arraste.motivo]}` : `${nivel.icone} ${cultura.nome}`;
+      caixasNomes.push({ id, ...etiqueta(ctx, texto, meio.x, meio.y, cor) });
+
+      // Balão com a avaliação: durante o arraste e na planta tocada
+      if (emArraste || id === selecionada) {
+        const balao = invalido ? MOTIVOS[arraste.motivo] : textoAvaliacao(cultura, avaliar(id, r)) + (anoTodo ? " (pior mês)" : "");
+        const ys = cantos.map((p) => p.y);
+        const xs = cantos.map((p) => p.x);
+        balaoDepois = { texto: balao, x: (Math.min(...xs) + Math.max(...xs)) / 2, topo: Math.min(...ys), base: Math.max(...ys), cor };
+      }
 
       // Botão ↻ (girar 90°) no canto de cima à direita da planta selecionada
       if (id === selecionada && !emArraste) {
@@ -112,6 +132,38 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
         ctx.fillText("↻", botaoGirar.x, botaoGirar.y + 1);
       }
     }
+    if (balaoDepois) desenharBalao(ctx, balaoDepois);
+  }
+
+  // Balão de texto colado à região (em cima; se não couber, embaixo)
+  function desenharBalao(ctx, { texto, x, topo, base, cor }) {
+    const larguraTela = ctx.canvas.clientWidth || 600;
+    ctx.font = "600 13px system-ui, sans-serif";
+    const maxLargura = Math.min(280, larguraTela - 16);
+    // Quebra o texto em linhas que caibam na largura
+    const linhas = [];
+    let linha = "";
+    for (const palavra of texto.split(" ")) {
+      const teste = linha ? `${linha} ${palavra}` : palavra;
+      if (ctx.measureText(teste).width > maxLargura - 16 && linha) { linhas.push(linha); linha = palavra; } else linha = teste;
+    }
+    if (linha) linhas.push(linha);
+    const w = Math.max(...linhas.map((l) => ctx.measureText(l).width)) + 16;
+    const h = linhas.length * 17 + 12;
+    let bx = Math.min(Math.max(x - w / 2, 8), larguraTela - w - 8);
+    let by = topo - h - 30;
+    if (by < 4) by = base + 30;  // sem espaço em cima: vai para baixo
+    ctx.save();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.97)";
+    ctx.strokeStyle = cor;
+    ctx.lineWidth = 2;
+    ctx.fillRect(bx, by, w, h);
+    ctx.strokeRect(bx, by, w, h);
+    ctx.fillStyle = "#1b2a1c";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    linhas.forEach((l, i) => ctx.fillText(l, bx + 8, by + 7 + i * 17));
+    ctx.restore();
   }
 
   // Caixinha branca com o nome; devolve onde ficou
@@ -216,12 +268,24 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
       const texto = document.createElement("span");
       if (!mapa || !r) {
         texto.textContent = mapa ? `Não há lugar livre para ${cultura.nome.toLowerCase()} neste terreno.` : cultura.nome;
+        li.append(cor, texto);
       } else {
-        const celulas = celulasDe(r);
-        const horas = celulas.reduce((s, i) => s + mapa.horas[i], 0) / (celulas.length || 1);
-        texto.textContent = `${cultura.nome}: ${descreverLugar(celulas, mapa, terreno)}, ~${numero(Math.round(horas * 2) / 2)} h de sol.`;
+        // Selo da avaliação (ícone + palavra) e as horas de sol
+        const av = avaliar(id, r);
+        const selo = document.createElement("span");
+        selo.className = `planejar-selo-avaliacao nivel-${av.nivel}`;
+        selo.textContent = `${NIVEIS[av.nivel].icone} ${NIVEIS[av.nivel].texto}`;
+        const quando = anoTodo ? " no pior mês" : "";
+        let frase = `${cultura.nome}: ~${numero(Math.round(av.media * 2) / 2)} h de sol${quando}, ${descreverLugar(celulasDe(r), mapa, terreno)}.`;
+        // Nem o melhor lugar serve? Explica o que dá para fazer
+        const melhor = sugestoes[id];
+        if (av.nivel === "nao" && (!melhor || avaliar(id, melhor).nivel === "nao")) {
+          frase += ` Não há sol suficiente para ${cultura.nome.toLowerCase()} neste terreno: o melhor lugar tem ` +
+            `${numero(Math.round((melhor ? avaliar(id, melhor).media : 0) * 2) / 2)} h. Tente tirar ou baixar um obstáculo.`;
+        }
+        texto.textContent = frase;
+        li.append(cor, selo, texto);
       }
-      li.append(cor, texto);
       li.addEventListener("click", () => { selecionada = id; mostrarLista(); aoMudar({}); });
       return li;
     }));

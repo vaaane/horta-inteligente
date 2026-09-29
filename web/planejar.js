@@ -795,7 +795,7 @@ const plantas = iniciarPlantas({
 
 // Depois do cálculo (ou quando mudam as plantas): cada planta ganha ou mantém o seu canteiro
 function calcularSugestoes() {
-  plantas.atualizar(mapa, terrenoCalculado, escolhidas);
+  plantas.atualizar(mapa, terrenoCalculado, escolhidas, anoTodo);
   salvarCanteiros();
   desenhar();
 }
