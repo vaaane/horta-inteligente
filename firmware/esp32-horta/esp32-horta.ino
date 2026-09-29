@@ -54,7 +54,6 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <driver/rtc_io.h>     // rtc_gpio_deinit(): devolve um pino ao modo digital
 #include <soc/gpio_struct.h>   // GPIO.out / GPIO.enable: o que o pino recebe de verdade
 #include <soc/rtc_io_struct.h> // RTCIO.pad_dac: GPIO 25 e 26 também são o DAC
 #include <time.h>                // hora certa pela internet (NTP), para o resumo por dia
@@ -403,16 +402,8 @@ bool pinoEhSaidaDigital(int pino) {
   return true;
 }
 
-// Devolve o pino ao modo de saída digital (se alguém mexeu nele por fora)
-void reconfigurarPino(int pino) {
-  if (pino == 25 || pino == 26) {
-    int i = pino - 25;  // pad_dac[0] = GPIO 25, pad_dac[1] = GPIO 26
-    RTCIO.pad_dac[i].xpd_dac = 0;        // desliga o DAC nesse pino
-    RTCIO.pad_dac[i].dac_xpd_force = 0;
-    rtc_gpio_deinit((gpio_num_t)pino);   // tira do RTC e volta para o digital
-  }
-  pinMode(pino, OUTPUT);
-}
+// Já avisou no Serial que o pino saiu do modo digital? (avisa uma vez por pino)
+bool avisouPinoPerdido[TOTAL_LEDS] = { false, false, false };
 
 // Muda o estado de um LED. Já acende na hora (mesmo se for piscar),
 // para o LED não ficar apagado durante uma operação que trava alguns segundos.
@@ -429,7 +420,10 @@ void definirEstadoLed(LedStatus led, EstadoLed estado) {
 
 // Faz as piscadas com millis(), sem delay(). Chamada no loop().
 // Os LEDs fixos (ACESO/APAGADO) têm o pino reescrito a cada 0,5 s: se algo
-// mudar o pino por fora, o LED se corrige sozinho.
+// mudar o nível do pino por fora, o LED se corrige sozinho.
+// Se o pino sair do modo digital, só AVISA no Serial: o GPIO 25 e o 26 são
+// pinos do ADC2, que o Wi-Fi usa. Reconfigurá-los pelo RTC com o Wi-Fi
+// tentando conectar derrubava a conexão (motivo 3, várias vezes por segundo).
 void piscarLedsStatus() {
   bool reescrever = millis() - ultimaReescritaLed >= REESCRITA_LED_MS;
   if (reescrever) ultimaReescritaLed = millis();
@@ -447,11 +441,12 @@ void piscarLedsStatus() {
     }
 
     if (reescrever) {
-      if (!pinoEhSaidaDigital(pinosStatus[i])) {
-        Serial.printf("[LED] %s (GPIO %d) tinha perdido a configuração de saída: reconfigurado.\n",
+      bool digital = pinoEhSaidaDigital(pinosStatus[i]);
+      if (!digital && !avisouPinoPerdido[i]) {
+        Serial.printf("[LED] %s (GPIO %d) não está como saída digital (o LED pode não acender).\n",
                       NOMES_LED[i], pinosStatus[i]);
-        reconfigurarPino(pinosStatus[i]);
       }
+      avisouPinoPerdido[i] = !digital;
       digitalWrite(pinosStatus[i], faseLigada[i] ? HIGH : LOW);
     }
   }
@@ -1016,6 +1011,13 @@ void cuidarDoWiFi() {
 
   if (conectado && !estavaConectado) {
     Serial.printf("[Wi-Fi] Conectado! IP: %s\n", WiFi.localIP().toString().c_str());
+    // Hora certa pela internet (Brasília, UTC-3, sem horário de verão).
+    // Só depois de conectar: nada de rede enquanto o Wi-Fi ainda está tentando.
+    static bool ntpIniciado = false;
+    if (!ntpIniciado) {
+      configTime(-3 * 3600, 0, "pool.ntp.org", "time.google.com");
+      ntpIniciado = true;
+    }
     // Ainda sem clima? Consulta logo que o Wi-Fi conectar.
     if (!clima.valido) esperaClima = 0;
   }
@@ -2172,9 +2174,7 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   ultimaTentativaWiFi = millis();
 
-  // Hora certa pela internet (Brasília, UTC-3, sem horário de verão).
-  // Ela chega sozinha depois que o Wi-Fi conectar.
-  configTime(-3 * 3600, 0, "pool.ntp.org", "time.google.com");
+  // (A hora certa, NTP, começa quando o Wi-Fi conectar: ver cuidarDoWiFi.)
 
   // Conexão com o banco que fica aberta entre os pedidos (ver requisicaoBanco)
   clienteBanco.setInsecure();
