@@ -9,6 +9,10 @@
 //     Todos têm uma altura, que é o que faz sombra.
 //   - A seta do norte diz para onde fica o norte no desenho (0° = para cima).
 
+import {
+  calcularHorasDeSol, meioDiaLocal, classificar, SOMBRA, MEIA_SOMBRA, PLENO_SOL
+} from "./sol.js";
+
 // ---------- Terreno padrão ----------
 const PADRAO = {
   largura: 6,          // m (da esquerda para a direita)
@@ -477,3 +481,164 @@ medir();
 mostrarLista();
 desenhar();
 new ResizeObserver(() => { medir(); desenhar(); }).observe(caixa);
+
+// =====================================================================
+//  MAPA DE HORAS DE SOL (o cálculo fica em sol.js)
+// =====================================================================
+const CORES_SOL = { [SOMBRA]: "#253b6e", [MEIA_SOMBRA]: "#6fa8dc", [PLENO_SOL]: "#f4c430" };
+const hojeTexto = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+let dataEscolhida = hojeTexto();  // "AAAA-MM-DD"
+let anoTodo = false;              // true = pior caso dos 12 meses
+let mapa = null;                  // resultado de calcularHorasDeSol
+let ultimaDuracao = 0;            // quanto tempo levou o último cálculo (ms)
+let temporizador = null;
+const aoCalcularMapa = [];        // quem quer saber quando o mapa fica pronto (sugestões)
+export function quandoMapaPronto(funcao) { aoCalcularMapa.push(funcao); }
+export const mapaAtual = () => mapa;
+
+// Dias usados no cálculo: o escolhido, ou o dia 21 de cada mês (ano todo)
+function diasDoCalculo() {
+  const [ano, mes, dia] = dataEscolhida.split("-").map(Number);
+  if (anoTodo) return Array.from({ length: 12 }, (_, m) => meioDiaLocal(ano, m, 21, terreno.longitude));
+  return [meioDiaLocal(ano, mes - 1, dia, terreno.longitude)];
+}
+
+// Espera um pouquinho antes de calcular (enquanto arrasta, não recalcula a cada pixel)
+function agendarCalculo(atraso = 150) {
+  clearTimeout(temporizador);
+  temporizador = setTimeout(() => {
+    // Se o último cálculo demorou, avisa antes de começar (e deixa a tela desenhar o aviso)
+    if (ultimaDuracao > 100) {
+      $("mapa-status").textContent = "calculando…";
+      requestAnimationFrame(() => setTimeout(calcularMapa, 0));
+    } else {
+      calcularMapa();
+    }
+  }, atraso);
+}
+
+function calcularMapa() {
+  if (typeof SunCalc === "undefined") {
+    $("mapa-status").textContent = "Não consegui carregar a biblioteca do sol (SunCalc). Confira a internet e recarregue a página.";
+    return;
+  }
+  const inicio = performance.now();
+  mapa = calcularHorasDeSol(SunCalc, terreno, diasDoCalculo());
+  ultimaDuracao = performance.now() - inicio;
+  mostrarStatusDoMapa();
+  desenhar();
+  for (const funcao of aoCalcularMapa) funcao(mapa);
+}
+
+function mostrarStatusDoMapa() {
+  let maior = 0;
+  let menor = Infinity;
+  mapa.horas.forEach((h, i) => {
+    if (mapa.ocupado[i]) return;
+    maior = Math.max(maior, h);
+    menor = Math.min(menor, h);
+  });
+  if (menor === Infinity) menor = 0;
+  const faixa = `de ${numero(menor, 1)} a ${numero(maior, 1)} h de sol (sem nenhuma sombra seriam ${numero(mapa.maximo, 1)} h)`;
+  if (anoTodo) {
+    $("mapa-status").textContent =
+      `Ano todo (pior caso): cada ponto mostra o MENOR valor entre os 12 meses (dia 21 de cada mês), ou seja, o pior mês. ${faixa[0].toUpperCase()}${faixa.slice(1)}.`;
+  } else {
+    const [ano, mes, dia] = dataEscolhida.split("-");
+    $("mapa-status").textContent = `Dia ${dia}/${mes}/${ano}: ${faixa}.`;
+  }
+  for (const botao of document.querySelectorAll(".planejar-data")) {
+    const qual = botao.dataset.data;
+    const ativo = anoTodo ? qual === "ano" : qual !== "ano" && dataDoBotao(qual) === dataEscolhida;
+    botao.classList.toggle("ativo", ativo);
+    botao.setAttribute("aria-pressed", String(ativo));
+  }
+}
+
+// Camada do mapa: pinta cada quadradinho com a cor da classificação
+adicionarCamada((ctx2, { paraPxX: px, paraPxY: py, escala: esc }) => {
+  if (!mapa) return;
+  ctx2.save();
+  ctx2.globalAlpha = 0.72;
+  for (let lin = 0; lin < mapa.linhas; lin++) {
+    for (let col = 0; col < mapa.colunas; col++) {
+      const i = lin * mapa.colunas + col;
+      if (mapa.ocupado[i]) continue;
+      ctx2.fillStyle = CORES_SOL[classificar(mapa.horas[i])];
+      const x0 = col * mapa.passo;
+      const y0 = lin * mapa.passo;
+      const x1 = Math.min(x0 + mapa.passo, terreno.largura);
+      const y1 = Math.min(y0 + mapa.passo, terreno.comprimento);
+      // +0,5 px para não aparecer risco entre os quadradinhos
+      ctx2.fillRect(px(x0), py(y0), (x1 - x0) * esc + 0.5, (y1 - y0) * esc + 0.5);
+    }
+  }
+  ctx2.restore();
+});
+
+// Datas rápidas
+function dataDoBotao(qual) {
+  const ano = Number(dataEscolhida.slice(0, 4));
+  if (qual === "hoje") return hojeTexto();
+  if (qual === "verao") return `${ano}-12-21`;
+  if (qual === "inverno") return `${ano}-06-21`;
+  if (qual === "equinocio") return `${ano}-03-21`;
+  return dataEscolhida;
+}
+for (const botao of document.querySelectorAll(".planejar-data")) {
+  botao.addEventListener("click", () => {
+    if (botao.dataset.data === "ano") {
+      anoTodo = true;
+    } else {
+      anoTodo = false;
+      dataEscolhida = dataDoBotao(botao.dataset.data);
+      $("data").value = dataEscolhida;
+    }
+    agendarCalculo(0);
+  });
+}
+$("data").value = dataEscolhida;
+$("data").addEventListener("change", () => {
+  if (!$("data").value) return;
+  dataEscolhida = $("data").value;
+  anoTodo = false;
+  agendarCalculo(0);
+});
+
+// Recalcula quando o terreno muda (com mais espera enquanto arrasta)
+quandoTerrenoMudar((opcoes) => agendarCalculo(opcoes.arrastando ? 300 : 150));
+
+// ---------- Dica: "5,5 h de sol" ao passar o mouse ou tocar ----------
+const dica = $("dica-ponto");
+let esconderDica = null;
+function mostrarDica(evento) {
+  if (!mapa || estaArrastando()) { dica.hidden = true; return; }
+  const { x, y } = metrosDoEvento(evento);
+  if (x < 0 || y < 0 || x >= terreno.largura || y >= terreno.comprimento) { dica.hidden = true; return; }
+  const col = Math.min(Math.floor(x / mapa.passo), mapa.colunas - 1);
+  const lin = Math.min(Math.floor(y / mapa.passo), mapa.linhas - 1);
+  const i = lin * mapa.colunas + col;
+  if (mapa.ocupado[i]) {
+    const ob = terreno.obstaculos[mapa.ocupado[i] - 1];
+    dica.textContent = `${ob ? ob.nome : "Obstáculo"}: ocupado`;
+  } else {
+    const h = mapa.horas[i];
+    dica.textContent = `${numero(h, 1)} h de sol · ${classificar(h)}${anoTodo ? " (pior mês)" : ""}`;
+  }
+  const rCaixa = caixa.getBoundingClientRect();
+  dica.style.left = `${evento.clientX - rCaixa.left}px`;
+  dica.style.top = `${evento.clientY - rCaixa.top}px`;
+  dica.hidden = false;
+  clearTimeout(esconderDica);
+  // No toque, a dica some sozinha depois de alguns segundos
+  if (evento.pointerType === "touch") esconderDica = setTimeout(() => { dica.hidden = true; }, 2500);
+}
+canvas.addEventListener("pointermove", mostrarDica);
+canvas.addEventListener("pointerdown", mostrarDica);
+canvas.addEventListener("pointerleave", (evento) => { if (evento.pointerType !== "touch") dica.hidden = true; });
+
+agendarCalculo(0);

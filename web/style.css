@@ -797,3 +797,18 @@ main {
   white-space: nowrap;
   transform: translate(-50%, -130%);
 }
+/* Mapa de horas de sol: cores que funcionam para daltônicos (azul-escuro,
+   azul-claro e amarelo, que variam também no claro/escuro) */
+:root { --sol-sombra: #253b6e; --sol-meia: #6fa8dc; --sol-pleno: #f4c430; }
+.planejar-mapa { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--borda); }
+.planejar-datas { display: grid; gap: 8px; }
+.planejar-datas label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.planejar-datas input[type="date"] { min-height: 44px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
+.planejar-data.ativo { background: var(--verde); color: #fff; }
+.planejar-status { margin: 10px 0; font-weight: 600; line-height: 1.4; }
+.planejar-legenda { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.95rem; }
+.planejar-legenda li { display: flex; align-items: center; gap: 6px; }
+.planejar-cor { display: inline-block; width: 22px; height: 16px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, 0.3); }
+.cor-sombra { background: var(--sol-sombra); }
+.cor-meia { background: var(--sol-meia); }
+.cor-pleno { background: var(--sol-pleno); }

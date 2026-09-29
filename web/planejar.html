@@ -34,7 +34,29 @@
           <canvas id="terreno" aria-label="Desenho do terreno com os obstáculos"></canvas>
           <p id="dica-ponto" class="planejar-dica" hidden></p>
         </div>
-        <p class="planejar-ajuda">Arraste os obstáculos para mudar de lugar. Toque em um para editar.</p>
+        <p class="planejar-ajuda">Arraste os obstáculos para mudar de lugar. Toque em um para editar.
+          Toque no chão para ver as horas de sol daquele ponto.</p>
+
+        <!-- Mapa de horas de sol (cálculo em sol.js) -->
+        <div class="planejar-mapa">
+          <h3 class="decisao-subtitulo">Mapa de horas de sol</h3>
+          <div class="planejar-datas">
+            <label>Dia <input type="date" id="data"></label>
+            <div class="planejar-botoes" role="group" aria-label="Datas rápidas">
+              <button type="button" class="planejar-botao planejar-data" data-data="hoje">Hoje</button>
+              <button type="button" class="planejar-botao planejar-data" data-data="verao">Verão (21/12)</button>
+              <button type="button" class="planejar-botao planejar-data" data-data="inverno">Inverno (21/06)</button>
+              <button type="button" class="planejar-botao planejar-data" data-data="equinocio">Equinócio (21/03)</button>
+              <button type="button" class="planejar-botao planejar-data" data-data="ano">Ano todo (pior caso)</button>
+            </div>
+          </div>
+          <p id="mapa-status" class="planejar-status" aria-live="polite"></p>
+          <ul class="planejar-legenda" aria-label="Legenda do mapa">
+            <li><span class="planejar-cor cor-sombra"></span> Sombra: menos de 3 h</li>
+            <li><span class="planejar-cor cor-meia"></span> Meia-sombra: 3 a 6 h</li>
+            <li><span class="planejar-cor cor-pleno"></span> Pleno sol: 6 h ou mais</li>
+          </ul>
+        </div>
       </section>
 
       <!-- Painel lateral (embaixo no celular) -->
@@ -84,6 +106,8 @@
     <a href="teste.html">Página de teste</a>
   </footer>
 
+  <!-- SunCalc: biblioteca que calcula a posição do sol (versão fixa) -->
+  <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
   <script type="module" src="planejar.js"></script>
 </body>
 </html>
