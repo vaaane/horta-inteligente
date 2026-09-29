@@ -50,6 +50,9 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <driver/rtc_io.h>     // rtc_gpio_deinit(): devolve um pino ao modo digital
+#include <soc/gpio_struct.h>   // GPIO.out / GPIO.enable: o que o pino recebe de verdade
+#include <soc/rtc_io_struct.h> // RTCIO.pad_dac: GPIO 25 e 26 também são o DAC
 #include "secrets.h"  // copie secrets.example.h -> secrets.h e preencha
 
 // =====================================================================
@@ -81,6 +84,9 @@ const int PINO_LED_CLIMA    = 27;
 
 const unsigned long PISCA_LENTO_MS  = 500;  // em andamento
 const unsigned long PISCA_RAPIDO_MS = 100;  // erro
+const unsigned long REESCRITA_LED_MS = 500; // LEDs fixos (aceso/apagado): reescreve o pino a cada 0,5 s
+
+const bool DEBUG_LEDS = true;  // mostra no Serial o que cada LED de status está fazendo
 
 // true = a bomba liga quando o pino vai para LOW (0 V).
 // LED de teste ligado direto no pino: false. Módulo relé de verdade: normalmente true.
@@ -245,10 +251,39 @@ bool erroEscritaFirebase = false;  // a última gravação foi recusada (401, "P
 bool pollingOk = false;            // plano B: o último polling respondeu 200
 bool climaFalhou = false;          // a última consulta do clima falhou
 
+const char* NOMES_LED[TOTAL_LEDS] = { "Wi-Fi", "Firebase", "Clima" };
+const char* NOMES_ESTADO[] = { "APAGADO", "PISCA_LENTO", "ACESO", "PISCA_RAPIDO" };
+unsigned long ultimaReescritaLed = 0;
+
+// Os GPIO 25 e 26 são também o DAC (saída analógica) e pinos do RTC.
+// Se algum driver "pegar" o pino para o RTC ou ligar o DAC, o digitalWrite()
+// continua mudando o registrador, mas o LED não acende. Esta função confere:
+// true = o pino continua sendo uma saída digital comum.
+bool pinoEhSaidaDigital(int pino) {
+  if (((GPIO.enable >> pino) & 1) == 0) return false;  // a saída foi desligada
+  if (pino == 25 && (RTCIO.pad_dac[0].mux_sel || RTCIO.pad_dac[0].xpd_dac)) return false;
+  if (pino == 26 && (RTCIO.pad_dac[1].mux_sel || RTCIO.pad_dac[1].xpd_dac)) return false;
+  return true;
+}
+
+// Devolve o pino ao modo de saída digital (se alguém mexeu nele por fora)
+void reconfigurarPino(int pino) {
+  if (pino == 25 || pino == 26) {
+    int i = pino - 25;  // pad_dac[0] = GPIO 25, pad_dac[1] = GPIO 26
+    RTCIO.pad_dac[i].xpd_dac = 0;        // desliga o DAC nesse pino
+    RTCIO.pad_dac[i].dac_xpd_force = 0;
+    rtc_gpio_deinit((gpio_num_t)pino);   // tira do RTC e volta para o digital
+  }
+  pinMode(pino, OUTPUT);
+}
+
 // Muda o estado de um LED. Já acende na hora (mesmo se for piscar),
 // para o LED não ficar apagado durante uma operação que trava alguns segundos.
 void definirEstadoLed(LedStatus led, EstadoLed estado) {
   if (estadoStatus[led] == estado) return;
+  if (DEBUG_LEDS) {
+    Serial.printf("[LED] %s: %s -> %s\n", NOMES_LED[led], NOMES_ESTADO[estadoStatus[led]], NOMES_ESTADO[estado]);
+  }
   estadoStatus[led] = estado;
   faseLigada[led] = (estado != APAGADO);
   ultimaTroca[led] = millis();
@@ -256,19 +291,56 @@ void definirEstadoLed(LedStatus led, EstadoLed estado) {
 }
 
 // Faz as piscadas com millis(), sem delay(). Chamada no loop().
+// Os LEDs fixos (ACESO/APAGADO) têm o pino reescrito a cada 0,5 s: se algo
+// mudar o pino por fora, o LED se corrige sozinho.
 void piscarLedsStatus() {
+  bool reescrever = millis() - ultimaReescritaLed >= REESCRITA_LED_MS;
+  if (reescrever) ultimaReescritaLed = millis();
+
   for (int i = 0; i < TOTAL_LEDS; i++) {
     unsigned long intervalo;
     if (estadoStatus[i] == PISCA_LENTO)       intervalo = PISCA_LENTO_MS;
     else if (estadoStatus[i] == PISCA_RAPIDO) intervalo = PISCA_RAPIDO_MS;
-    else continue;  // APAGADO e ACESO não piscam
+    else intervalo = 0;  // APAGADO e ACESO não piscam
 
-    if (millis() - ultimaTroca[i] >= intervalo) {
+    if (intervalo > 0 && millis() - ultimaTroca[i] >= intervalo) {
       ultimaTroca[i] = millis();
       faseLigada[i] = !faseLigada[i];
       digitalWrite(pinosStatus[i], faseLigada[i] ? HIGH : LOW);
     }
+
+    if (reescrever) {
+      if (!pinoEhSaidaDigital(pinosStatus[i])) {
+        Serial.printf("[LED] %s (GPIO %d) tinha perdido a configuração de saída: reconfigurado.\n",
+                      NOMES_LED[i], pinosStatus[i]);
+        reconfigurarPino(pinosStatus[i]);
+      }
+      digitalWrite(pinosStatus[i], faseLigada[i] ? HIGH : LOW);
+    }
   }
+}
+
+// Diagnóstico (DEBUG_LEDS): a cada 5 s mostra o estado guardado de cada LED,
+// o nível que o pino recebe de verdade (registrador de saída) e a volta mais
+// lenta do loop() nesse período.
+unsigned long voltaMaisLenta = 0;
+unsigned long ultimoDiagnosticoLeds = 0;
+
+void diagnosticarLeds(unsigned long duracaoVolta) {
+  if (!DEBUG_LEDS) return;
+  if (duracaoVolta > voltaMaisLenta) voltaMaisLenta = duracaoVolta;
+  if (millis() - ultimoDiagnosticoLeds < 5000) return;
+  ultimoDiagnosticoLeds = millis();
+
+  Serial.print("[LED]");
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    int pino = pinosStatus[i];
+    Serial.printf(" %s=%s(pino %lu%s)", NOMES_LED[i], NOMES_ESTADO[estadoStatus[i]],
+                  (unsigned long)((GPIO.out >> pino) & 1),
+                  pinoEhSaidaDigital(pino) ? "" : ", NÃO É SAÍDA DIGITAL");
+  }
+  Serial.printf(" | volta mais lenta do loop: %lu ms\n", voltaMaisLenta);
+  voltaMaisLenta = 0;
 }
 
 
@@ -1313,6 +1385,12 @@ void setup() {
     digitalWrite(PINO_LED_PLACA, LOW);
     for (int i = 0; i < TOTAL_LEDS; i++) digitalWrite(pinosStatus[i], LOW);
   }
+  // Depois do teste, o que está guardado bate com os pinos: tudo apagado
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    estadoStatus[i] = APAGADO;
+    faseLigada[i] = false;
+    ultimaTroca[i] = millis();
+  }
 
   analogReadResolution(12);  // leituras de 0 a 4095
 
@@ -1346,6 +1424,8 @@ void setup() {
 }
 
 void loop() {
+  unsigned long inicioVolta = millis();
+
   // Nada de delay() longo: cada tarefa confere se já chegou a sua hora
   cuidarDoWiFi();
 
@@ -1379,4 +1459,5 @@ void loop() {
   // LEDs de status: decide o que mostrar e faz as piscadas (sem delay)
   atualizarLedsStatus();
   piscarLedsStatus();
+  diagnosticarLeds(millis() - inicioVolta);
 }
