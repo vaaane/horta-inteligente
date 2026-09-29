@@ -10,7 +10,8 @@
 //      rega se a chance de chuva nas próximas 6 h for alta (a não ser que
 //      o solo esteja seco demais). Desliga quando a terra está molhada.
 //      Se a chuva ficar provável no meio da rega, para. Também não rega
-//      no sol forte (10h às 16h), a não ser que o solo esteja seco demais.
+//      no sol forte (10h às 16h), a não ser que o solo esteja seco demais,
+//      e para quando já repôs a água do dia (cota pela ET0).
 //      O site pode simular a chance de chuva e o horário ("Modo demonstração").
 //   4. Cada decisão tem um código e um motivo em português, que aparecem
 //      no Serial Monitor e no painel ("Por que regou (ou não)").
@@ -129,6 +130,16 @@ const int SIMULAR_CHANCE_CHUVA = -1;
 // (Sem sensor de fluxo, os litros de /horta/regas são tempo ligado × vazão.)
 const float VAZAO_L_MIN = 1.5;
 
+// QUANTO REGAR PELA ET0 (evapotranspiração)
+// A ET0 diz quantos milímetros de água uma planta de referência perde por
+// dia. 1 mm de água sobre 1 m² = 1 litro. Então a horta sabe QUANTO repor
+// por dia: cota = ET0 × área × Kc. Quando já repôs a cota do dia, para de
+// regar pelo automático, mesmo que o sensor ainda peça: não gasta mais do
+// que a planta perdeu. (O solo crítico continua ganhando de tudo.)
+const float AREA_M2 = 0.25;      // canteiro da maquete: 0,5 m × 0,5 m
+const float KC = 1.0;            // coeficiente da cultura (1,0 = planta de referência)
+const float COTA_SEM_ET0 = 2.0;  // litros por dia se não houver previsão
+
 // Simulação de chuva feita pelo site: fora do MODO_TESTE, desliga sozinha
 // depois de 15 min (para a horta não ficar sem regar por esquecimento).
 const unsigned long TEMPO_MAX_SIMULACAO = 15UL * 60 * 1000;
@@ -217,6 +228,12 @@ bool gravarSimulacaoPendente = false; // a simulação venceu e falta gravar -1 
 int simulacaoVencida = -1;            // valor que venceu (ignorado até o -1 ser gravado)
 unsigned long ultimaGravacaoSimulacao = 0;
 String codigoParado = "";             // a rega foi interrompida por esta decisão (chuva ou sol)
+
+// Cota do dia: "Recomeçar a cota" do site (zerarCotaEm) guarda quanto já
+// tinha sido regado; a cota passa a contar só o que vier depois.
+double zerarCotaVisto = -1;     // último zerarCotaEm lido (-1 = ainda não leu)
+float litrosNaZeragem = 0;
+String diaDaZeragem = "";
 
 // Modo demonstração: hora simulada pelo site (-1 = usar a hora real)
 int simularHoraSite = -1;
@@ -552,6 +569,60 @@ const char* textoParei(const char* codigo) {
   return (bombaLigada || codigoParado == codigo) ? "Parei de regar" : "Não reguei";
 }
 
+// A ET0 de hoje veio de uma previsão válida?
+bool et0Valido() {
+  return clima.valido && millis() - clima.atualizadoEmMs <= VALIDADE_CLIMA;
+}
+
+// Litros que a planta precisa hoje: ET0 (mm) × área (m²) × Kc
+float cotaHoje() {
+  if (!et0Valido()) return COTA_SEM_ET0;
+  return clima.et0 * AREA_M2 * KC;
+}
+
+// Litros regados hoje: o resumo do dia (Tarefa 1) + regas ainda não somadas
+// nele + a rega em andamento. Sem hora certa (NTP) ou antes de ler o dia
+// do Firebase, conta só o que o ESP32 viu desde que ligou.
+float litrosHoje() {
+  String hoje = horaValida() ? dataHoje() : "";
+  float litros = 0;
+  if (hoje != "" && diaCarregado == hoje) litros += diaLitros;
+  if (pendenteRegas > 0 && (pendenteDia == hoje || pendenteDia == "")) litros += pendenteLitros;
+  if (bombaLigada) litros += (millis() - bombaLigadaDesde) / 60000.0 * VAZAO_L_MIN;
+  return litros;
+}
+
+// Litros que contam contra a cota: tudo de hoje, menos o que já tinha sido
+// regado quando alguém tocou em "Recomeçar a cota" (só vale no mesmo dia)
+float litrosCota() {
+  float litros = litrosHoje();
+  if (horaValida() && diaDaZeragem == dataHoje()) litros -= litrosNaZeragem;
+  return max(litros, 0.0f);
+}
+
+// "1,8" (vírgula, como se escreve no Brasil) para os motivos
+String decimal(float valor, int casas) {
+  String texto = String(valor, casas);
+  texto.replace('.', ',');
+  return texto;
+}
+
+// Modo demonstração: "Recomeçar a cota". Devolve true se recomeçou.
+bool aplicarZerarCota(double valor) {
+  if (valor <= 0 || valor == zerarCotaVisto) return false;
+  bool primeiraLeitura = zerarCotaVisto < 0;
+  zerarCotaVisto = valor;
+  // Ao ligar, o valor que já estava lá é de um clique antigo: não recomeça.
+  // (Simplificação: depois de reiniciar, a cota volta a contar o dia inteiro.)
+  if (primeiraLeitura) return false;
+
+  litrosNaZeragem = litrosHoje();
+  diaDaZeragem = horaValida() ? dataHoje() : "";
+  estadoUrgente = true;
+  Serial.printf("[Cota] Recomeçada pelo site (já tinha regado %.2f L hoje).\n", litrosNaZeragem);
+  return true;
+}
+
 // Guarda a decisão. Quando o CÓDIGO muda, avisa no Serial Monitor e
 // coloca a mudança na fila para o histórico (/horta/decisoes).
 // (O motivo muda a cada leitura porque tem a umidade; o código não.)
@@ -635,14 +706,25 @@ void controlarBomba() {
     snprintf(motivo, sizeof(motivo), "%s: são %dh, sol forte. A água evaporaria. Volto a regar a partir das %dh.%s",
              textoParei(codigo), hora, HORA_QUENTE_FIM, horaSim);
 
+  } else if (litrosCota() >= cotaHoje()) {
+    // 4d) Já repôs a água que a planta perdeu hoje: não liga (ou para)
+    codigo = "cota_atingida";
+    if (et0Valido()) {
+      snprintf(motivo, sizeof(motivo), "Já repus %s L hoje (ET₀ %s mm × %s m²). A cota do dia foi atingida.",
+               decimal(litrosCota(), 1).c_str(), decimal(clima.et0, 1).c_str(), decimal(AREA_M2, 2).c_str());
+    } else {
+      snprintf(motivo, sizeof(motivo), "Já repus %s L hoje (sem previsão, a cota é de %s L). A cota do dia foi atingida.",
+               decimal(litrosCota(), 1).c_str(), decimal(COTA_SEM_ET0, 1).c_str());
+    }
+
   } else if (chance < 0) {
-    // 4d) Sem previsão: rega só pelo sensor, que é o comportamento seguro
+    // 4e) Sem previsão: rega só pelo sensor, que é o comportamento seguro
     querLigar = true;
     codigo = "sem_previsao";
     snprintf(motivo, sizeof(motivo), "Sem previsão do tempo: reguei só pelo sensor (solo com %d%%).", umidade);
 
   } else {
-    // 4e) Tudo certo para regar
+    // 4f) Tudo certo para regar
     querLigar = true;
     codigo = "regando";
     if (bombaLigada) {
@@ -882,6 +964,8 @@ void enviarEstado(bool avisar) {
   estado["bomba"] = bombaLigada;
   estado["modoTeste"] = MODO_TESTE;  // o site esconde a contagem do manual e mostra o selo
   if (horaDaDecisao() >= 0) estado["hora"] = horaDaDecisao();  // "Hora da horta" no painel
+  estado["cotaHoje"] = serialized(String(cotaHoje(), 2));      // barra "Cota de hoje pela ET0"
+  estado["litrosCota"] = serialized(String(litrosCota(), 2));
   // Com a bomba ligada: quando ela ligou, no relógio do Firebase. O cartão
   // "Água" soma essa rega ao vivo, mesmo para quem abre o painel no meio dela.
   // (Com a bomba desligada o campo não vai, e o PUT apaga o anterior.)
@@ -1258,7 +1342,8 @@ bool lerComandos() {
                                    comandos["manualDesde"] | 0.0);
   bool mudouSimulacao = aplicarSimulacao(comandos["simularChuva"] | -1);
   bool mudouHora = aplicarSimulacaoHora(comandos["simularHora"] | -1);
-  return mudouModo || mudouSimulacao || mudouHora;
+  bool zerouCota = aplicarZerarCota(comandos["zerarCotaEm"] | 0.0);
+  return mudouModo || mudouSimulacao || mudouHora || zerouCota;
 }
 
 // ---------------------------------------------------------------------
@@ -1295,6 +1380,7 @@ bool cmdBomba = false;
 double cmdDesde = 0;
 int cmdSimular = -1;      // modo demonstração: chuva (-1 = previsão real)
 int cmdSimularHora = -1;  // modo demonstração: horário (-1 = hora real)
+double cmdZerarCota = 0;  // modo demonstração: "Recomeçar a cota" (hora do servidor)
 
 void fecharStream(const char* motivo, unsigned long espera, bool contaFalha) {
   if (streamAberto) Serial.printf("[Stream] Fechado: %s. Reconecto em %lu s.\n", motivo, espera / 1000);
@@ -1418,6 +1504,7 @@ void tratarEventoSse(const String& evento, const String& dado) {
       cmdDesde = dados["manualDesde"] | 0.0;
       cmdSimular = dados["simularChuva"] | -1;
       cmdSimularHora = dados["simularHora"] | -1;
+      cmdZerarCota = dados["zerarCotaEm"] | 0.0;
     } else {
       // patch = só os campos que mudaram
       if (!dados["modo"].isNull()) cmdModo = dados["modo"] | "auto";
@@ -1425,6 +1512,7 @@ void tratarEventoSse(const String& evento, const String& dado) {
       if (!dados["manualDesde"].isNull()) cmdDesde = dados["manualDesde"] | 0.0;
       if (!dados["simularChuva"].isNull()) cmdSimular = dados["simularChuva"] | -1;
       if (!dados["simularHora"].isNull()) cmdSimularHora = dados["simularHora"] | -1;
+      if (!dados["zerarCotaEm"].isNull()) cmdZerarCota = dados["zerarCotaEm"] | 0.0;
     }
   } else if (caminho == "/modo") {
     cmdModo = dados | "auto";
@@ -1436,6 +1524,8 @@ void tratarEventoSse(const String& evento, const String& dado) {
     cmdSimular = dados | -1;
   } else if (caminho == "/simularHora") {
     cmdSimularHora = dados | -1;
+  } else if (caminho == "/zerarCotaEm") {
+    cmdZerarCota = dados | 0.0;
   }
 
   falhasStream = 0;  // o streaming está funcionando
@@ -1444,7 +1534,8 @@ void tratarEventoSse(const String& evento, const String& dado) {
   bool mudouModo = aplicarComandos(cmdModo == "manual", cmdBomba, cmdDesde);
   bool mudouSimulacao = aplicarSimulacao(cmdSimular);
   bool mudouHora = aplicarSimulacaoHora(cmdSimularHora);
-  if (mudouModo || mudouSimulacao || mudouHora) controlarBomba();
+  bool zerouCota = aplicarZerarCota(cmdZerarCota);
+  if (mudouModo || mudouSimulacao || mudouHora || zerouCota) controlarBomba();
 }
 
 // Monta as linhas do SSE, um caractere de cada vez
