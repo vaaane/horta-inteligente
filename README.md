@@ -36,12 +36,14 @@ Arquivos do site (`web/`):
 ### 2. Criar o usuário do ESP32 e publicar as regras
 1. **Authentication → Usuários → Adicionar usuário**: crie um e-mail e senha só para o ESP32 (ex.: `esp32@horta.com`).
 2. Copie o **UID do usuário** que aparece na lista.
-3. Abra `firebase/database.rules.json` e troque as **duas** ocorrências de `UID_DO_ESP32` pelo UID copiado.
+3. Abra `firebase/database.rules.json` e troque as **três** ocorrências de `UID_DO_ESP32` pelo UID copiado.
 4. **Realtime Database → Regras**: apague o que estiver lá, cole o conteúdo do arquivo e clique em **Publicar**.
 
 Resumo das regras:
 - Qualquer pessoa pode **ler** `/horta` (o site é público).
-- Só o ESP32 pode **escrever** em `/horta/estado` e `/horta/leituras`.
+- Só o ESP32 pode **escrever** em `/horta/estado`, `/horta/leituras` e `/horta/decisoes`.
+- `/horta/estado` pode trazer também a **decisão** da rega (`decisao`, um código da lista abaixo) e o **motivo** em português (`motivo`, até 160 letras). Os dois são opcionais: o firmware antigo continua funcionando.
+- `/horta/decisoes` é o histórico das decisões: cada item tem `decisao`, `motivo`, `umidade`, `chanceChuva` (opcional) e `ts`. Códigos aceitos: `regando`, `solo_ok`, `adiada_chuva`, `solo_critico`, `sem_previsao`, `pausa_seguranca`, `manual_ligada`, `manual_desligada`.
 - Só usuários logados podem escrever em `/horta/comandos` (o site ainda não tem login, então por enquanto os comandos são alterados pelo console — veja a dica no final).
 - A umidade precisa ser um número entre 0 e 100.
 
