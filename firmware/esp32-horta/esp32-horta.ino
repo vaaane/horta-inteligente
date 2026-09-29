@@ -11,11 +11,13 @@
 //      o solo esteja seco demais). Desliga quando a terra está molhada.
 //   4. Cada decisão tem um código e um motivo em português, que aparecem
 //      no Serial Monitor e no painel ("Por que regou (ou não)").
-//   5. A cada 30 segundos, envia os dados e a decisão para o Firebase.
-//      Quando a bomba liga/desliga ou a decisão muda, envia na hora.
-//   6. A cada 3 s lê do Firebase se alguém mudou o modo ou ligou/desligou
-//      a bomba pelo site. O modo manual volta sozinho para o automático
-//      depois de 10 min (o controle pelo site é aberto, sem login).
+//   5. Envia o estado para o Firebase na hora em que a bomba, a decisão
+//      ou (no MODO_TESTE) a umidade mudam, e a cada 5 s/30 s sem mudança.
+//      O histórico do gráfico vai a cada 10 s/30 s.
+//   6. Recebe os comandos do site por streaming: o Firebase avisa na hora
+//      quando alguém muda o modo ou liga/desliga a bomba (plano B: pergunta
+//      a cada 1 s). Fora do MODO_TESTE, o modo manual volta sozinho para o
+//      automático depois de 10 min (o controle pelo site é aberto).
 //
 //  Se o Wi-Fi ou o Firebase caírem, a rega continua funcionando sozinha,
 //  só com o sensor (sem previsão válida, a horta rega normalmente).
@@ -98,9 +100,14 @@ const unsigned long TEMPO_MAX_MANUAL = 10UL * 60 * 1000;
 // ---------------------------------------------------------------------
 //  TEMPOS (em milissegundos)
 // ---------------------------------------------------------------------
-const unsigned long INTERVALO_SENSOR   = 2000;   // lê o sensor a cada 2 s
-const unsigned long INTERVALO_COMANDOS = 3000;   // lê os comandos do site a cada 3 s
-const unsigned long INTERVALO_ENVIO    = 30000;  // envia o histórico ao Firebase a cada 30 s
+// Com MODO_TESTE tudo fica mais rápido; os valores da direita são os normais.
+const unsigned long INTERVALO_SENSOR     = MODO_TESTE ? 300 : 2000;     // leitura do sensor
+const unsigned long INTERVALO_ESTADO     = MODO_TESTE ? 5000 : 30000;   // estado sem mudança ("estou vivo")
+const unsigned long INTERVALO_MIN_ESTADO = 1000;                        // no máximo um envio do estado por segundo
+const unsigned long INTERVALO_HISTORICO  = MODO_TESTE ? 10000 : 30000;  // histórico do gráfico
+const unsigned long INTERVALO_POLLING    = 1000;   // plano B: lê os comandos a cada 1 s
+const unsigned long ESPERA_RECONEXAO_STREAM = 2000; // streaming caiu: reconecta depois de 2 s
+const int FALHAS_PARA_PLANO_B = 5;                  // falhas seguidas do streaming -> plano B
 const unsigned long INTERVALO_WIFI     = 30000;  // só força uma nova conexão depois de 30 s sem Wi-Fi
 const int FALHAS_PARA_AUTOMATICO = 3;  // leituras seguidas dos comandos que falharam -> volta ao automático
 const unsigned long MARGEM_TOKEN     = 5UL * 60 * 1000; // renova o login 5 min antes de vencer
@@ -151,6 +158,11 @@ int falhasComandos = 0;            // leituras seguidas que falharam
 // Quando for diferente do atual, o estado é enviado na hora.
 bool bombaEnviada = false;
 String decisaoEnviada = "";
+int umidadeEnviada = -100;         // -100 = ainda não enviou
+
+// O manual venceu e falta gravar "auto" no Firebase
+bool gravarAutoPendente = false;
+unsigned long ultimaGravacaoAuto = 0;
 
 // Login no Firebase
 String idToken = "";
@@ -160,7 +172,7 @@ unsigned long tokenValidade = 0;
 
 // Relógios do millis()
 unsigned long ultimaLeitura = 0;
-unsigned long ultimoEnvio = 0;
+unsigned long ultimoHistorico = 0;
 unsigned long ultimaLeituraComandos = 0;
 unsigned long ultimaTentativaEstado = 0;
 unsigned long ultimaTentativaWiFi = 0;
@@ -197,7 +209,7 @@ int pendenteChance = -1;   // -1 = não tinha previsão válida
 //  BOMBA
 // =====================================================================
 
-void acionarBomba(bool ligar) {
+void acionarBomba(bool ligar, const char* motivo) {
   if (ligar == bombaLigada) return;  // já está como queremos
 
   bombaLigada = ligar;
@@ -209,7 +221,7 @@ void acionarBomba(bool ligar) {
   else                   nivel = ligar ? HIGH : LOW;
   digitalWrite(PINO_RELE, nivel);
 
-  Serial.println(ligar ? "[Bomba] LIGADA" : "[Bomba] DESLIGADA");
+  Serial.printf("[Bomba] %s (motivo: %s)\n", ligar ? "LIGADA" : "DESLIGADA", motivo);
 }
 
 
@@ -230,7 +242,12 @@ void lerSensor() {
   umidade = map(umidadeBruta, VALOR_SECO, VALOR_MOLHADO, 0, 100);
   umidade = constrain(umidade, 0, 100);
 
-  Serial.printf("[Sensor] Umidade: %d%% (valor bruto: %d)\n", umidade, umidadeBruta);
+  // No MODO_TESTE (leitura a cada 300 ms) só mostra quando a umidade muda
+  static int umidadeMostrada = -1;
+  if (!MODO_TESTE || umidade != umidadeMostrada) {
+    Serial.printf("[Sensor] Umidade: %d%% (valor bruto: %d)\n", umidade, umidadeBruta);
+    umidadeMostrada = umidade;
+  }
 }
 
 
@@ -271,7 +288,7 @@ void controlarBomba() {
   // No MODO_TESTE (LED) não tem tempo máximo: a pausa nunca começa.
   if (!MODO_TESTE && bombaLigada && agora - bombaLigadaDesde >= TEMPO_MAX_BOMBA) {
     Serial.println("[Bomba] Tempo máximo atingido! Pausa de segurança.");
-    acionarBomba(false);
+    acionarBomba(false, "tempo_maximo");
     emPausa = true;
     pausaDesde = agora;
   }
@@ -307,7 +324,7 @@ void controlarBomba() {
     // terminar a rega. Senão ele seria trocado por "regando" 2 s depois e
     // o motivo mais importante sumiria do painel e do histórico.
     if (decisaoAtual == "solo_critico" || decisaoAtual == "sem_previsao") {
-      acionarBomba(true);
+      acionarBomba(true, decisaoAtual.c_str());
       return;
     }
     codigo = "regando";
@@ -344,7 +361,7 @@ void controlarBomba() {
   }
 
   registrarDecisao(codigo, motivo, chance);
-  acionarBomba(querLigar);
+  acionarBomba(querLigar, codigo);
 }
 
 
@@ -420,7 +437,7 @@ int requisicao(const char* metodo, const String& url, const String& corpo,
 
 // ---------------------------------------------------------------------
 //  Conexão com o banco (Realtime Database) que fica ABERTA entre um
-//  pedido e outro. Os comandos são lidos a cada 3 s: abrir uma conexão
+//  pedido e outro. O estado vai até uma vez por segundo: abrir uma conexão
 //  HTTPS nova toda vez demora (a "apresentação" segura leva ~1 s) e gasta
 //  memória. Com setReuse(true) o http.end() não fecha a conexão e o
 //  próximo pedido usa a mesma. Se ela cair, o HTTPClient abre outra.
@@ -549,9 +566,8 @@ bool prontoParaFirebase() {
 }
 
 // Estado atual (/horta/estado) e, se houver, a mudança de decisão para o
-// histórico (/horta/decisoes). Chamada a cada 30 s e também na hora em que
-// a bomba liga/desliga ou a decisão muda.
-void enviarEstado() {
+// histórico (/horta/decisoes). Quem decide quando enviar é cuidarDoEstado().
+void enviarEstado(bool avisar) {
   String resposta;
 
   // PUT substitui o valor anterior
@@ -559,6 +575,7 @@ void enviarEstado() {
   estado["umidade"] = umidade;
   estado["umidadeBruta"] = umidadeBruta;
   estado["bomba"] = bombaLigada;
+  estado["modoTeste"] = MODO_TESTE;  // o site esconde a contagem do manual e mostra o selo
   estado["ts"][".sv"] = "timestamp";  // o Firebase coloca a hora dele
   if (decisaoAtual != "") {
     estado["decisao"] = decisaoAtual;
@@ -568,11 +585,15 @@ void enviarEstado() {
   serializeJson(estado, corpoEstado);
 
   int codigo = requisicaoBanco("PUT", urlBanco("/horta/estado"), corpoEstado, resposta);
-  Serial.printf("[Firebase] Estado enviado (código %d, %lu ms)\n", codigo, duracaoPedido);
-  if (codigo == 401) idToken = "";  // login recusado: faz de novo no próximo ciclo
+  // O envio "estou vivo" (sem mudança) só aparece no Serial se der erro
+  if (avisar || codigo != 200) {
+    Serial.printf("[Firebase] Estado enviado (código %d, %lu ms)\n", codigo, duracaoPedido);
+  }
+  if (codigo == 401) idToken = "";  // login recusado: faz de novo no próximo envio
   if (codigo == 200) {
     bombaEnviada = bombaLigada;     // agora o painel sabe
     decisaoEnviada = decisaoAtual;
+    umidadeEnviada = umidade;
   }
 
   // Histórico das decisões: só quando o código mudou (fila de um item)
@@ -592,21 +613,33 @@ void enviarEstado() {
   }
 }
 
-// A cada 30 s: estado + uma leitura nova no histórico (gráfico do painel)
-void enviarDados() {
+// Quando enviar o estado:
+//  - na hora, se a bomba mudou, o código da decisão mudou ou (no MODO_TESTE)
+//    a umidade mudou 2 pontos ou mais desde o último envio;
+//  - no máximo um envio por segundo (vale sempre o valor mais novo);
+//  - sem mudanças, a cada 5 s (MODO_TESTE) ou 30 s, para o site saber que o
+//    ESP32 está vivo.
+void cuidarDoEstado() {
+  unsigned long desdeUltimo = millis() - ultimaTentativaEstado;
+  bool mudou = bombaLigada != bombaEnviada || decisaoAtual != decisaoEnviada ||
+               (MODO_TESTE && abs(umidade - umidadeEnviada) >= 2);
+  if (!mudou && desdeUltimo < INTERVALO_ESTADO) return;
+  if (desdeUltimo < INTERVALO_MIN_ESTADO) return;
+
+  ultimaTentativaEstado = millis();
+  if (!prontoParaFirebase()) return;
+  enviarEstado(mudou);
+}
+
+// Histórico: POST cria uma entrada nova na lista (gráfico do painel)
+void enviarLeitura() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[Firebase] Sem Wi-Fi, envio adiado. A rega continua pelo sensor.");
+    Serial.println("[Firebase] Sem Wi-Fi, histórico adiado. A rega continua pelo sensor.");
     voltarParaAutomatico();
     return;
   }
-  if (!garantirLogin()) {
-    voltarParaAutomatico();
-    return;
-  }
+  if (!garantirLogin()) return;
 
-  enviarEstado();
-
-  // Histórico: POST cria uma entrada nova na lista
   JsonDocument leitura;
   leitura["umidade"] = umidade;
   leitura["bomba"] = bombaLigada;
@@ -619,19 +652,6 @@ void enviarDados() {
   Serial.printf("[Firebase] Leitura salva no histórico (código %d)\n", codigo);
 }
 
-// A bomba ligou/desligou ou a decisão mudou? Envia o estado na hora, sem
-// esperar os 30 s, para o painel mostrar o estado real em poucos segundos.
-// Se o envio falhar, tenta de novo a cada 3 s.
-void enviarMudancas() {
-  if (bombaLigada == bombaEnviada && decisaoAtual == decisaoEnviada) return;
-  if (millis() - ultimaTentativaEstado < INTERVALO_COMANDOS) return;
-  ultimaTentativaEstado = millis();
-  if (!prontoParaFirebase()) return;
-
-  Serial.println("[Firebase] A bomba ou a decisão mudou: enviando o estado agora.");
-  enviarEstado();
-}
-
 // Grava "auto" em /horta/comandos (o site mostra o modo automático de novo)
 bool gravarModoAutomatico() {
   String resposta;
@@ -641,8 +661,67 @@ bool gravarModoAutomatico() {
   return codigo == 200;
 }
 
-// A cada 3 s: lê o que o site pediu em /horta/comandos.
-// Devolve true se o modo ou a bomba manual mudaram.
+
+// =====================================================================
+//  COMANDOS DO SITE
+//  Chegam por streaming (o Firebase avisa na hora). Se o streaming ficar
+//  instável, o plano B pergunta a cada 1 s (polling).
+// =====================================================================
+
+// O modo manual já passou do limite de 10 min? (nunca no MODO_TESTE)
+bool manualVencido() {
+  return !MODO_TESTE && millis() - manualDesdeMs >= TEMPO_MAX_MANUAL;
+}
+
+// Aplica o que está em /horta/comandos. Devolve true se o modo ou a
+// bomba manual mudaram (aí quem chamou decide de novo na hora).
+bool aplicarComandos(bool novoManual, bool novaBomba, double desde) {
+  if (!novoManual) gravarAutoPendente = false;  // o site já está no automático
+
+  // Entrou no modo manual agora? Marca a hora no millis().
+  // Se for o mesmo pedido de antes (mesmo "manualDesde"), mantém a hora
+  // antiga: assim uma queda de conexão não "zera" os 10 min.
+  if (novoManual && !modoManual && (desde == 0 || desde != sessaoManual)) {
+    manualDesdeMs = millis();
+    sessaoManual = desde;
+  }
+
+  // Passou do tempo máximo do manual? Volta para o automático e grava
+  // "auto" no Firebase (feito no loop, em cuidarDoLimiteManual).
+  if (novoManual && manualVencido()) {
+    Serial.println("[Comandos] Modo manual expirou: voltando para o automático.");
+    novoManual = false;
+    novaBomba = false;
+    gravarAutoPendente = true;
+  }
+
+  bool mudou = (novoManual != modoManual) || (novoManual && novaBomba != bombaManual);
+  modoManual = novoManual;
+  bombaManual = novaBomba;
+
+  if (mudou) {
+    if (modoManual) Serial.printf("[Comandos] Modo MANUAL, bomba %s\n", bombaManual ? "ligada" : "desligada");
+    else            Serial.println("[Comandos] Modo AUTOMÁTICO");
+  }
+  return mudou;
+}
+
+// Confere o limite do manual mesmo sem comando novo, e grava "auto" no
+// Firebase quando ele vence (tenta de novo a cada 3 s se falhar).
+void cuidarDoLimiteManual() {
+  if (modoManual && manualVencido()) {
+    if (aplicarComandos(true, bombaManual, sessaoManual)) controlarBomba();
+  }
+  if (gravarAutoPendente && millis() - ultimaGravacaoAuto >= 3000) {
+    ultimaGravacaoAuto = millis();
+    if (prontoParaFirebase() && gravarModoAutomatico()) gravarAutoPendente = false;
+  }
+}
+
+// ---------------------------------------------------------------------
+//  Plano B: lê /horta/comandos a cada 1 s, reaproveitando a conexão.
+//  Devolve true se o modo ou a bomba manual mudaram.
+// ---------------------------------------------------------------------
 bool lerComandos() {
   if (!prontoParaFirebase()) {
     voltarParaAutomatico();
@@ -662,48 +741,277 @@ bool lerComandos() {
     return false;
   }
   falhasComandos = 0;
-
-  // Medição: o tempo de cada leitura aparece no Serial quando o comando
-  // muda. Com a conexão reaproveitada ela é bem mais rápida do que abrindo
-  // uma conexão HTTPS nova. Aqui só avisa se ficar lenta.
   if (duracaoPedido > 2000) Serial.printf("[Comandos] Leitura lenta: %lu ms\n", duracaoPedido);
 
   // Se ainda não existir nada em /comandos, fica no automático
   const char* modo = comandos["modo"] | "auto";
-  bool novoManual = strcmp(modo, "manual") == 0;
-  bool novaBomba = comandos["bombaManual"] | false;
-  double desde = comandos["manualDesde"] | 0.0;  // hora do servidor em que o site pediu o manual
+  return aplicarComandos(strcmp(modo, "manual") == 0,
+                         comandos["bombaManual"] | false,
+                         comandos["manualDesde"] | 0.0);
+}
 
-  // Entrou no modo manual agora? Marca a hora no millis().
-  // Se for o mesmo pedido de antes (mesmo "manualDesde"), mantém a hora
-  // antiga: assim uma queda de conexão não "zera" os 10 min.
-  if (novoManual && !modoManual && (desde == 0 || desde != sessaoManual)) {
-    manualDesdeMs = millis();
-    sessaoManual = desde;
-  }
+// ---------------------------------------------------------------------
+//  Streaming (Server-Sent Events) de /horta/comandos
+//
+//  Uma conexão HTTPS só para isso fica aberta. Sempre que alguém muda os
+//  comandos, o Firebase manda na hora um texto assim:
+//     event: put
+//     data: {"path":"/","data":{"modo":"manual","bombaManual":true}}
+//  (linha em branco = fim do evento). Também manda "keep-alive" a cada
+//  ~30 s. O loop() só lê o que já chegou (available()): nunca fica parado
+//  esperando.
+// ---------------------------------------------------------------------
+WiFiClientSecure clienteStream;
+bool streamAberto = false;
+bool planoB = false;               // true = streaming instável, usando o polling de 1 s
+int falhasStream = 0;              // quedas/erros seguidos do streaming
+String tokenDoStream = "";         // login usado para abrir (se renovar, reabre)
+unsigned long streamFechadoEm = 0;
+unsigned long esperaStream = 0;    // quanto esperar para abrir de novo
+unsigned long ultimoDadoStream = 0;
 
-  // Passou do tempo máximo do manual? Volta para o automático.
-  // (No MODO_TESTE o manual fica até alguém trocar no site.)
-  if (!MODO_TESTE && novoManual && millis() - manualDesdeMs >= TEMPO_MAX_MANUAL) {
-    Serial.println("[Comandos] Modo manual expirou: voltando para o automático.");
-    gravarModoAutomatico();  // se falhar, na próxima leitura ele expira de novo e tenta outra vez
-    novoManual = false;
-    novaBomba = false;
-  }
+// Leitura do texto que chega
+bool streamChunked = false;  // resposta em pedaços (Transfer-Encoding: chunked)
+long faltaNoPedaco = -1;     // bytes que faltam no pedaço (-1 = lendo o tamanho, -2 = fim do pedaço)
+String linhaPedaco = "";
+String linhaSse = "";
+String eventoSse = "";
+String dadoSse = "";
 
-  bool mudou = (novoManual != modoManual) || (novoManual && novaBomba != bombaManual);
-  modoManual = novoManual;
-  bombaManual = novaBomba;
+// Os comandos como estão no Firebase (o streaming manda só o que mudou)
+String cmdModo = "auto";
+bool cmdBomba = false;
+double cmdDesde = 0;
 
-  if (mudou) {
-    if (modoManual) {
-      Serial.printf("[Comandos] Modo MANUAL, bomba %s (leitura em %lu ms)\n",
-                    bombaManual ? "ligada" : "desligada", duracaoPedido);
-    } else {
-      Serial.printf("[Comandos] Modo AUTOMÁTICO (leitura em %lu ms)\n", duracaoPedido);
+void fecharStream(const char* motivo, unsigned long espera, bool contaFalha) {
+  if (streamAberto) Serial.printf("[Stream] Fechado: %s. Reconecto em %lu s.\n", motivo, espera / 1000);
+  clienteStream.stop();
+  streamAberto = false;
+  streamFechadoEm = millis();
+  esperaStream = espera;
+  if (contaFalha) falhasStream++;
+}
+
+// Lê uma linha do cabeçalho da resposta (só na abertura; pode esperar um pouco)
+String lerLinhaCabecalho() {
+  String linha = "";
+  unsigned long inicio = millis();
+  while (millis() - inicio < TIMEOUT_HTTP) {
+    while (clienteStream.available()) {
+      char c = clienteStream.read();
+      if (c == '\n') { linha.trim(); return linha; }
+      if (linha.length() < 1024) linha += c;
     }
+    if (!clienteStream.connected()) break;
+    delay(1);
   }
-  return mudou;
+  return "#erro";
+}
+
+// Abre a conexão e lê o cabeçalho. O Firebase às vezes responde
+// "307 Temporary Redirect" apontando para outro servidor: aí segue o endereço.
+bool abrirStream() {
+  String url = urlBanco("/horta/comandos");
+  unsigned long inicio = millis();
+
+  for (int tentativa = 0; tentativa < 3; tentativa++) {
+    // Separa "https://servidor/caminho?auth=..." em servidor e caminho
+    String resto = url.substring(url.indexOf("://") + 3);
+    int barra = resto.indexOf('/');
+    String servidor = resto.substring(0, barra);
+    String caminho = resto.substring(barra);
+
+    clienteStream.stop();
+    clienteStream.setInsecure();
+    if (!clienteStream.connect(servidor.c_str(), 443)) {
+      Serial.println("[Stream] Não consegui conectar.");
+      return false;
+    }
+    clienteStream.print(String("GET ") + caminho + " HTTP/1.1\r\n" +
+                        "Host: " + servidor + "\r\n" +
+                        "Accept: text/event-stream\r\n" +
+                        "Connection: keep-alive\r\n\r\n");
+
+    // Primeira linha: "HTTP/1.1 200 OK"
+    String status = lerLinhaCabecalho();
+    int codigo = status.substring(status.indexOf(' ') + 1).toInt();
+    String destino = "";
+    streamChunked = false;
+    while (true) {
+      String linha = lerLinhaCabecalho();
+      if (linha == "" || linha == "#erro") break;  // linha vazia = fim do cabeçalho
+      String nome = linha.substring(0, linha.indexOf(':'));
+      String valor = linha.substring(linha.indexOf(':') + 1);
+      valor.trim();
+      if (nome.equalsIgnoreCase("Location")) destino = valor;
+      if (nome.equalsIgnoreCase("Transfer-Encoding") && valor.indexOf("chunked") >= 0) streamChunked = true;
+    }
+
+    if ((codigo == 307 || codigo == 302) && destino != "") {
+      url = destino;  // outro servidor do Firebase: tenta lá
+      continue;
+    }
+    if (codigo != 200) {
+      Serial.printf("[Stream] O Firebase respondeu código %d.\n", codigo);
+      if (codigo == 401) idToken = "";  // login recusado: faz de novo
+      clienteStream.stop();
+      return false;
+    }
+
+    // Deu certo: prepara a leitura
+    faltaNoPedaco = -1;
+    linhaPedaco = linhaSse = eventoSse = dadoSse = "";
+    Serial.printf("[Stream] Conectado em %lu ms (memória livre: %lu bytes).\n",
+                  millis() - inicio, (unsigned long)ESP.getFreeHeap());
+    return true;
+  }
+  Serial.println("[Stream] Redirecionamentos demais.");
+  clienteStream.stop();
+  return false;
+}
+
+// Um evento completo chegou
+void tratarEventoSse(const String& evento, const String& dado) {
+  if (evento == "keep-alive") return;  // só "ainda estou aqui"
+
+  if (evento == "cancel" || evento == "auth_revoked") {
+    // cancel: as regras recusaram a leitura. auth_revoked: o login venceu.
+    // Nos dois casos faz login de novo e reabre.
+    Serial.printf("[Stream] Evento %s: renovando o login.\n", evento.c_str());
+    idToken = "";
+    fecharStream(evento.c_str(), evento == "cancel" ? 10000 : ESPERA_RECONEXAO_STREAM, true);
+    return;
+  }
+  if (evento != "put" && evento != "patch") return;
+
+  JsonDocument doc;
+  if (deserializeJson(doc, dado)) {
+    Serial.println("[Stream] Evento com JSON inválido.");
+    return;
+  }
+  String caminho = doc["path"] | "/";
+  JsonVariant dados = doc["data"];
+
+  if (caminho == "/") {
+    if (evento == "put") {
+      // put na raiz = todos os comandos de novo (null = nó apagado)
+      cmdModo = dados["modo"] | "auto";
+      cmdBomba = dados["bombaManual"] | false;
+      cmdDesde = dados["manualDesde"] | 0.0;
+    } else {
+      // patch = só os campos que mudaram
+      if (!dados["modo"].isNull()) cmdModo = dados["modo"] | "auto";
+      if (!dados["bombaManual"].isNull()) cmdBomba = dados["bombaManual"] | false;
+      if (!dados["manualDesde"].isNull()) cmdDesde = dados["manualDesde"] | 0.0;
+    }
+  } else if (caminho == "/modo") {
+    cmdModo = dados | "auto";
+  } else if (caminho == "/bombaManual") {
+    cmdBomba = dados | false;
+  } else if (caminho == "/manualDesde") {
+    cmdDesde = dados | 0.0;
+  }
+
+  falhasStream = 0;  // o streaming está funcionando
+  Serial.printf("[Comandos] recebido por streaming: modo=%s, bomba=%s\n",
+                cmdModo.c_str(), cmdBomba ? "ligada" : "desligada");
+  if (aplicarComandos(cmdModo == "manual", cmdBomba, cmdDesde)) controlarBomba();
+}
+
+// Monta as linhas do SSE, um caractere de cada vez
+void caractereSse(char c) {
+  if (c == '\r') return;
+  if (c != '\n') {
+    if (linhaSse.length() < 2048) linhaSse += c;
+    return;
+  }
+  if (linhaSse.length() == 0) {
+    // Linha em branco: o evento terminou
+    if (eventoSse != "") tratarEventoSse(eventoSse, dadoSse);
+    eventoSse = "";
+    dadoSse = "";
+  } else if (linhaSse.startsWith("event:")) {
+    eventoSse = linhaSse.substring(6);
+    eventoSse.trim();
+  } else if (linhaSse.startsWith("data:")) {
+    dadoSse = linhaSse.substring(5);
+    dadoSse.trim();
+  }
+  linhaSse = "";
+}
+
+// Resposta em pedaços: cada pedaço vem como "tamanho em hexadecimal\r\n",
+// os dados e "\r\n". Tira essas marcas e passa só os dados para o SSE.
+void caracterePedaco(char c) {
+  if (faltaNoPedaco > 0) {
+    caractereSse(c);
+    if (--faltaNoPedaco == 0) faltaNoPedaco = -2;
+    return;
+  }
+  if (faltaNoPedaco == -2) {           // "\r\n" do fim do pedaço
+    if (c == '\n') faltaNoPedaco = -1;
+    return;
+  }
+  if (c == '\n') {                      // terminou a linha com o tamanho
+    faltaNoPedaco = strtol(linhaPedaco.c_str(), nullptr, 16);
+    linhaPedaco = "";
+    if (faltaNoPedaco == 0) fecharStream("o servidor encerrou", ESPERA_RECONEXAO_STREAM, true);
+    return;
+  }
+  if (c != '\r' && linhaPedaco.length() < 16) linhaPedaco += c;
+}
+
+// Chamada em todo loop(): lê o que chegou, sem esperar, e reconecta se preciso
+void cuidarDoStream() {
+  if (streamAberto) {
+    int limite = 2048;  // lê no máximo isso por volta do loop (o resto fica para a próxima)
+    while (streamAberto && clienteStream.available() && limite-- > 0) {
+      char c = clienteStream.read();
+      ultimoDadoStream = millis();
+      if (streamChunked) caracterePedaco(c);
+      else caractereSse(c);
+    }
+    if (!streamAberto) return;
+
+    if (!clienteStream.connected() && !clienteStream.available()) {
+      fecharStream("a conexão caiu", ESPERA_RECONEXAO_STREAM, true);
+    } else if (millis() - ultimoDadoStream > 70000) {
+      // O keep-alive vem a cada ~30 s: 70 s sem nada = conexão "morta"
+      fecharStream("nada chegou em 70 s", ESPERA_RECONEXAO_STREAM, true);
+    } else if (idToken != "" && idToken != tokenDoStream) {
+      // O login foi renovado (~55 min): reabre com o token novo
+      fecharStream("login renovado", 0, false);
+    }
+    return;
+  }
+
+  // Fechado: espera um pouco e abre de novo
+  if (millis() - streamFechadoEm < esperaStream) return;
+  streamFechadoEm = millis();
+  esperaStream = ESPERA_RECONEXAO_STREAM;
+  if (!prontoParaFirebase()) {
+    voltarParaAutomatico();
+    return;
+  }
+
+  if (abrirStream()) {
+    streamAberto = true;
+    tokenDoStream = idToken;
+    ultimoDadoStream = millis();
+    if (planoB) Serial.println("[Stream] Streaming voltou: saindo do plano B.");
+    planoB = false;
+    return;
+  }
+
+  falhasStream++;
+  if (!planoB && falhasStream >= FALHAS_PARA_PLANO_B) {
+    // Plano B: o streaming falhou várias vezes seguidas (rede instável,
+    // pouca memória para duas conexões seguras, etc.). Os comandos passam
+    // a ser lidos a cada 1 s, e o streaming é tentado de novo a cada 60 s.
+    planoB = true;
+    Serial.println("[Stream] Instável: usando o plano B (polling a cada 1 s).");
+  }
+  if (planoB) esperaStream = 60000;
 }
 
 
@@ -886,8 +1194,10 @@ void setup() {
   httpBanco.setConnectTimeout(TIMEOUT_HTTP);
   httpBanco.setTimeout(TIMEOUT_HTTP);
 
-  // Primeiro envio 5 s depois de ligar (dá tempo do Wi-Fi conectar)
-  ultimoEnvio = millis() - INTERVALO_ENVIO + 5000;
+  // Primeiro histórico 5 s depois de ligar (dá tempo do Wi-Fi conectar)
+  ultimoHistorico = millis() - INTERVALO_HISTORICO + 5000;
+
+  if (MODO_TESTE) Serial.println("[Teste] MODO_TESTE ativo: sem pausa, sem tempo máximo e sem limite do manual.");
 
   // O clima só é consultado depois que o Wi-Fi conectar (ver cuidarDoWiFi)
   esperaClima = INTERVALO_CLIMA;
@@ -907,18 +1217,23 @@ void loop() {
     controlarBomba();
   }
 
-  // Comandos do site a cada 3 s. Se mudaram, decide na hora (sem esperar
-  // a próxima leitura do sensor), e enviarMudancas() avisa o painel.
-  if (millis() - ultimaLeituraComandos >= INTERVALO_COMANDOS) {
+  // Comandos do site: chegam pelo streaming e já decidem na hora
+  cuidarDoStream();
+
+  // Plano B (streaming instável): pergunta a cada 1 s
+  if (planoB && millis() - ultimaLeituraComandos >= INTERVALO_POLLING) {
     ultimaLeituraComandos = millis();
     if (lerComandos()) controlarBomba();
   }
 
-  enviarMudancas();
+  cuidarDoLimiteManual();
 
-  if (millis() - ultimoEnvio >= INTERVALO_ENVIO) {
-    ultimoEnvio = millis();
-    enviarDados();
+  // Estado para o painel: na hora quando muda, e "estou vivo" sem mudança
+  cuidarDoEstado();
+
+  if (millis() - ultimoHistorico >= INTERVALO_HISTORICO) {
+    ultimoHistorico = millis();
+    enviarLeitura();
   }
 
   atualizarClima();
