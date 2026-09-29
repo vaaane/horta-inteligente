@@ -140,6 +140,11 @@ const float AREA_M2 = 0.25;      // canteiro da maquete: 0,5 m × 0,5 m
 const float KC = 1.0;            // coeficiente da cultura (1,0 = planta de referência)
 const float COTA_SEM_ET0 = 2.0;  // litros por dia se não houver previsão
 
+// Se o solo continua seco depois de receber a cota, pode ser que o canteiro
+// perca mais água que a planta de referência (vaso pequeno, sol direto,
+// solo arenoso). Então a horta libera um pouco mais, até este limite:
+const float MARGEM_EXTRA = 0.5;  // até 50% a mais que a cota, se o solo continuar seco
+
 // Simulação de chuva feita pelo site: fora do MODO_TESTE, desliga sozinha
 // depois de 15 min (para a horta não ficar sem regar por esquecimento).
 const unsigned long TEMPO_MAX_SIMULACAO = 15UL * 60 * 1000;
@@ -235,6 +240,12 @@ double zerarCotaVisto = -1;     // último zerarCotaEm lido (-1 = ainda não leu
 float litrosNaZeragem = 0;
 String diaDaZeragem = "";
 
+// Litros usados ACIMA da cota hoje (margem extra). Guardados no resumo do
+// dia: a Parte 4 usa para ajustar o Kc. "Recomeçar a cota" guarda o que já
+// tinha em extraAntesZeragem e a conta continua em extraDesdeZeragem.
+float extraAntesZeragem = 0;
+float extraDesdeZeragem = 0;
+
 // Modo demonstração: hora simulada pelo site (-1 = usar a hora real)
 int simularHoraSite = -1;
 unsigned long simHoraDesdeMs = 0;
@@ -309,7 +320,7 @@ String pendenteDia = "";       // dia em que a primeira delas terminou ("" = sem
 float pendenteLitros = 0;
 unsigned long pendenteSegundos = 0;
 int pendenteRegas = 0;
-bool et0Pendente = false;      // chegou previsão nova: gravar a ET0 do dia
+bool resumoPendente = false;   // algo do dia mudou (ET0, litros extra…): gravar no resumo
 unsigned long ultimaTentativaDia = 0;
 
 // Relógio do Firebase: cada envio do estado devolve o "ts" que o servidor
@@ -603,6 +614,11 @@ float litrosCota() {
   return max(litros, 0.0f);
 }
 
+// Litros usados acima da cota hoje (antes e depois de "Recomeçar a cota")
+float litrosExtraHoje() {
+  return extraAntesZeragem + extraDesdeZeragem;
+}
+
 // "1,8" (vírgula, como se escreve no Brasil) para os motivos
 String decimal(float valor, int casas) {
   String texto = String(valor, casas);
@@ -620,6 +636,8 @@ bool aplicarZerarCota(double valor) {
   if (primeiraLeitura) return false;
 
   litrosNaZeragem = litrosHoje();
+  extraAntesZeragem += extraDesdeZeragem;  // o extra já usado continua no total do dia
+  extraDesdeZeragem = 0;
   diaDaZeragem = horaValida() ? dataHoje() : "";
   estadoUrgente = true;
   Serial.printf("[Cota] Recomeçada pelo site (já tinha regado %.2f L hoje).\n", litrosNaZeragem);
@@ -710,18 +728,33 @@ void controlarBomba() {
              textoParei(codigo), hora, HORA_QUENTE_FIM, horaSim);
 
   } else if (litrosCota() >= cotaHoje()) {
-    // 4d) Já repôs a água que a planta perdeu hoje: não liga (ou para)
-    codigo = "cota_atingida";
-    if (et0Valido() && cotaHoje() <= 0) {
+    // 4d) Já repôs a cota do dia. Mas o solo AINDA precisa de água (senão
+    //     teria caído no "solo úmido" lá em cima). Então:
+    //     - até a cota + 50%: libera uma rega extra (o canteiro pode perder
+    //       mais água que a referência);
+    //     - passou disso: para e pede para conferir o sensor e o canteiro.
+    float cota = cotaHoje();
+    float usado = litrosCota();
+    float limite = cota * (1 + MARGEM_EXTRA);
+    if (usado - cota > extraDesdeZeragem + 0.01) {  // guarda o que passou da cota
+      extraDesdeZeragem = usado - cota;
+      resumoPendente = true;
+    }
+
+    if (et0Valido() && cota <= 0) {
       // Choveu mais do que a planta perdeu: não precisa repor nada hoje
+      codigo = "cota_atingida";
       snprintf(motivo, sizeof(motivo), "Choveu %s mm hoje: mais que a planta perdeu. Não preciso regar.",
                decimal(clima.chuvaHojeMm, 1).c_str());
-    } else if (et0Valido()) {
-      snprintf(motivo, sizeof(motivo), "Já repus %s L hoje (ET₀ %s mm × %s m²). A cota do dia foi atingida.",
-               decimal(litrosCota(), 1).c_str(), decimal(clima.et0, 1).c_str(), decimal(AREA_M2, 2).c_str());
+    } else if (usado < limite) {
+      querLigar = true;
+      codigo = "cota_extra";
+      snprintf(motivo, sizeof(motivo), "Cota atingida, mas o solo continua seco (%d%%): liberei uma rega extra (%s L de %s L).",
+               umidade, decimal(usado - cota, 1).c_str(), decimal(cota * MARGEM_EXTRA, 1).c_str());
     } else {
-      snprintf(motivo, sizeof(motivo), "Já repus %s L hoje (sem previsão, a cota é de %s L). A cota do dia foi atingida.",
-               decimal(litrosCota(), 1).c_str(), decimal(COTA_SEM_ET0, 1).c_str());
+      codigo = "cota_atingida";
+      snprintf(motivo, sizeof(motivo), "Já repus %s L (cota + %d%%) e o solo continua seco. Confira o sensor e o canteiro.",
+               decimal(usado, 1).c_str(), (int)(MARGEM_EXTRA * 100));
     }
 
   } else if (chance < 0) {
@@ -1114,6 +1147,8 @@ bool carregarDia(const String& dia) {
   diaLitros = doc["litros"] | 0.0;
   diaSegundos = doc["segundos"] | 0UL;
   diaRegas = doc["regas"] | 0;
+  extraAntesZeragem = doc["litrosExtra"] | 0.0;  // continua o extra do dia
+  extraDesdeZeragem = 0;
   diaCarregado = dia;
   Serial.printf("[Água] Resumo de %s: %.2f L em %d regas.\n", dia.c_str(), diaLitros, diaRegas);
   return true;
@@ -1127,7 +1162,7 @@ void cuidarDoResumoDiario() {
 
   String hoje = dataHoje();
   String alvo = pendenteRegas > 0 ? pendenteDia : hoje;
-  bool temAlgo = pendenteRegas > 0 || et0Pendente || diaCarregado != alvo;
+  bool temAlgo = pendenteRegas > 0 || resumoPendente || diaCarregado != alvo;
   if (!temAlgo) return;
   if (millis() - ultimaTentativaDia < 3000) return;
   ultimaTentativaDia = millis();
@@ -1135,7 +1170,7 @@ void cuidarDoResumoDiario() {
 
   // Primeiro lê o dia (ao ligar e ao virar o dia)
   if (diaCarregado != alvo) {
-    if (carregarDia(alvo) && alvo == hoje) et0Pendente = true;  // dia novo: grava a ET0 também
+    if (carregarDia(alvo) && alvo == hoje) resumoPendente = true;  // dia novo: grava a ET0 também
     return;
   }
 
@@ -1150,6 +1185,7 @@ void cuidarDoResumoDiario() {
   doc["segundos"] = segundos;
   doc["regas"] = regas;
   if (comEt0) doc["et0"] = serialized(String(clima.et0, 2));
+  if (alvo == hoje) doc["litrosExtra"] = serialized(String(litrosExtraHoje(), 2));
   doc["atualizadoEm"][".sv"] = "timestamp";
   String corpo;
   serializeJson(doc, corpo);
@@ -1170,7 +1206,7 @@ void cuidarDoResumoDiario() {
   pendenteLitros = 0;
   pendenteSegundos = 0;
   pendenteRegas = 0;
-  if (alvo == hoje) et0Pendente = false;
+  if (alvo == hoje) resumoPendente = false;
 }
 
 // Grava "auto" em /horta/comandos (o site mostra o modo automático de novo).
@@ -1789,7 +1825,7 @@ void atualizarClima() {
   Serial.printf("[CLIMA] Temperatura: %.1f °C | Umidade do ar: %d %%\n", clima.temperatura, clima.umidadeAr);
   Serial.printf("[CLIMA] Chance máx. de chuva nas próximas %d h: %d %%\n", HORAS_CHUVA, clima.chanceChuva6h);
   Serial.printf("[CLIMA] ET0 hoje: %.2f mm\n", clima.et0);
-  et0Pendente = true;  // vai também para o resumo do dia
+  resumoPendente = true;  // vai também para o resumo do dia
   int codigo = enviarClimaFirebase();
   Serial.printf("[CLIMA] Enviado ao Firebase: %s (%d)\n", codigo == 200 ? "OK" : "ERRO", codigo);
 
