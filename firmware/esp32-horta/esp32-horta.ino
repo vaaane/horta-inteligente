@@ -55,6 +55,7 @@
 #include <driver/rtc_io.h>     // rtc_gpio_deinit(): devolve um pino ao modo digital
 #include <soc/gpio_struct.h>   // GPIO.out / GPIO.enable: o que o pino recebe de verdade
 #include <soc/rtc_io_struct.h> // RTCIO.pad_dac: GPIO 25 e 26 também são o DAC
+#include <time.h>                // hora certa pela internet (NTP), para o resumo por dia
 #include "secrets.h"  // copie secrets.example.h -> secrets.h e preencha
 
 // =====================================================================
@@ -267,6 +268,20 @@ int regasNaFila = 0;
 String motivoRegaAtual = "";          // por que a bomba ligou desta vez
 unsigned long ultimaTentativaRegas = 0;
 
+// Resumo por dia em /horta/agua/dias/{AAAA-MM-DD}: totais do dia carregado
+// (lidos do Firebase ao ligar e ao trocar de dia, para continuar de onde parou)
+String diaCarregado = "";      // "" = ainda não leu nenhum dia
+float diaLitros = 0;
+unsigned long diaSegundos = 0;
+int diaRegas = 0;
+// Regas que terminaram e ainda não foram somadas no resumo do dia
+String pendenteDia = "";       // dia em que a primeira delas terminou ("" = sem hora certa ainda)
+float pendenteLitros = 0;
+unsigned long pendenteSegundos = 0;
+int pendenteRegas = 0;
+bool et0Pendente = false;      // chegou previsão nova: gravar a ET0 do dia
+unsigned long ultimaTentativaDia = 0;
+
 // Relógio do Firebase: cada envio do estado devolve o "ts" que o servidor
 // gravou. Guardamos esse horário e o millis() da hora em que chegou.
 int64_t horaServidorMs = 0;           // 0 = ainda não sabe
@@ -394,6 +409,21 @@ int64_t agoraServidor() {
   return horaServidorMs + (int64_t)(millis() - horaServidorEmMillis);
 }
 
+// Hora certa (NTP) já chegou? Antes disso o relógio do ESP32 marca 1970.
+bool horaValida() {
+  return time(nullptr) > 1700000000;  // qualquer data depois de nov/2023
+}
+
+// Data de hoje em Brasília, ex.: "2026-09-30"
+String dataHoje() {
+  time_t agora = time(nullptr);
+  struct tm local;
+  localtime_r(&agora, &local);
+  char texto[11];
+  strftime(texto, sizeof(texto), "%Y-%m-%d", &local);
+  return String(texto);
+}
+
 // A bomba desligou: guarda a rega na fila para /horta/regas
 void registrarRega(unsigned long duracaoMs) {
   if (duracaoMs < 1000) return;  // menos de 1 s: ruído do potenciômetro na divisa
@@ -410,6 +440,13 @@ void registrarRega(unsigned long duracaoMs) {
 
   Serial.printf("[Água] Rega de %lu s ≈ %.2f L (motivo: %s)\n",
                 rega.segundos, rega.segundos / 60.0 * VAZAO_L_MIN, rega.motivo.c_str());
+
+  // Também vai para o resumo do dia. Simplificação: a rega inteira conta no
+  // dia em que TERMINOU, mesmo se começou antes da meia-noite.
+  if (pendenteRegas == 0) pendenteDia = horaValida() ? dataHoje() : "";
+  pendenteLitros += rega.segundos / 60.0 * VAZAO_L_MIN;
+  pendenteSegundos += rega.segundos;
+  pendenteRegas++;
 }
 
 void acionarBomba(bool ligar, const char* motivo) {
@@ -934,6 +971,78 @@ void enviarRegas() {
   // Tira da fila
   for (int i = 1; i < regasNaFila; i++) filaRegas[i - 1] = filaRegas[i];
   regasNaFila--;
+}
+
+// Lê /horta/agua/dias/{dia} para continuar a soma de onde parou
+bool carregarDia(const String& dia) {
+  String resposta;
+  int codigo = requisicaoBanco("GET", urlBanco(("/horta/agua/dias/" + dia).c_str()), "", resposta);
+  JsonDocument doc;
+  if (codigo != 200 || deserializeJson(doc, resposta)) {
+    Serial.printf("[Água] Não consegui ler o resumo de %s (código %d).\n", dia.c_str(), codigo);
+    return false;
+  }
+  // null = o dia ainda não existe: começa em 0
+  diaLitros = doc["litros"] | 0.0;
+  diaSegundos = doc["segundos"] | 0UL;
+  diaRegas = doc["regas"] | 0;
+  diaCarregado = dia;
+  Serial.printf("[Água] Resumo de %s: %.2f L em %d regas.\n", dia.c_str(), diaLitros, diaRegas);
+  return true;
+}
+
+// Resumo por dia: soma as regas pendentes no dia certo e grava a ET0 de hoje.
+// Sem hora certa (NTP), espera; a rega continua funcionando normalmente.
+void cuidarDoResumoDiario() {
+  if (!horaValida()) return;
+  if (pendenteRegas > 0 && pendenteDia == "") pendenteDia = dataHoje();  // a hora chegou depois
+
+  String hoje = dataHoje();
+  String alvo = pendenteRegas > 0 ? pendenteDia : hoje;
+  bool temAlgo = pendenteRegas > 0 || et0Pendente || diaCarregado != alvo;
+  if (!temAlgo) return;
+  if (millis() - ultimaTentativaDia < 3000) return;
+  ultimaTentativaDia = millis();
+  if (!prontoParaFirebase()) return;
+
+  // Primeiro lê o dia (ao ligar e ao virar o dia)
+  if (diaCarregado != alvo) {
+    if (carregarDia(alvo) && alvo == hoje) et0Pendente = true;  // dia novo: grava a ET0 também
+    return;
+  }
+
+  // Grava os totais já somados (PATCH muda só esses campos)
+  float litros = diaLitros + pendenteLitros;
+  unsigned long segundos = diaSegundos + pendenteSegundos;
+  int regas = diaRegas + pendenteRegas;
+  bool comEt0 = alvo == hoje && clima.valido && millis() - clima.atualizadoEmMs <= VALIDADE_CLIMA;
+
+  JsonDocument doc;
+  doc["litros"] = serialized(String(litros, 2));
+  doc["segundos"] = segundos;
+  doc["regas"] = regas;
+  if (comEt0) doc["et0"] = serialized(String(clima.et0, 2));
+  doc["atualizadoEm"][".sv"] = "timestamp";
+  String corpo;
+  serializeJson(doc, corpo);
+
+  String resposta;
+  int codigo = requisicaoBanco("PATCH", urlBanco(("/horta/agua/dias/" + alvo).c_str()), corpo, resposta);
+  if (codigo != 200) {
+    Serial.printf("[Água] Não consegui gravar o resumo de %s (código %d).\n", alvo.c_str(), codigo);
+    erroEscritaFirebase = true;
+    return;  // tenta de novo em 3 s, com os mesmos pendentes
+  }
+  if (pendenteRegas > 0) {
+    Serial.printf("[Água] Resumo de %s: %.2f L em %d regas.\n", alvo.c_str(), litros, regas);
+  }
+  diaLitros = litros;
+  diaSegundos = segundos;
+  diaRegas = regas;
+  pendenteLitros = 0;
+  pendenteSegundos = 0;
+  pendenteRegas = 0;
+  if (alvo == hoje) et0Pendente = false;
 }
 
 // Grava "auto" em /horta/comandos (o site mostra o modo automático de novo).
@@ -1501,6 +1610,7 @@ void atualizarClima() {
   Serial.printf("[CLIMA] Temperatura: %.1f °C | Umidade do ar: %d %%\n", clima.temperatura, clima.umidadeAr);
   Serial.printf("[CLIMA] Chance máx. de chuva nas próximas %d h: %d %%\n", HORAS_CHUVA, clima.chanceChuva6h);
   Serial.printf("[CLIMA] ET0 hoje: %.2f mm\n", clima.et0);
+  et0Pendente = true;  // vai também para o resumo do dia
   int codigo = enviarClimaFirebase();
   Serial.printf("[CLIMA] Enviado ao Firebase: %s (%d)\n", codigo == 200 ? "OK" : "ERRO", codigo);
 
@@ -1590,6 +1700,10 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   ultimaTentativaWiFi = millis();
 
+  // Hora certa pela internet (Brasília, UTC-3, sem horário de verão).
+  // Ela chega sozinha depois que o Wi-Fi conectar.
+  configTime(-3 * 3600, 0, "pool.ntp.org", "time.google.com");
+
   // Conexão com o banco que fica aberta entre os pedidos (ver requisicaoBanco)
   clienteBanco.setInsecure();
   httpBanco.setReuse(true);
@@ -1643,6 +1757,7 @@ void loop() {
 
   // Regas terminadas (água usada) que ainda não foram para o Firebase
   enviarRegas();
+  cuidarDoResumoDiario();
 
   atualizarClima();
 
