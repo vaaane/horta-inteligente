@@ -46,11 +46,12 @@ const grupos = [
   {
     titulo: "Planejar a horta",
     itens: [
-      { titulo: "Umidade e sol ideais por cultura", frase: "Pleno sol (6 h ou mais), meia-sombra (3 a 6 h) ou sombra.", status: "proxima" },
-      { titulo: "Sol suficiente ou não", frase: "O sensor BH1750 conta as horas de sol de cada canteiro (média de vários dias).", status: "proxima" },
-      { titulo: "Desenhe sua horta + mapa de sol", frase: "SunCalc a cada 30 min, com obstáculos e suas alturas. No hemisfério sul, a face norte recebe mais sol.", status: "proxima" },
-      { titulo: "Melhor lugar para cada planta", frase: "Sugere o canteiro certo para cada cultura.", status: "proxima" },
-      { titulo: "Previsto × medido", frase: "Compara o mapa de sol com as medidas na maquete.", status: "proxima" }
+      { titulo: "Desenhe sua horta", frase: "Terreno em escala, com o norte e os obstáculos (muros, casas, árvores) e suas alturas. Na página Planeje sua horta.", status: "funcionando" },
+      { titulo: "Mapa de horas de sol", frase: "SunCalc a cada 30 min, com a sombra de cada obstáculo, no dia escolhido ou no pior mês do ano. No hemisfério sul, a face norte recebe mais sol.", status: "funcionando" },
+      { titulo: "Melhor lugar para cada planta", frase: "Sugere a região de cada cultura pelas horas de sol, começando pelas que precisam de mais sol.", status: "funcionando" },
+      { titulo: "Umidade e sol por cultura", frase: "Pleno sol (6 h ou mais), meia-sombra (3 a 6 h) ou sombra, e a umidade ideal de 11 plantas.", status: "funcionando" },
+      { titulo: "Sol suficiente ou não", frase: "O sensor BH1750 conta as horas de sol de cada canteiro (média de vários dias). O cálculo já funciona na página Planeje sua horta; o sensor vai conferir o valor real.", status: "proxima" },
+      { titulo: "Previsto × medido", frase: "Compara o mapa de sol com as medidas na maquete. O cálculo já funciona na página Planeje sua horta; o sensor vai conferir o valor real.", status: "proxima" }
     ]
   }
 ];

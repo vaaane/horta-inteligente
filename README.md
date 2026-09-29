@@ -24,6 +24,9 @@ Arquivos do site (`web/`):
 - `controle.js`: o controle da bomba no cartão "Bomba d'água" (Automático | Manual e Ligar/Desligar). Veja "Controle pelo site" no final.
 - `demo.js`: o cartão "Modo demonstração": simular a chance de chuva pelo site. Veja "Modo demonstração" no final.
 - `agua.js`: o cartão "Água": água usada e economizada (estimativa). Veja "Água (estimativa)" no final.
+- `planejar.html` + `planejar.js`: a página "Planeje sua horta" (desenho do terreno, mapa de sol e sugestão de lugar para cada planta).
+- `sol.js`: o cálculo das horas de sol (sem mexer na página). Testes: `node web/sol.test.mjs` (precisa de internet para baixar o SunCalc).
+- `culturas.js`: sol e umidade de referência de cada planta e a escolha do melhor lugar.
 - `decisao.js`: o cartão "Por que regou (ou não)" do painel: motivo da decisão atual do ESP32 e as 5 últimas decisões (`/horta/decisoes`). Fica escondido se o firmware ainda não manda a decisão.
 - `qr.js`: desenha o QR code "Abra no seu celular" (no painel só aparece em telas largas; na `sobre.html`, sempre).
 - `teste.html`: a página do teste acende/apaga.
@@ -221,3 +224,16 @@ As constantes do timer e das comparações ficam no topo do `web/agua.js`.
 4. Troque `VAZAO_L_MIN` no `esp32-horta.ino` **e** no `web/agua.js` pelo valor medido. Grave o ESP32 e faça `git push`.
 
 Repita 2 ou 3 vezes e use a média. Quando o sensor de fluxo YF-S201 chegar, ele vai medir o valor real.
+
+## Planeje sua horta
+Página `planejar.html` (link na navegação). A pessoa desenha o terreno (largura e comprimento), gira a seta do norte e coloca os obstáculos com a altura de cada um: retângulos para muros e casas, círculos para árvores. O botão **Carregar exemplo** monta um terreno de 6 × 4 m com um muro de 2 m no lado norte e uma árvore de 4 m no canto leste. O desenho fica salvo no navegador.
+
+Como o mapa de sol é calculado (`web/sol.js`):
+1. O terreno é dividido em quadradinhos de 0,25 m.
+2. Do nascer ao pôr do sol, a cada 30 minutos, a biblioteca SunCalc diz a direção e a altura do sol no céu.
+3. De cada quadradinho, "olhamos" na direção do sol: se um obstáculo está no caminho e é mais alto que `distância × tan(altura do sol)`, o ponto está na sombra.
+4. Cada meia hora sem sombra vale 0,5 h de sol. Menos de 3 h = sombra; 3 a 6 h = meia-sombra; 6 h ou mais = pleno sol.
+
+Dá para ver o mapa de um dia (Hoje, Verão, Inverno, Equinócio) ou do **Ano todo (pior caso)**: o menor valor de cada ponto entre os 12 meses. Em **O que você quer plantar?**, a pessoa marca as plantas e a área de cada uma. As que precisam de mais sol escolhem primeiro; cada uma ganha uma região junta, com as horas de sol que ela precisa, e uma explicação em texto.
+
+**Roteiro para a feira:** Carregar exemplo → mostrar a sombra do muro no mapa → trocar para **Inverno (21/06)** e mostrar a sombra maior (o sol fica mais baixo, ao norte) → marcar tomate e alface → mostrar onde cada um ficou e ler a explicação.
