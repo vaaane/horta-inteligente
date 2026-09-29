@@ -145,6 +145,13 @@ const float COTA_SEM_ET0 = 2.0;  // litros por dia se não houver previsão
 // solo arenoso). Então a horta libera um pouco mais, até este limite:
 const float MARGEM_EXTRA = 0.5;  // até 50% a mais que a cota, se o solo continuar seco
 
+// DETECÇÃO DE FALHA: se a bomba rega e a umidade não sobe, a água não está
+// chegando (reservatório vazio, mangueira solta, bomba com defeito). Aí a
+// horta para e avisa, porque bomba funcionando sem água pode queimar.
+const unsigned long TEMPO_CONFERIR_REGA = 45UL * 1000; // depois de 45 s de bomba ligada...
+const int SUBIDA_MINIMA = 3;                           // ...a umidade tem que ter subido 3 pontos
+const int SUBIDA_SAIR_FALHA = 10;  // subiu 10 pontos desde a falha (alguém regou na mão): sai sozinha
+
 // Simulação de chuva feita pelo site: fora do MODO_TESTE, desliga sozinha
 // depois de 15 min (para a horta não ficar sem regar por esquecimento).
 const unsigned long TEMPO_MAX_SIMULACAO = 15UL * 60 * 1000;
@@ -245,6 +252,21 @@ String diaDaZeragem = "";
 // tinha em extraAntesZeragem e a conta continua em extraDesdeZeragem.
 float extraAntesZeragem = 0;
 float extraDesdeZeragem = 0;
+
+// Falha de água (Parte 3)
+bool emFalha = false;              // true = rega automática bloqueada
+bool detectarFalha = true;         // chave do site (desligada para as outras demonstrações)
+bool regaAutomatica = false;       // a rega atual foi ligada pelo automático?
+bool regaConferida = false;        // nesta rega, a umidade já subiu o bastante
+int umidadeInicialRega = 0;        // umidade quando a rega começou
+int umidadeNaFalha = 0;            // umidade quando a falha começou
+String motivoFalha = "";           // o texto da falha (vai para o painel)
+double resetFalhaVisto = -1;       // último "Já resolvi" lido (-1 = ainda não leu)
+unsigned long falhaResolvidaAte = 0;  // mostra "Falha resolvida" no motivo até esta hora
+// /horta/agua/ajuste: a falha continua valendo depois de reiniciar
+bool ajusteCarregado = false;
+bool gravarAjustePendente = false;
+unsigned long ultimaTentativaAjuste = 0;
 
 // Modo demonstração: hora simulada pelo site (-1 = usar a hora real)
 int simularHoraSite = -1;
@@ -497,6 +519,10 @@ void acionarBomba(bool ligar, const char* motivo) {
   if (ligar) {
     bombaLigadaDesde = millis();
     motivoRegaAtual = motivo;  // vai junto com a rega em /horta/regas
+    // Para a detecção de falha: de onde a umidade partiu, e se foi o automático
+    regaAutomatica = strncmp(motivo, "manual_", 7) != 0;
+    regaConferida = false;
+    umidadeInicialRega = umidade;
   } else {
     registrarRega(millis() - bombaLigadaDesde);
   }
@@ -661,6 +687,93 @@ void registrarDecisao(const char* codigo, const char* motivo, int chance) {
   pendenteChance = chance;
 }
 
+// A rega automática não fez a umidade subir: bloqueia e avisa
+void entrarEmFalha() {
+  float litros = (millis() - bombaLigadaDesde) / 60000.0 * VAZAO_L_MIN;
+  char texto[200];
+  snprintf(texto, sizeof(texto),
+           "Reguei ~%s L e a umidade não subiu (%d%% → %d%%). Pode ser reservatório vazio, mangueira solta ou bomba com defeito. A rega automática está bloqueada.",
+           decimal(litros, 1).c_str(), umidadeInicialRega, umidade);
+  motivoFalha = texto;
+  emFalha = true;
+  umidadeNaFalha = umidade;
+  gravarAjustePendente = true;  // grava em /horta/agua/ajuste/emFalha
+  estadoUrgente = true;
+  Serial.printf("[Falha] %s\n", texto);
+}
+
+void sairDaFalha(const char* porque) {
+  if (!emFalha) return;
+  emFalha = false;
+  motivoFalha = "";
+  gravarAjustePendente = true;
+  estadoUrgente = true;
+  falhaResolvidaAte = millis() + 15000;  // o painel mostra "Falha resolvida" por 15 s
+  Serial.printf("[Falha] Falha resolvida (%s): voltando ao automático.\n", porque);
+}
+
+// Depois de 45 s de rega automática, confere se a umidade subiu.
+// E sai da falha sozinha se a umidade subir 10 pontos (alguém regou na mão).
+void conferirRega() {
+  if (emFalha && umidade >= umidadeNaFalha + SUBIDA_SAIR_FALHA) sairDaFalha("a umidade subiu");
+
+  if (!detectarFalha || emFalha || modoManual || !bombaLigada || !regaAutomatica || regaConferida) return;
+  if (millis() - bombaLigadaDesde < TEMPO_CONFERIR_REGA) return;
+  if (umidade - umidadeInicialRega >= SUBIDA_MINIMA) regaConferida = true;  // a água está chegando
+  else entrarEmFalha();
+}
+
+// "Já resolvi" do site. Devolve true se saiu da falha.
+bool aplicarResetFalha(double valor) {
+  if (valor <= 0 || valor == resetFalhaVisto) return false;
+  bool primeiraLeitura = resetFalhaVisto < 0;
+  resetFalhaVisto = valor;
+  if (primeiraLeitura || !emFalha) return false;  // clique antigo (de antes de ligar)
+  sairDaFalha("pelo site");
+  return true;
+}
+
+// Chave "Detectar falha" do site (ausente = ligada)
+bool aplicarDetectarFalha(bool valor) {
+  if (valor == detectarFalha) return false;
+  detectarFalha = valor;
+  Serial.printf("[Falha] Detecção de falha %s pelo site.\n", valor ? "ligada" : "desligada");
+  return true;
+}
+
+// Lê /horta/agua/ajuste ao ligar (a falha continua valendo depois de reiniciar)
+// e grava quando a falha começa ou termina
+void cuidarDoAjuste() {
+  if (millis() - ultimaTentativaAjuste < 5000) return;
+  if (ajusteCarregado && !gravarAjustePendente) return;
+  ultimaTentativaAjuste = millis();
+  if (!prontoParaFirebase()) return;
+
+  String resposta;
+  if (!ajusteCarregado) {
+    int codigo = requisicaoBanco("GET", urlBanco("/horta/agua/ajuste"), "", resposta);
+    JsonDocument doc;
+    if (codigo != 200 || deserializeJson(doc, resposta)) return;  // tenta de novo em 5 s
+    if (doc["emFalha"] | false) {
+      emFalha = true;
+      umidadeNaFalha = umidade;
+      Serial.println("[Falha] A placa reiniciou em falha: a rega automática continua bloqueada.");
+    }
+    ajusteCarregado = true;
+    return;
+  }
+
+  JsonDocument doc;
+  doc["emFalha"] = emFalha;
+  String corpo;
+  serializeJson(doc, corpo);
+  if (requisicaoBanco("PATCH", urlBanco("/horta/agua/ajuste"), corpo, resposta) == 200) {
+    gravarAjustePendente = false;
+  } else {
+    erroEscritaFirebase = true;
+  }
+}
+
 void controlarBomba() {
   unsigned long agora = millis();
 
@@ -679,7 +792,13 @@ void controlarBomba() {
     Serial.println("[Bomba] Fim da pausa de segurança.");
   }
 
-  // O que a bomba deveria fazer agora, e por quê?
+  // A rega automática está fazendo a umidade subir?
+  conferirRega();
+
+  // O que a bomba deveria fazer agora, e por quê? Ordem das regras:
+  //   1) pausa de segurança  2) manual  3) falha  4) solo úmido  5) solo crítico
+  //   6) chuva prevista  7) horário quente  8) cota (menos a chuva que caiu)
+  //   9) sem previsão  10) rega normal
   int chance = chanceDeChuva();  // -1 = sem previsão válida
   const char* chuvaSim = chuvaSimulada() ? " (simulado)" : "";
   int hora = horaDaDecisao();    // -1 = ainda sem hora certa (ignora a regra do horário)
@@ -703,32 +822,40 @@ void controlarBomba() {
     codigo = bombaManual ? "manual_ligada" : "manual_desligada";
     snprintf(motivo, sizeof(motivo), "Modo manual: bomba %s pelo painel.", bombaManual ? "ligada" : "desligada");
 
+  } else if (emFalha) {
+    // 3) Falha: a água não chegou na última rega. Bloqueia o automático,
+    //    até o solo crítico: bomba funcionando sem água queima.
+    //    (O manual, acima, continua obedecendo o site.)
+    codigo = "falha_agua";
+    if (motivoFalha != "") snprintf(motivo, sizeof(motivo), "%s", motivoFalha.c_str());
+    else snprintf(motivo, sizeof(motivo), "Falha de água: a umidade não subiu na última rega. A rega automática está bloqueada até alguém tocar em \"Já resolvi\".");
+
   } else if (!precisaAgua) {
-    // 3) Solo úmido o bastante: não rega (ou terminou de regar)
+    // 4) Solo úmido o bastante: não rega (ou terminou de regar)
     codigo = "solo_ok";
     snprintf(motivo, sizeof(motivo), "Solo úmido o bastante (%d%%): não precisa regar.", umidade);
 
   } else if (umidade < LIMITE_CRITICO) {
-    // 4a) Seco demais: rega mesmo com chuva prevista ou sol forte
+    // 5) Seco demais: rega mesmo com chuva prevista ou sol forte
     querLigar = true;
     codigo = "solo_critico";
     snprintf(motivo, sizeof(motivo), "Reguei mesmo assim: o solo chegou a %d%%, abaixo do mínimo de %d%%.",
              umidade, LIMITE_CRITICO);
 
   } else if (chance >= LIMITE_CHUVA) {
-    // 4b) Vai chover: não liga (ou para) e deixa a chuva regar
+    // 6) Vai chover: não liga (ou para) e deixa a chuva regar
     codigo = "adiada_chuva";
     snprintf(motivo, sizeof(motivo), "%s: %d%% de chance de chuva nas próximas 6 h.%s",
              textoParei(codigo), chance, chuvaSim);
 
   } else if (hora >= 0 && horaQuente(hora)) {
-    // 4c) Sol forte: boa parte da água evaporaria. Espera o fim do horário quente.
+    // 7) Sol forte: boa parte da água evaporaria. Espera o fim do horário quente.
     codigo = "horario_quente";
     snprintf(motivo, sizeof(motivo), "%s: são %dh, sol forte. A água evaporaria. Volto a regar a partir das %dh.%s",
              textoParei(codigo), hora, HORA_QUENTE_FIM, horaSim);
 
   } else if (litrosCota() >= cotaHoje()) {
-    // 4d) Já repôs a cota do dia. Mas o solo AINDA precisa de água (senão
+    // 8) Já repôs a cota do dia. Mas o solo AINDA precisa de água (senão
     //     teria caído no "solo úmido" lá em cima). Então:
     //     - até a cota + 50%: libera uma rega extra (o canteiro pode perder
     //       mais água que a referência);
@@ -758,13 +885,13 @@ void controlarBomba() {
     }
 
   } else if (chance < 0) {
-    // 4e) Sem previsão: rega só pelo sensor, que é o comportamento seguro
+    // 9) Sem previsão: rega só pelo sensor, que é o comportamento seguro
     querLigar = true;
     codigo = "sem_previsao";
     snprintf(motivo, sizeof(motivo), "Sem previsão do tempo: reguei só pelo sensor (solo com %d%%).", umidade);
 
   } else {
-    // 4f) Tudo certo para regar
+    // 10) Tudo certo para regar
     querLigar = true;
     codigo = "regando";
     if (bombaLigada) {
@@ -781,6 +908,15 @@ void controlarBomba() {
     codigoParado = codigo;
   }
   if (codigoParado != codigo) codigoParado = "";
+
+  if (millis() < falhaResolvidaAte) {
+    const char* aviso = "Falha resolvida: voltando ao automático. ";
+    if (strlen(aviso) + strlen(motivo) <= 160) {
+      char comAviso[200];
+      snprintf(comAviso, sizeof(comAviso), "%s%s", aviso, motivo);
+      snprintf(motivo, sizeof(motivo), "%s", comAviso);
+    }
+  }
 
   registrarDecisao(codigo, motivo, chance);
   acionarBomba(querLigar, codigo);
@@ -1006,6 +1142,7 @@ void enviarEstado(bool avisar) {
   if (horaDaDecisao() >= 0) estado["hora"] = horaDaDecisao();  // "Hora da horta" no painel
   estado["cotaHoje"] = serialized(String(cotaHoje(), 2));      // barra "Cota de hoje pela ET0"
   estado["litrosCota"] = serialized(String(litrosCota(), 2));
+  estado["emFalha"] = emFalha;  // o painel mostra a faixa vermelha e o botão "Já resolvi"
   // Com a bomba ligada: quando ela ligou, no relógio do Firebase. O cartão
   // "Água" soma essa rega ao vivo, mesmo para quem abre o painel no meio dela.
   // (Com a bomba desligada o campo não vai, e o PUT apaga o anterior.)
@@ -1386,7 +1523,9 @@ bool lerComandos() {
   bool mudouSimulacao = aplicarSimulacao(comandos["simularChuva"] | -1);
   bool mudouHora = aplicarSimulacaoHora(comandos["simularHora"] | -1);
   bool zerouCota = aplicarZerarCota(comandos["zerarCotaEm"] | 0.0);
-  return mudouModo || mudouSimulacao || mudouHora || zerouCota;
+  bool saiuFalha = aplicarResetFalha(comandos["resetFalhaEm"] | 0.0);
+  aplicarDetectarFalha(comandos["detectarFalha"] | true);
+  return mudouModo || mudouSimulacao || mudouHora || zerouCota || saiuFalha;
 }
 
 // ---------------------------------------------------------------------
@@ -1424,6 +1563,8 @@ double cmdDesde = 0;
 int cmdSimular = -1;      // modo demonstração: chuva (-1 = previsão real)
 int cmdSimularHora = -1;  // modo demonstração: horário (-1 = hora real)
 double cmdZerarCota = 0;  // modo demonstração: "Recomeçar a cota" (hora do servidor)
+double cmdResetFalha = 0; // "Já resolvi" (hora do servidor)
+bool cmdDetectarFalha = true;  // chave "Detectar falha" (ausente = ligada)
 
 void fecharStream(const char* motivo, unsigned long espera, bool contaFalha) {
   if (streamAberto) Serial.printf("[Stream] Fechado: %s. Reconecto em %lu s.\n", motivo, espera / 1000);
@@ -1548,6 +1689,8 @@ void tratarEventoSse(const String& evento, const String& dado) {
       cmdSimular = dados["simularChuva"] | -1;
       cmdSimularHora = dados["simularHora"] | -1;
       cmdZerarCota = dados["zerarCotaEm"] | 0.0;
+      cmdResetFalha = dados["resetFalhaEm"] | 0.0;
+      cmdDetectarFalha = dados["detectarFalha"] | true;
     } else {
       // patch = só os campos que mudaram
       if (!dados["modo"].isNull()) cmdModo = dados["modo"] | "auto";
@@ -1556,6 +1699,8 @@ void tratarEventoSse(const String& evento, const String& dado) {
       if (!dados["simularChuva"].isNull()) cmdSimular = dados["simularChuva"] | -1;
       if (!dados["simularHora"].isNull()) cmdSimularHora = dados["simularHora"] | -1;
       if (!dados["zerarCotaEm"].isNull()) cmdZerarCota = dados["zerarCotaEm"] | 0.0;
+      if (!dados["resetFalhaEm"].isNull()) cmdResetFalha = dados["resetFalhaEm"] | 0.0;
+      if (!dados["detectarFalha"].isNull()) cmdDetectarFalha = dados["detectarFalha"] | true;
     }
   } else if (caminho == "/modo") {
     cmdModo = dados | "auto";
@@ -1569,6 +1714,10 @@ void tratarEventoSse(const String& evento, const String& dado) {
     cmdSimularHora = dados | -1;
   } else if (caminho == "/zerarCotaEm") {
     cmdZerarCota = dados | 0.0;
+  } else if (caminho == "/resetFalhaEm") {
+    cmdResetFalha = dados | 0.0;
+  } else if (caminho == "/detectarFalha") {
+    cmdDetectarFalha = dados | true;
   }
 
   falhasStream = 0;  // o streaming está funcionando
@@ -1578,7 +1727,9 @@ void tratarEventoSse(const String& evento, const String& dado) {
   bool mudouSimulacao = aplicarSimulacao(cmdSimular);
   bool mudouHora = aplicarSimulacaoHora(cmdSimularHora);
   bool zerouCota = aplicarZerarCota(cmdZerarCota);
-  if (mudouModo || mudouSimulacao || mudouHora || zerouCota) controlarBomba();
+  bool saiuFalha = aplicarResetFalha(cmdResetFalha);
+  aplicarDetectarFalha(cmdDetectarFalha);
+  if (mudouModo || mudouSimulacao || mudouHora || zerouCota || saiuFalha) controlarBomba();
 }
 
 // Monta as linhas do SSE, um caractere de cada vez
@@ -1961,6 +2112,7 @@ void loop() {
 
   cuidarDoLimiteManual();
   cuidarDaSimulacao();
+  cuidarDoAjuste();
 
   // Estado para o painel: na hora quando muda, e "estou vivo" sem mudança
   cuidarDoEstado();
