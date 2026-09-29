@@ -113,6 +113,42 @@
         }
       },
 
+      "regas": {
+        ".write": "auth != null && auth.uid === 'gj7r2D4JvTYr9GTnkmEc40ZqWRU2'",
+        ".indexOn": ["fim"],
+        "$regaId": {
+          ".validate": "newData.hasChildren(['fim', 'segundos', 'litros', 'motivo'])",
+          "fim": {
+            ".validate": "newData.isNumber() && newData.val() <= now"
+          },
+          "inicio": {
+            ".validate": "newData.isNumber() && newData.val() <= now"
+          },
+          "segundos": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 86400"
+          },
+          "litros": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "motivo": {
+            ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
+          },
+          "$outro": {
+            ".validate": false
+          }
+        }
+      },
+
+      "config": {
+        "inicioMedicao": {
+          ".write": true,
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "$outro": {
+          ".validate": false
+        }
+      },
+
       "comandos": {
         ".write": true,
         ".validate": "newData.hasChildren(['modo', 'bombaManual'])",
