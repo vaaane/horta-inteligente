@@ -149,6 +149,37 @@ main {
   text-align: center;
 }
 
+/* Cartão "Clima agora" (clima.js) — usado no painel e na página de teste */
+.clima { text-align: left; }
+.clima-valores {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin: 12px 0;
+}
+.clima-valores dt { font-size: 0.85rem; color: var(--texto-suave); }
+.clima-valores dd {
+  margin: 2px 0 0;
+  font-size: clamp(1.5rem, 6vw, 2rem);
+  font-weight: 700;
+  color: var(--verde);
+  font-variant-numeric: tabular-nums;
+}
+.clima-explica, .clima-rodape { margin: 0; color: var(--texto-suave); font-size: 0.9rem; }
+.clima-rodape { margin-top: 8px; font-size: 0.85rem; }
+.clima-aviso { margin: 8px 0 0; color: var(--aviso-texto); font-size: 0.85rem; }
+
+/* Faixa de chuva: só informativa (a rega ainda não é adiada pela previsão) */
+.clima-faixa-chuva {
+  margin: 4px 0 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #e3f2fd;
+  color: #0d47a1;
+  border: 1px solid #90caf9;
+  font-weight: 600;
+}
+
 .area-grafico {
   position: relative;
   height: 280px;

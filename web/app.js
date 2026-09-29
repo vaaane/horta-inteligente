@@ -4,6 +4,7 @@ import {
   getDatabase, ref, onValue, query, orderByChild, limitToLast
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 import { firebaseConfig } from "./firebase-config.js";
+import { iniciarClima } from "./clima.js";
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -61,6 +62,12 @@ function atualizarTempo() {
   elOffline.hidden = agora - ultimoTs < LIMITE_OFFLINE_MS;
 }
 setInterval(atualizarTempo, 1000);
+
+// ---------- Cartão "Clima agora" (código em clima.js) ----------
+iniciarClima(db, document.getElementById("clima"), {
+  textoSemDados: "Previsão do tempo indisponível no momento.",
+  mostrarFaixaChuva: true
+});
 
 // ---------- Gráfico com as últimas 50 leituras ----------
 const grafico = new Chart(document.getElementById("grafico"), {

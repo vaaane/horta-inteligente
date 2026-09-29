@@ -14,7 +14,13 @@ O ESP32 mede a umidade do solo, liga a bomba quando a terra está seca e envia o
 |---|---|
 | `web/` | O site (HTML, CSS e JavaScript puro, sem build) |
 | `firmware/esp32-horta/` | O programa do ESP32 (Arduino IDE) |
+| `firmware/teste-acende/` | Teste rápido do ESP32: LED acende/apaga e clima |
 | `firebase/` | As regras de segurança do banco de dados |
+
+Arquivos do site (`web/`):
+- `index.html` + `app.js`: o painel ao vivo (umidade, bomba, clima e gráfico).
+- `clima.js`: o cartão "Clima agora", usado no painel e na `teste.html` (o mesmo código nas duas páginas).
+- `teste.html`: a página do teste acende/apaga.
 
 ---
 
@@ -91,7 +97,7 @@ O Serial Monitor mostra o código HTTP de cada envio: **200 = deu certo**.
 
 ### Clima (Open-Meteo)
 
-O `teste-acende` também consulta a previsão do tempo no [Open-Meteo](https://open-meteo.com) logo que o Wi-Fi conecta e depois a cada 30 min (se falhar, tenta de novo em 5 min). O resumo vai para `/clima` no Firebase e aparece no cartão **"Clima agora"** da `/teste.html`:
+O `teste-acende` também consulta a previsão do tempo no [Open-Meteo](https://open-meteo.com) logo que o Wi-Fi conecta e depois a cada 30 min (se falhar, tenta de novo em 5 min). O resumo vai para `/clima` no Firebase e aparece no cartão **"Clima agora"** do painel e da `/teste.html`:
 
 - temperatura e umidade do ar;
 - maior chance de chuva nas próximas 6 horas;

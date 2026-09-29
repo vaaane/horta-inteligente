@@ -64,30 +64,12 @@
 
     a { color: var(--texto-suave); font-size: 0.85rem; }
 
-    /* Cartão "Clima agora" */
+    /* Posição do cartão "Clima agora" nesta página (o resto do estilo está no style.css) */
     .clima {
       width: 100%;
       max-width: 480px;
       margin: 0;
-      text-align: left;
     }
-    .clima-valores {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-      margin: 12px 0;
-    }
-    .clima-valores dt { font-size: 0.85rem; color: var(--texto-suave); }
-    .clima-valores dd {
-      margin: 2px 0 0;
-      font-size: clamp(1.5rem, 6vw, 2rem);
-      font-weight: 700;
-      color: var(--verde);
-      font-variant-numeric: tabular-nums;
-    }
-    .clima-explica, .clima-rodape { margin: 0; color: var(--texto-suave); font-size: 0.9rem; }
-    .clima-rodape { margin-top: 8px; font-size: 0.85rem; }
-    .clima-aviso { margin: 8px 0 0; color: #8a4b00; font-size: 0.85rem; }
   </style>
 </head>
 <body>
@@ -97,21 +79,8 @@
   <p id="estado" class="estado">APAGADO</p>
   <p id="hora" class="hora">Conectando ao Firebase...</p>
 
-  <section class="cartao clima">
+  <section id="clima" class="cartao clima">
     <h2>Clima agora</h2>
-    <p id="clima-espera" class="clima-explica">Aguardando dados do ESP32…</p>
-
-    <div id="clima-dados" hidden>
-      <dl class="clima-valores">
-        <div><dt>Temperatura</dt><dd id="clima-temp">--</dd></div>
-        <div><dt>Umidade do ar</dt><dd id="clima-umidade">--</dd></div>
-        <div><dt>Chuva nas próximas 6 h</dt><dd id="clima-chuva">--</dd></div>
-        <div><dt>ET₀ hoje</dt><dd id="clima-et0">--</dd></div>
-      </dl>
-      <p id="clima-explica" class="clima-explica"></p>
-      <p id="clima-atualizado" class="clima-rodape"></p>
-      <p id="clima-aviso" class="clima-aviso" hidden></p>
-    </div>
   </section>
 
   <a href="index.html">← Voltar para a horta</a>
@@ -120,6 +89,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
     import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
     import { firebaseConfig } from "./firebase-config.js";
+    import { iniciarClima } from "./clima.js";
 
     const db = getDatabase(initializeApp(firebaseConfig));
 
@@ -139,59 +109,8 @@
       elHora.textContent = `Última mudança: ${hora}`;
     });
 
-    // ---------- Cartão "Clima agora" ----------
-    const LIMITE_CLIMA_ANTIGO_MS = 90 * 60 * 1000;  // 90 minutos
-
-    const $ = (id) => document.getElementById(id);
-    const numero = (valor, casas) =>
-      Number(valor).toLocaleString("pt-BR", { maximumFractionDigits: casas });
-
-    let diferencaRelogio = 0;  // relógio do servidor - relógio do celular
-    let atualizadoEm = null;   // hora (do servidor) em que o ESP32 gravou o clima
-
-    onValue(ref(db, ".info/serverTimeOffset"), (snap) => {
-      diferencaRelogio = snap.val() || 0;
-    });
-
-    // Toda vez que o ESP32 gravar um clima novo, esta função roda
-    onValue(ref(db, "clima"), (snap) => {
-      const c = snap.val();
-      const temDados = c && c.temperatura !== undefined;
-      $("clima-espera").hidden = temDados;
-      $("clima-dados").hidden = !temDados;
-      if (!temDados) return;
-
-      $("clima-temp").textContent = `${numero(c.temperatura, 1)} °C`;
-      $("clima-umidade").textContent = `${c.umidadeAr} %`;
-      $("clima-chuva").textContent = `${c.chanceChuva6h} %`;
-      $("clima-et0").textContent = `${numero(c.et0, 1)} mm`;
-      $("clima-explica").textContent =
-        `A planta de referência perde cerca de ${numero(c.et0, 1)} litros de água por m² hoje.`;
-
-      // "Atualizado às HH:MM": usa a hora do Firebase; se não tiver, a da previsão
-      atualizadoEm = typeof c.atualizadoEm === "number" ? c.atualizadoEm : null;
-      const hhmm = atualizadoEm !== null
-        ? new Date(atualizadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-        : String(c.horaPrevisao || "").slice(11, 16);
-      $("clima-atualizado").textContent = `Atualizado às ${hhmm}`;
-
-      verificarClimaAntigo();
-    });
-
-    // Aviso discreto se o ESP32 parar de mandar o clima
-    function verificarClimaAntigo() {
-      if (atualizadoEm === null) {
-        $("clima-aviso").hidden = true;
-        return;
-      }
-      const idade = Date.now() + diferencaRelogio - atualizadoEm;
-      const antigo = idade > LIMITE_CLIMA_ANTIGO_MS;
-      $("clima-aviso").hidden = !antigo;
-      if (antigo) {
-        $("clima-aviso").textContent = `ESP32 sem atualizar o clima há ${Math.floor(idade / 60000)} min`;
-      }
-    }
-    setInterval(verificarClimaAntigo, 30000);
+    // ---------- Cartão "Clima agora" (código em clima.js) ----------
+    iniciarClima(db, document.getElementById("clima"));
   </script>
 </body>
 </html>
