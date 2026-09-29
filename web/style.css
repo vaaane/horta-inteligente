@@ -29,6 +29,30 @@ header {
 header h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 3rem); }
 .subtitulo { margin: 4px 0 0; opacity: 0.9; }
 
+/* Navegação entre as páginas (Painel / Sobre o projeto) */
+.navegacao {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.navegacao a {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 8px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+}
+.navegacao a:hover { background: rgba(255, 255, 255, 0.15); }
+/* Página atual: botão preenchido */
+.navegacao a[aria-current="page"] {
+  background: #fff;
+  color: var(--verde);
+  border-color: #fff;
+}
+
 main {
   max-width: 960px;
   margin: 0 auto;
