@@ -56,6 +56,9 @@
         "modoTeste": {
           ".validate": "newData.isBoolean()"
         },
+        "regaDesde": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
         "decisao": {
           ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
         },

@@ -808,6 +808,12 @@ void enviarEstado(bool avisar) {
   estado["umidadeBruta"] = umidadeBruta;
   estado["bomba"] = bombaLigada;
   estado["modoTeste"] = MODO_TESTE;  // o site esconde a contagem do manual e mostra o selo
+  // Com a bomba ligada: quando ela ligou, no relógio do Firebase. O cartão
+  // "Água" soma essa rega ao vivo, mesmo para quem abre o painel no meio dela.
+  // (Com a bomba desligada o campo não vai, e o PUT apaga o anterior.)
+  if (bombaLigada && horaServidorMs > 0) {
+    estado["regaDesde"] = agoraServidor() - (int64_t)(millis() - bombaLigadaDesde);
+  }
   estado["ts"][".sv"] = "timestamp";  // o Firebase coloca a hora dele
   if (decisaoAtual != "") {
     estado["decisao"] = decisaoAtual;
