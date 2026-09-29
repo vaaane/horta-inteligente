@@ -715,3 +715,85 @@ main {
 .linha-tempo p { margin: 4px 0; line-height: 1.5; }
 
 .equipe { margin: 0; font-size: 1.1rem; font-weight: 600; }
+
+/* ================= Página "Planeje sua horta" ================= */
+.planejar main { max-width: 1280px; }
+.planejar .abertura { margin-bottom: 16px; }
+.planejar-area { display: grid; gap: 16px; grid-template-columns: 1fr; align-items: start; }
+@media (min-width: 900px) {
+  .planejar-area { grid-template-columns: minmax(0, 1fr) 320px; }
+}
+.planejar-desenho, .planejar-painel { margin-bottom: 0; }
+.planejar-canvas-caixa { position: relative; width: 100%; }
+/* touch-action: none deixa o dedo arrastar os obstáculos sem rolar a página */
+#terreno { display: block; max-width: 100%; touch-action: none; cursor: grab; }
+.planejar-ajuda, .planejar-nota { margin: 8px 0 0; font-size: 0.85rem; color: var(--texto-suave); }
+.planejar-grupo {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+}
+.planejar-grupo legend { font-weight: 700; padding: 0 4px; }
+.planejar-grupo label, .planejar-editor label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+.planejar-grupo input[type="number"], .planejar-editor input[type="number"], .planejar-editor input[type="text"] {
+  width: 7.5em;
+  min-height: 40px;
+  padding: 6px 8px;
+  font: inherit;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+}
+.planejar-editor input[type="text"] { width: 11em; }
+.planejar-norte { flex-wrap: wrap; }
+.planejar-norte input[type="range"] { flex: 1 1 150px; min-height: 40px; accent-color: #c62828; }
+.planejar-norte output { min-width: 3em; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.planejar-botoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.planejar-botao {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--cartao);
+  color: var(--verde);
+  border: 2px solid var(--verde);
+}
+.planejar-botao-forte { background: var(--verde); color: #fff; }
+.planejar-botao-perigo { color: #c62828; border-color: #c62828; }
+.planejar-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.planejar-item {
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  background: var(--fundo);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+}
+.planejar-item.ativo { border: 2px solid #d84315; background: #fff3e0; }
+.planejar-editor { display: grid; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--borda); }
+.planejar-dica {
+  position: absolute;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(27, 42, 28, 0.9);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translate(-50%, -130%);
+}
