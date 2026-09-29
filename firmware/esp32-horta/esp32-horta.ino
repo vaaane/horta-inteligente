@@ -1044,6 +1044,7 @@ void aoDesconectarWiFi(arduino_event_id_t evento, arduino_event_info_t info) {
   int motivo = info.wifi_sta_disconnected.reason;
   const char* explicacao = "";
   switch (motivo) {
+    case 3:   explicacao = "o roteador recusou o ESP32 (senha diferente, aparelho bloqueado ou limite de conexões)"; break;
     case 2:
     case 15:  explicacao = "senha errada ou rede com segurança WPA3; use WPA2"; break;
     case 201: explicacao = "rede não encontrada (nome errado ou rede em 5 GHz)"; break;
