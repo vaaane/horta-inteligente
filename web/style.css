@@ -840,3 +840,34 @@ main {
 .planejar-sugestoes li.sem-lugar { color: var(--aviso-texto); font-weight: 600; }
 .planejar-explica { margin: 0 0 12px; padding-left: 20px; line-height: 1.6; }
 .tabela-culturas { min-width: 420px; }
+/* Modo "Sobre o mapa" × "Desenho livre" */
+.modo-mapa .so-livre, .modo-livre .so-mapa { display: none !important; }
+.planejar-modos { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.planejar-modo {
+  flex: 1 1 12em;
+  min-height: 48px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--cartao);
+  color: var(--verde);
+  border: 2px solid var(--verde);
+}
+.planejar-modo[aria-pressed="true"] { background: var(--verde); color: #fff; }
+.planejar-mapa-barra { display: grid; gap: 8px; margin-bottom: 10px; }
+.planejar-busca { display: flex; gap: 8px; }
+.planejar-busca input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  font: inherit;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+}
+.planejar-camada { display: flex; align-items: center; gap: 6px; min-height: 44px; font-weight: 600; }
+.planejar-mapa-caixa { position: relative; }
+.planejar-mapa-sat { height: max(360px, 62vh); border-radius: 12px; overflow: hidden; background: #cfd8dc; }

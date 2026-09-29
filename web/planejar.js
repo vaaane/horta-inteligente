@@ -13,6 +13,7 @@ import {
   calcularHorasDeSol, meioDiaLocal, classificar, SOMBRA, MEIA_SOMBRA, PLENO_SOL
 } from "./sol.js";
 import { CULTURAS, NECESSIDADE, sugerirLugares, descreverLugar } from "./culturas.js";
+import { iniciarModoMapa } from "./mapa.js";
 
 // ---------- Terreno padrão ----------
 const PADRAO = {
@@ -85,6 +86,7 @@ const centroBussola = () => ({ x: larguraTela - RAIO_BUSSOLA - 6, y: MARGEM + RA
 // Ajusta o tamanho do canvas à largura da tela, nítido em telas de alta densidade
 function medir() {
   const largura = caixa.clientWidth;
+  if (largura === 0) return false;  // escondido (modo mapa): mede quando aparecer
   const alturaMax = Math.max(260, window.innerHeight * 0.7);
   escala = Math.min(
     (largura - MARGEM - 12 - ESPACO_BUSSOLA) / terreno.largura,
@@ -109,6 +111,7 @@ const camadas = [];
 export function adicionarCamada(funcao) { camadas.push(funcao); }
 
 function desenhar() {
+  if (escala <= 0 || caixa.clientWidth === 0) return;  // escondido (modo mapa)
   ctx.clearRect(0, 0, larguraTela, alturaTela);
   const L = terreno.largura;
   const C = terreno.comprimento;
@@ -799,3 +802,34 @@ $("tabela-culturas").replaceChildren(...CULTURAS.map((cultura) => {
 
 montarEscolha();
 quandoMapaPronto(() => calcularSugestoes());
+
+// =====================================================================
+//  MODO: "Sobre o mapa" (satélite, em mapa.js) ou "Desenho livre" (canvas)
+// =====================================================================
+let modo = "livre";
+const modoMapa = iniciarModoMapa({
+  elemento: $("mapa-satelite"),
+  busca: $("busca"),
+  buscaTexto: $("busca-texto"),
+  buscaStatus: $("busca-status"),
+  botaoLocalizacao: $("minha-localizacao"),
+  camadaNomes: $("camada-nomes")
+});
+
+function trocarModo(novo) {
+  modo = novo;
+  document.body.classList.toggle("modo-mapa", modo === "mapa");
+  document.body.classList.toggle("modo-livre", modo === "livre");
+  for (const botao of document.querySelectorAll(".planejar-modo")) {
+    botao.setAttribute("aria-pressed", String(botao.dataset.modo === modo));
+  }
+  if (modo === "mapa") {
+    modoMapa.mostrar();
+  } else {
+    medir();
+    desenhar();
+  }
+}
+for (const botao of document.querySelectorAll(".planejar-modo")) {
+  botao.addEventListener("click", () => trocarModo(botao.dataset.modo));
+}

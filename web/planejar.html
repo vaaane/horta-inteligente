@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Planeje sua horta · Horta Inteligente</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>">
+  <!-- Leaflet: biblioteca do mapa de satélite (versão fixa) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="planejar">
+<body class="planejar modo-livre">
   <header>
     <h1>🌱 Horta Inteligente</h1>
     <p class="subtitulo">CED São Bartolomeu · Feira de Ciências</p>
@@ -26,15 +28,41 @@
         o melhor lugar para cada planta.</p>
     </section>
 
+    <!-- Como desenhar: sobre a imagem de satélite ou à mão -->
+    <div class="planejar-modos" role="group" aria-label="Como desenhar o terreno">
+      <button type="button" class="planejar-modo" data-modo="mapa" aria-pressed="false">🛰️ Sobre o mapa</button>
+      <button type="button" class="planejar-modo" data-modo="livre" aria-pressed="true">✏️ Desenho livre</button>
+    </div>
+
     <div class="planejar-area">
       <!-- Desenho do terreno (planejar.js) -->
       <section class="cartao planejar-desenho">
         <h2>Terreno</h2>
-        <div class="planejar-canvas-caixa">
+
+        <!-- Modo "Sobre o mapa" (mapa.js) -->
+        <div class="so-mapa planejar-mapa-barra">
+          <form id="busca" class="planejar-busca" role="search">
+            <input type="search" id="busca-texto" placeholder="Endereço, escola, bairro…" aria-label="Endereço">
+            <button type="submit" class="planejar-botao planejar-botao-forte">Buscar</button>
+          </form>
+          <div class="planejar-botoes">
+            <button type="button" id="minha-localizacao" class="planejar-botao">📍 Usar minha localização</button>
+            <label class="planejar-camada"><input type="checkbox" id="camada-nomes"> Nomes de ruas</label>
+          </div>
+          <p id="busca-status" class="planejar-nota" aria-live="polite"></p>
+        </div>
+        <div class="so-mapa planejar-mapa-caixa">
+          <div id="mapa-satelite" class="planejar-mapa-sat"></div>
+        </div>
+        <p class="so-mapa planejar-nota">Busca de endereços: © colaboradores do
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (Nominatim).</p>
+
+        <!-- Modo "Desenho livre" -->
+        <div class="so-livre planejar-canvas-caixa">
           <canvas id="terreno" aria-label="Desenho do terreno com os obstáculos"></canvas>
           <p id="dica-ponto" class="planejar-dica" hidden></p>
         </div>
-        <p class="planejar-ajuda">Arraste os obstáculos para mudar de lugar. Toque em um para editar.
+        <p class="so-livre planejar-ajuda">Arraste os obstáculos para mudar de lugar. Toque em um para editar.
           Toque no chão para ver as horas de sol daquele ponto.</p>
 
         <!-- Mapa de horas de sol (cálculo em sol.js) -->
@@ -138,6 +166,8 @@
 
   <!-- SunCalc: biblioteca que calcula a posição do sol (versão fixa) -->
   <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
+  <!-- Leaflet: mapa de satélite -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script type="module" src="planejar.js"></script>
 </body>
 </html>
