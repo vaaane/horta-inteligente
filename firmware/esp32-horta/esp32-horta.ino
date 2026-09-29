@@ -137,7 +137,16 @@ const float VAZAO_L_MIN = 1.5;
 // regar pelo automático, mesmo que o sensor ainda peça: não gasta mais do
 // que a planta perdeu. (O solo crítico continua ganhando de tudo.)
 const float AREA_M2 = 0.25;      // canteiro da maquete: 0,5 m × 0,5 m
-const float KC = 1.0;            // coeficiente da cultura (1,0 = planta de referência)
+const float KC = 1.0;            // Kc INICIAL (1,0 = planta de referência); o em uso é "kc"
+
+// APRENDER COM OS DIAS: na virada do dia a horta olha o dia que terminou.
+// Precisou de água extra? O canteiro perde mais que a referência: Kc sobe.
+// Sobrou cota? Perde menos: Kc desce. Assim a cota vai se ajustando ao canteiro.
+const float KC_MIN = 0.6;
+const float KC_MAX = 1.5;
+const float KC_SOBE = 0.1;
+const float KC_DESCE = 0.05;
+const float FRACAO_SOBROU = 0.7;  // usou menos de 70% da cota = sobrou
 const float COTA_SEM_ET0 = 2.0;  // litros por dia se não houver previsão
 
 // Se o solo continua seco depois de receber a cota, pode ser que o canteiro
@@ -252,6 +261,16 @@ String diaDaZeragem = "";
 // tinha em extraAntesZeragem e a conta continua em extraDesdeZeragem.
 float extraAntesZeragem = 0;
 float extraDesdeZeragem = 0;
+
+// Kc em uso (guardado em /horta/agua/ajuste e lido ao ligar)
+float kc = KC;
+bool gravarKcPendente = false;
+String motivoKc = "";
+// O que aconteceu hoje (para o ajuste do Kc na virada do dia)
+bool diaTeveCritico = false;
+bool diaTeveFalha = false;
+float cotaDoDia = 0;               // a última cota calculada hoje
+double simularFimDiaVisto = -1;    // último "Simular fim do dia" lido (-1 = ainda não leu)
 
 // Falha de água (Parte 3)
 bool emFalha = false;              // true = rega automática bloqueada
@@ -617,7 +636,7 @@ bool et0Valido() {
 // Se choveu mais do que a planta perdeu, a cota é 0.
 float cotaHoje() {
   if (!et0Valido()) return COTA_SEM_ET0;
-  return max(0.0f, clima.et0 * KC - clima.chuvaHojeMm) * AREA_M2;
+  return max(0.0f, clima.et0 * kc - clima.chuvaHojeMm) * AREA_M2;
 }
 
 // Litros regados hoje: o resumo do dia (Tarefa 1) + regas ainda não somadas
@@ -661,12 +680,63 @@ bool aplicarZerarCota(double valor) {
   // (Simplificação: depois de reiniciar, a cota volta a contar o dia inteiro.)
   if (primeiraLeitura) return false;
 
+  recomecarCota();
+  return true;
+}
+
+// A cota passa a contar só o que vier depois de agora
+void recomecarCota() {
   litrosNaZeragem = litrosHoje();
   extraAntesZeragem += extraDesdeZeragem;  // o extra já usado continua no total do dia
   extraDesdeZeragem = 0;
   diaDaZeragem = horaValida() ? dataHoje() : "";
   estadoUrgente = true;
   Serial.printf("[Cota] Recomeçada pelo site (já tinha regado %.2f L hoje).\n", litrosNaZeragem);
+}
+
+// Ajusta o Kc olhando um dia: quanto usou, quanto passou da cota e se teve
+// solo crítico ou falha. "quando" vai no motivo ("Ontem" ou "Hoje (fim do dia simulado)").
+// Devolve true se o Kc mudou.
+bool ajustarKc(float usado, float extra, float cota, bool teveCritico, bool teveFalha, const char* quando) {
+  float antes = kc;
+  String porque;
+  if (extra > 0.01 && !teveFalha) {
+    // Precisou de água extra e não foi falha: o canteiro perde mais que a referência
+    kc = min(KC_MAX, kc + KC_SOBE);
+    porque = String(quando) + " precisei de água extra: este canteiro perde mais que a referência.";
+  } else if (cota > 0 && usado < cota * FRACAO_SOBROU && !teveCritico && !teveFalha) {
+    // Sobrou cota (e não foi por falta de água): o canteiro perde menos que a referência
+    kc = max(KC_MIN, kc - KC_DESCE);
+    porque = String(quando) + " sobrou cota: este canteiro perde menos que a referência.";
+  } else {
+    Serial.printf("[Kc] %s: a cota foi suficiente, Kc continua %.2f.\n", quando, kc);
+    return false;
+  }
+  kc = roundf(kc * 100) / 100;  // duas casas (evita 1.0999999)
+  if (kc == antes) {
+    Serial.printf("[Kc] %s Kc já está no limite (%.2f).\n", porque.c_str(), kc);
+    return false;
+  }
+  motivoKc = porque;
+  gravarKcPendente = true;   // grava em /horta/agua/ajuste
+  resumoPendente = true;     // e no resumo do dia
+  estadoUrgente = true;
+  Serial.printf("[Kc] %.2f -> %.2f. %s\n", antes, kc, porque.c_str());
+  return true;
+}
+
+// Modo demonstração: "Simular fim do dia" aplica o ajuste do Kc com os
+// números de HOJE (desde o último "Recomeçar a cota") e recomeça a cota.
+bool aplicarSimularFimDia(double valor) {
+  if (valor <= 0 || valor == simularFimDiaVisto) return false;
+  bool primeiraLeitura = simularFimDiaVisto < 0;
+  simularFimDiaVisto = valor;
+  if (primeiraLeitura) return false;  // clique antigo (de antes de ligar)
+
+  Serial.println("[Kc] Fim do dia simulado pelo site.");
+  ajustarKc(litrosCota(), extraDesdeZeragem, cotaHoje(), diaTeveCritico, diaTeveFalha || emFalha,
+            "Hoje (fim do dia simulado)");
+  recomecarCota();
   return true;
 }
 
@@ -745,7 +815,7 @@ bool aplicarDetectarFalha(bool valor) {
 // e grava quando a falha começa ou termina
 void cuidarDoAjuste() {
   if (millis() - ultimaTentativaAjuste < 5000) return;
-  if (ajusteCarregado && !gravarAjustePendente) return;
+  if (ajusteCarregado && !gravarAjustePendente && !gravarKcPendente) return;
   ultimaTentativaAjuste = millis();
   if (!prontoParaFirebase()) return;
 
@@ -754,6 +824,8 @@ void cuidarDoAjuste() {
     int codigo = requisicaoBanco("GET", urlBanco("/horta/agua/ajuste"), "", resposta);
     JsonDocument doc;
     if (codigo != 200 || deserializeJson(doc, resposta)) return;  // tenta de novo em 5 s
+    kc = constrain(doc["kc"] | KC, KC_MIN, KC_MAX);  // sem ajuste salvo: Kc inicial
+    Serial.printf("[Kc] Kc em uso: %.2f\n", kc);
     if (doc["emFalha"] | false) {
       emFalha = true;
       umidadeNaFalha = umidade;
@@ -765,10 +837,16 @@ void cuidarDoAjuste() {
 
   JsonDocument doc;
   doc["emFalha"] = emFalha;
+  if (gravarKcPendente) {
+    doc["kc"] = serialized(String(kc, 2));
+    doc["motivo"] = motivoKc;
+    doc["atualizadoEm"][".sv"] = "timestamp";  // o painel mostra "ajustado ontem"
+  }
   String corpo;
   serializeJson(doc, corpo);
   if (requisicaoBanco("PATCH", urlBanco("/horta/agua/ajuste"), corpo, resposta) == 200) {
     gravarAjustePendente = false;
+    gravarKcPendente = false;
   } else {
     erroEscritaFirebase = true;
   }
@@ -908,6 +986,11 @@ void controlarBomba() {
     codigoParado = codigo;
   }
   if (codigoParado != codigo) codigoParado = "";
+
+  // Guarda o que aconteceu hoje (para o ajuste do Kc na virada do dia)
+  if (strcmp(codigo, "solo_critico") == 0) diaTeveCritico = true;
+  if (strcmp(codigo, "falha_agua") == 0) diaTeveFalha = true;
+  cotaDoDia = cotaHoje();
 
   if (millis() < falhaResolvidaAte) {
     const char* aviso = "Falha resolvida: voltando ao automático. ";
@@ -1307,7 +1390,18 @@ void cuidarDoResumoDiario() {
 
   // Primeiro lê o dia (ao ligar e ao virar o dia)
   if (diaCarregado != alvo) {
-    if (carregarDia(alvo) && alvo == hoje) resumoPendente = true;  // dia novo: grava a ET0 também
+    // Virou o dia (com a placa ligada): olha o dia que terminou e ajusta o Kc.
+    // Os totais de ontem ainda estão nas variáveis (são os mesmos do
+    // /horta/agua/dias/{ontem}). Simplificação: se a placa estava desligada
+    // à meia-noite, não ajusta (não sabe se teve solo crítico ou falha).
+    if (alvo == hoje && diaCarregado != "") {
+      ajustarKc(diaLitros, litrosExtraHoje(), cotaDoDia, diaTeveCritico, diaTeveFalha, "Ontem");
+    }
+    if (carregarDia(alvo) && alvo == hoje) {
+      resumoPendente = true;  // dia novo: grava a ET0, o Kc e a cota também
+      diaTeveCritico = false;
+      diaTeveFalha = emFalha;
+    }
     return;
   }
 
@@ -1322,7 +1416,12 @@ void cuidarDoResumoDiario() {
   doc["segundos"] = segundos;
   doc["regas"] = regas;
   if (comEt0) doc["et0"] = serialized(String(clima.et0, 2));
-  if (alvo == hoje) doc["litrosExtra"] = serialized(String(litrosExtraHoje(), 2));
+  if (alvo == hoje) {
+    doc["litrosExtra"] = serialized(String(litrosExtraHoje(), 2));
+    doc["kc"] = serialized(String(kc, 2));
+    doc["cota"] = serialized(String(cotaHoje(), 2));  // já com Kc e chuva (barra do gráfico)
+  }
+  if (comEt0) doc["chuvaMm"] = serialized(String(clima.chuvaHojeMm, 1));
   doc["atualizadoEm"][".sv"] = "timestamp";
   String corpo;
   serializeJson(doc, corpo);
@@ -1525,7 +1624,8 @@ bool lerComandos() {
   bool zerouCota = aplicarZerarCota(comandos["zerarCotaEm"] | 0.0);
   bool saiuFalha = aplicarResetFalha(comandos["resetFalhaEm"] | 0.0);
   aplicarDetectarFalha(comandos["detectarFalha"] | true);
-  return mudouModo || mudouSimulacao || mudouHora || zerouCota || saiuFalha;
+  bool fimDia = aplicarSimularFimDia(comandos["simularFimDiaEm"] | 0.0);
+  return mudouModo || mudouSimulacao || mudouHora || zerouCota || saiuFalha || fimDia;
 }
 
 // ---------------------------------------------------------------------
@@ -1565,6 +1665,7 @@ int cmdSimularHora = -1;  // modo demonstração: horário (-1 = hora real)
 double cmdZerarCota = 0;  // modo demonstração: "Recomeçar a cota" (hora do servidor)
 double cmdResetFalha = 0; // "Já resolvi" (hora do servidor)
 bool cmdDetectarFalha = true;  // chave "Detectar falha" (ausente = ligada)
+double cmdSimularFimDia = 0;   // "Simular fim do dia" (hora do servidor)
 
 void fecharStream(const char* motivo, unsigned long espera, bool contaFalha) {
   if (streamAberto) Serial.printf("[Stream] Fechado: %s. Reconecto em %lu s.\n", motivo, espera / 1000);
@@ -1691,6 +1792,7 @@ void tratarEventoSse(const String& evento, const String& dado) {
       cmdZerarCota = dados["zerarCotaEm"] | 0.0;
       cmdResetFalha = dados["resetFalhaEm"] | 0.0;
       cmdDetectarFalha = dados["detectarFalha"] | true;
+      cmdSimularFimDia = dados["simularFimDiaEm"] | 0.0;
     } else {
       // patch = só os campos que mudaram
       if (!dados["modo"].isNull()) cmdModo = dados["modo"] | "auto";
@@ -1701,6 +1803,7 @@ void tratarEventoSse(const String& evento, const String& dado) {
       if (!dados["zerarCotaEm"].isNull()) cmdZerarCota = dados["zerarCotaEm"] | 0.0;
       if (!dados["resetFalhaEm"].isNull()) cmdResetFalha = dados["resetFalhaEm"] | 0.0;
       if (!dados["detectarFalha"].isNull()) cmdDetectarFalha = dados["detectarFalha"] | true;
+      if (!dados["simularFimDiaEm"].isNull()) cmdSimularFimDia = dados["simularFimDiaEm"] | 0.0;
     }
   } else if (caminho == "/modo") {
     cmdModo = dados | "auto";
@@ -1718,6 +1821,8 @@ void tratarEventoSse(const String& evento, const String& dado) {
     cmdResetFalha = dados | 0.0;
   } else if (caminho == "/detectarFalha") {
     cmdDetectarFalha = dados | true;
+  } else if (caminho == "/simularFimDiaEm") {
+    cmdSimularFimDia = dados | 0.0;
   }
 
   falhasStream = 0;  // o streaming está funcionando
@@ -1729,7 +1834,8 @@ void tratarEventoSse(const String& evento, const String& dado) {
   bool zerouCota = aplicarZerarCota(cmdZerarCota);
   bool saiuFalha = aplicarResetFalha(cmdResetFalha);
   aplicarDetectarFalha(cmdDetectarFalha);
-  if (mudouModo || mudouSimulacao || mudouHora || zerouCota || saiuFalha) controlarBomba();
+  bool fimDia = aplicarSimularFimDia(cmdSimularFimDia);
+  if (mudouModo || mudouSimulacao || mudouHora || zerouCota || saiuFalha || fimDia) controlarBomba();
 }
 
 // Monta as linhas do SSE, um caractere de cada vez
