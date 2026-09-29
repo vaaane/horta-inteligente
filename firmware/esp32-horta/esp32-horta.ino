@@ -39,6 +39,13 @@
 #include <ArduinoJson.h>
 #include "secrets.h"  // copie secrets.example.h -> secrets.h e preencha
 
+// =====================================================================
+// MODO_TESTE = true: LED no lugar da bomba. Tudo o mais rápido possível,
+// sem pausa de segurança, sem tempo máximo e sem limite do modo manual.
+// Quando tiver a bomba de verdade: false.
+const bool MODO_TESTE = true;
+// =====================================================================
+
 // ---------------------------------------------------------------------
 //  PINOS
 // ---------------------------------------------------------------------
@@ -80,6 +87,7 @@ const int SIMULAR_CHANCE_CHUVA = -1;
 
 // Segurança: a bomba nunca fica ligada mais que 60 s seguidos.
 // Depois disso ela descansa 5 min (a água precisa de tempo para chegar ao sensor).
+// Com MODO_TESTE = true esses dois limites e o do modo manual não valem.
 const unsigned long TEMPO_MAX_BOMBA   = 60UL * 1000;
 const unsigned long TEMPO_PAUSA_BOMBA = 5UL * 60 * 1000;
 
@@ -260,7 +268,8 @@ void controlarBomba() {
   unsigned long agora = millis();
 
   // Segurança: ligada tempo demais? Desliga e entra em pausa.
-  if (bombaLigada && agora - bombaLigadaDesde >= TEMPO_MAX_BOMBA) {
+  // No MODO_TESTE (LED) não tem tempo máximo: a pausa nunca começa.
+  if (!MODO_TESTE && bombaLigada && agora - bombaLigadaDesde >= TEMPO_MAX_BOMBA) {
     Serial.println("[Bomba] Tempo máximo atingido! Pausa de segurança.");
     acionarBomba(false);
     emPausa = true;
@@ -674,7 +683,8 @@ bool lerComandos() {
   }
 
   // Passou do tempo máximo do manual? Volta para o automático.
-  if (novoManual && millis() - manualDesdeMs >= TEMPO_MAX_MANUAL) {
+  // (No MODO_TESTE o manual fica até alguém trocar no site.)
+  if (!MODO_TESTE && novoManual && millis() - manualDesdeMs >= TEMPO_MAX_MANUAL) {
     Serial.println("[Comandos] Modo manual expirou: voltando para o automático.");
     gravarModoAutomatico();  // se falhar, na próxima leitura ele expira de novo e tenta outra vez
     novoManual = false;
@@ -815,7 +825,9 @@ void atualizarClima() {
 
   // A consulta HTTPS pode travar o loop() por até 10 s. Com a bomba ligada
   // isso atrasaria a segurança do tempo máximo: espera ela desligar.
-  if (bombaLigada) return;
+  // No MODO_TESTE não tem tempo máximo (e o LED pode ficar ligado horas no
+  // manual), então consulta mesmo com ele aceso.
+  if (bombaLigada && !MODO_TESTE) return;
 
   ultimaConsultaClima = millis();
 
