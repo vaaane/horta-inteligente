@@ -37,6 +37,10 @@ onValue(ref(db, "horta/estado"), (snap) => {
     return;
   }
 
+  // Chegou o primeiro dado: troca o "Aguardando o ESP32…" pelos valores
+  document.querySelectorAll("[data-espera]").forEach((el) => { el.hidden = true; });
+  document.querySelectorAll("[data-com-dados]").forEach((el) => { el.hidden = false; });
+
   elUmidade.textContent = estado.umidade;
   elBarra.style.width = estado.umidade + "%";
 

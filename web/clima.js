@@ -12,6 +12,14 @@ const LIMITE_CHUVA_ALTA = 60;                    // % de chance de chuva
 const numero = (valor, casas) =>
   Number(valor).toLocaleString("pt-BR", { maximumFractionDigits: casas });
 
+// Escreve o valor grande e a unidade menor (como no cartão de umidade)
+function mostrarValor(elemento, valor, unidade) {
+  elemento.textContent = valor;
+  const pequena = document.createElement("small");
+  pequena.textContent = unidade;
+  elemento.append(pequena);
+}
+
 export function iniciarClima(db, raiz, opcoes = {}) {
   const textoSemDados = opcoes.textoSemDados || "Aguardando dados do ESP32…";
   const mostrarFaixaChuva = opcoes.mostrarFaixaChuva === true;
@@ -24,7 +32,7 @@ export function iniciarClima(db, raiz, opcoes = {}) {
       <dl class="clima-valores">
         <div><dt>Temperatura</dt><dd data-clima="temp">--</dd></div>
         <div><dt>Umidade do ar</dt><dd data-clima="umidade">--</dd></div>
-        <div><dt>Chuva nas próximas 6 h</dt><dd data-clima="chuva">--</dd></div>
+        <div><dt>Chuva (6 h)</dt><dd data-clima="chuva">--</dd></div>
         <div><dt>ET₀ hoje</dt><dd data-clima="et0">--</dd></div>
       </dl>
       <p data-clima="explica" class="clima-explica"></p>
@@ -56,10 +64,10 @@ export function iniciarClima(db, raiz, opcoes = {}) {
       return;
     }
 
-    $("temp").textContent = `${numero(c.temperatura, 1)} °C`;
-    $("umidade").textContent = `${c.umidadeAr} %`;
-    $("chuva").textContent = `${c.chanceChuva6h} %`;
-    $("et0").textContent = `${numero(c.et0, 1)} mm`;
+    mostrarValor($("temp"), numero(c.temperatura, 1), "°C");
+    mostrarValor($("umidade"), c.umidadeAr, "%");
+    mostrarValor($("chuva"), c.chanceChuva6h, "%");
+    mostrarValor($("et0"), numero(c.et0, 1), "mm");
     $("explica").textContent =
       `A planta de referência perde cerca de ${numero(c.et0, 1)} litros de água por m² hoje.`;
 

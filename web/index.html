@@ -25,14 +25,18 @@
     <div class="cartoes">
       <section class="cartao">
         <h2>Umidade do solo</h2>
-        <p class="numero"><span id="umidade">--</span><small>%</small></p>
-        <div class="trilho"><div id="barra" class="barra"></div></div>
-        <div class="escala"><span>Seco</span><span>Molhado</span></div>
+        <p class="espera-esp32" data-espera>Aguardando o ESP32…</p>
+        <div data-com-dados hidden>
+          <p class="numero"><span id="umidade">--</span><small>%</small></p>
+          <div class="trilho"><div id="barra" class="barra"></div></div>
+          <div class="escala"><span>Seco</span><span>Molhado</span></div>
+        </div>
       </section>
 
       <section class="cartao">
         <h2>Bomba d'água</h2>
-        <p id="bomba" class="bomba">--</p>
+        <p class="espera-esp32" data-espera>Aguardando o ESP32…</p>
+        <p id="bomba" class="bomba" data-com-dados hidden>--</p>
       </section>
 
       <section id="clima" class="cartao clima">
