@@ -118,6 +118,11 @@ const unsigned long VALIDADE_CLIMA = 90UL * 60 * 1000; // previsão mais velha q
 // (O mais prático é o cartão "Modo demonstração" do site, que tem prioridade.)
 const int SIMULAR_CHANCE_CHUVA = -1;
 
+// Vazão estimada da bomba, em litros por minuto.
+// Para medir: ligue a bomba 1 minuto dentro de uma garrafa/balde graduado.
+// (Sem sensor de fluxo, os litros de /horta/regas são tempo ligado × vazão.)
+const float VAZAO_L_MIN = 1.5;
+
 // Simulação de chuva feita pelo site: fora do MODO_TESTE, desliga sozinha
 // depois de 15 min (para a horta não ficar sem regar por esquecimento).
 const unsigned long TEMPO_MAX_SIMULACAO = 15UL * 60 * 1000;
@@ -248,6 +253,25 @@ String pendenteMotivo = "";
 int pendenteUmidade = 0;
 int pendenteChance = -1;   // -1 = não tinha previsão válida
 
+// Regas para o histórico /horta/regas (água usada, estimativa).
+// Fila de até 5 regas ainda não enviadas (ex.: estava sem Wi-Fi); se
+// encher, a mais antiga sai.
+struct Rega {
+  int64_t fimMs;           // hora do Firebase em que a rega terminou (0 = não sabia)
+  unsigned long segundos;  // quanto tempo a bomba ficou ligada
+  String motivo;           // código da decisão que ligou a bomba
+};
+const int TAMANHO_FILA_REGAS = 5;
+Rega filaRegas[TAMANHO_FILA_REGAS];
+int regasNaFila = 0;
+String motivoRegaAtual = "";          // por que a bomba ligou desta vez
+unsigned long ultimaTentativaRegas = 0;
+
+// Relógio do Firebase: cada envio do estado devolve o "ts" que o servidor
+// gravou. Guardamos esse horário e o millis() da hora em que chegou.
+int64_t horaServidorMs = 0;           // 0 = ainda não sabe
+unsigned long horaServidorEmMillis = 0;
+
 
 // =====================================================================
 //  LEDS DE STATUS — mostram o estado do sistema sem Serial Monitor
@@ -364,11 +388,40 @@ void diagnosticarLeds(unsigned long duracaoVolta) {
 //  BOMBA
 // =====================================================================
 
+// Hora atual no relógio do Firebase (0 se ainda não sabe)
+int64_t agoraServidor() {
+  if (horaServidorMs == 0) return 0;
+  return horaServidorMs + (int64_t)(millis() - horaServidorEmMillis);
+}
+
+// A bomba desligou: guarda a rega na fila para /horta/regas
+void registrarRega(unsigned long duracaoMs) {
+  if (duracaoMs < 1000) return;  // menos de 1 s: ruído do potenciômetro na divisa
+
+  if (regasNaFila == TAMANHO_FILA_REGAS) {
+    // Fila cheia (muito tempo sem Wi-Fi): descarta a mais antiga
+    for (int i = 1; i < TAMANHO_FILA_REGAS; i++) filaRegas[i - 1] = filaRegas[i];
+    regasNaFila--;
+  }
+  Rega& rega = filaRegas[regasNaFila++];
+  rega.fimMs = agoraServidor();
+  rega.segundos = (duracaoMs + 500) / 1000;  // arredonda
+  rega.motivo = motivoRegaAtual;
+
+  Serial.printf("[Água] Rega de %lu s ≈ %.2f L (motivo: %s)\n",
+                rega.segundos, rega.segundos / 60.0 * VAZAO_L_MIN, rega.motivo.c_str());
+}
+
 void acionarBomba(bool ligar, const char* motivo) {
   if (ligar == bombaLigada) return;  // já está como queremos
 
   bombaLigada = ligar;
-  if (ligar) bombaLigadaDesde = millis();
+  if (ligar) {
+    bombaLigadaDesde = millis();
+    motivoRegaAtual = motivo;  // vai junto com a rega em /horta/regas
+  } else {
+    registrarRega(millis() - bombaLigadaDesde);
+  }
 
   // Descobre se o pino precisa ir para HIGH ou LOW
   int nivel;
@@ -771,6 +824,12 @@ void enviarEstado(bool avisar) {
   if (codigo == 401) idToken = "";  // login recusado: faz de novo no próximo envio
   erroEscritaFirebase = (codigo != 200);  // LED do Firebase pisca rápido se foi recusado
   if (codigo == 200) {
+    // A resposta traz o "ts" que o Firebase gravou: acerta o relógio do servidor
+    JsonDocument gravado;
+    if (!deserializeJson(gravado, resposta) && gravado["ts"].is<int64_t>()) {
+      horaServidorMs = gravado["ts"].as<int64_t>();
+      horaServidorEmMillis = millis();
+    }
     bombaEnviada = bombaLigada;     // agora o painel sabe
     estadoUrgente = false;
     decisaoEnviada = decisaoAtual;
@@ -833,6 +892,42 @@ void enviarLeitura() {
   int codigo = requisicaoBanco("POST", urlBanco("/horta/leituras"), corpoLeitura, resposta);
   Serial.printf("[Firebase] Leitura salva no histórico (código %d)\n", codigo);
   if (codigo != 200) erroEscritaFirebase = true;
+}
+
+// Envia a rega mais antiga da fila para /horta/regas (uma por vez, a cada
+// 3 s no máximo, para não travar o loop). Se falhar, fica na fila.
+void enviarRegas() {
+  if (regasNaFila == 0) return;
+  if (millis() - ultimaTentativaRegas < 3000) return;
+  ultimaTentativaRegas = millis();
+  if (!prontoParaFirebase()) return;
+
+  Rega& rega = filaRegas[0];
+  JsonDocument doc;
+  if (rega.fimMs > 0) {
+    // Horário calculado pelo ESP32 a partir do relógio do Firebase
+    doc["fim"] = rega.fimMs;
+    doc["inicio"] = rega.fimMs - (int64_t)rega.segundos * 1000;
+  } else {
+    // Ainda não sabia a hora do servidor: usa a hora do envio
+    doc["fim"][".sv"] = "timestamp";
+  }
+  doc["segundos"] = rega.segundos;
+  doc["litros"] = serialized(String(rega.segundos / 60.0 * VAZAO_L_MIN, 2));
+  doc["motivo"] = rega.motivo;
+  String corpo;
+  serializeJson(doc, corpo);
+
+  String resposta;
+  int codigo = requisicaoBanco("POST", urlBanco("/horta/regas"), corpo, resposta);
+  Serial.printf("[Água] Rega salva no histórico (código %d)\n", codigo);
+  if (codigo != 200) {
+    erroEscritaFirebase = true;
+    return;
+  }
+  // Tira da fila
+  for (int i = 1; i < regasNaFila; i++) filaRegas[i - 1] = filaRegas[i];
+  regasNaFila--;
 }
 
 // Grava "auto" em /horta/comandos (o site mostra o modo automático de novo).
@@ -1539,6 +1634,9 @@ void loop() {
     ultimoHistorico = millis();
     enviarLeitura();
   }
+
+  // Regas terminadas (água usada) que ainda não foram para o Firebase
+  enviarRegas();
 
   atualizarClima();
 
