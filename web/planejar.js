@@ -610,6 +610,15 @@ function mostrarStatusDoMapa() {
   }
 }
 
+// Cor de um quadradinho: a do mapa de sol, ou (com "Mostrar só as áreas boas
+// para…") verde onde é bom para a planta escolhida e cinza onde não é
+function corDaCelula(horas) {
+  const cultura = plantas.filtroCultura();
+  if (!cultura) return CORES_SOL[classificar(horas)];
+  const { minimo, maximo } = NECESSIDADE[cultura.sol];
+  return horas >= minimo && (maximo === null || horas <= maximo) ? "#1b8a3a" : "#8d8d8d";
+}
+
 // Camada do mapa: pinta cada quadradinho com a cor da classificação
 adicionarCamada((ctx2, { paraPxX: px, paraPxY: py, escala: esc }) => {
   if (!mapa) return;
@@ -619,7 +628,7 @@ adicionarCamada((ctx2, { paraPxX: px, paraPxY: py, escala: esc }) => {
     for (let col = 0; col < mapa.colunas; col++) {
       const i = lin * mapa.colunas + col;
       if (mapa.ocupado[i]) continue;
-      ctx2.fillStyle = CORES_SOL[classificar(mapa.horas[i])];
+      ctx2.fillStyle = corDaCelula(mapa.horas[i]);
       const x0 = col * mapa.passo;
       const y0 = lin * mapa.passo;
       const x1 = Math.min(x0 + mapa.passo, terreno.largura);
@@ -788,6 +797,11 @@ const plantas = iniciarPlantas({
   lista: $("sugestoes"),
   vazio: $("sugestoes-vazio"),
   avisos: $("avisos-plantas"),
+  resumo: $("resumo-plantas"),
+  botaoSugerir: $("sugerir-de-novo"),
+  botaoVoltar: $("voltar-sugestao"),
+  filtro: $("filtro-planta"),
+  filtroNota: $("filtro-nota"),
   aoMudar: (opcoes) => {
     desenhar();
     if (opcoes.salvar) salvarCanteiros();
@@ -928,7 +942,7 @@ modoMapa.adicionarCamada((ctx2, { terreno: noMapa, pixelDaForma }) => {
   ctx2.globalAlpha = opacidadeMapa;
   for (let i = 0; i < mapa.horas.length; i++) {
     if (mapa.ocupado[i]) continue;
-    ctx2.fillStyle = ctx2.strokeStyle = CORES_SOL[classificar(mapa.horas[i])];
+    ctx2.fillStyle = ctx2.strokeStyle = corDaCelula(mapa.horas[i]);
     pintar(i);
   }
   ctx2.restore();

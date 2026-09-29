@@ -938,3 +938,7 @@ main {
 .planejar-avisos li { padding: 8px 10px; border-radius: 10px; line-height: 1.4; font-size: 0.95rem; }
 .planejar-aviso-sobreposicao { background: #ffebee; color: #b71c1c; border: 2px solid #e53935; font-weight: 700; }
 .planejar-aviso-rega { background: #fff8e1; color: #6b4e00; border: 1px solid #f9d77e; }
+.planejar-resumo { margin: 8px 0; font-size: 1.1rem; font-weight: 700; }
+.planejar-filtro { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; font-weight: 600; }
+.planejar-filtro select { min-height: 44px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
+.planejar-botao:disabled { opacity: 0.45; cursor: not-allowed; }

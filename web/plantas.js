@@ -7,7 +7,7 @@
 // A cor diz se o lugar é bom para ela, pelas horas de sol (culturas.js):
 // verde ✓ Recomendado, amarelo ! Aceitável, vermelho ✕ Não recomendado.
 import {
-  CULTURAS, NIVEIS, avaliarRegiao, textoAvaliacao, tamanhoDoCanteiro, encaixar, validarCanteiro,
+  CULTURAS, NECESSIDADE, NIVEIS, avaliarRegiao, textoAvaliacao, tamanhoDoCanteiro, encaixar, validarCanteiro,
   melhorPosicao, sugerirCanteiros, descreverLugar
 } from "./culturas.js";
 
@@ -16,6 +16,10 @@ const numero = (v, casas = 1) => Number(v).toLocaleString("pt-BR", { maximumFrac
 const MOTIVOS = { fora: "Aqui não dá: fora do terreno", obstaculo: "Aqui não dá: obstáculo" };
 
 const VIZINHAS_M = 0.5;  // canteiros a menos de 0,5 m um do outro são vizinhos
+const LADO_MINIMO_PX = 40;  // menor que isso na tela: o nome sai para fora, com uma linha
+
+// Duas caixas (x, y, w, h) se encostam?
+const baterem = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 // Os dois canteiros se sobrepõem (por dentro, não só encostando)?
 function sobrepoe(a, b) {
@@ -33,7 +37,8 @@ function distancia(a, b) {
 // (70–90% e 50–70% se tocam em 70) também não dá uma faixa boa para as duas.
 const regaIncompativel = (u1, u2) => u1[1] <= u2[0] || u2[1] <= u1[0];
 
-export function iniciarPlantas({ lista, vazio, avisos, aoMudar }) {
+export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, botaoVoltar, filtro, filtroNota, aoMudar }) {
+  let filtroId = "";        // "Mostrar só as áreas boas para…" (id da planta, ou "")
   let mapa = null;          // horas de sol (sol.js)
   let terreno = null;       // terreno do cálculo
   let escolhidas = {};      // { tomate: 0.5 } (área em m²)
@@ -134,6 +139,7 @@ export function iniciarPlantas({ lista, vazio, avisos, aoMudar }) {
     balaoDepois = null;
     if (!mapa || !terreno) return;
     const { sobrepostas } = convivencia();
+    const nomes = [];
     for (const id of Object.keys(escolhidas)) {
       const emArraste = arraste && arraste.id === id;
       const r = emArraste ? arraste.candidato : posicoes[id];
@@ -159,10 +165,16 @@ export function iniciarPlantas({ lista, vazio, avisos, aoMudar }) {
       ctx.stroke();
       ctx.restore();
 
-      // Nome com o ícone (✓ ! ✕): a avaliação nunca depende só da cor
+      // Nome com o ícone (✓ ! ✕): a avaliação nunca depende só da cor.
+      // Os nomes são desenhados depois de todas as regiões (para desviarem uns dos outros).
       const meio = pt(r.x + r.w / 2, r.y + r.h / 2);
       const texto = invalido ? `${cultura.nome} · ${MOTIVOS[arraste.motivo]}` : `${nivel.icone} ${cultura.nome}`;
-      caixasNomes.push({ id, ...etiqueta(ctx, texto, meio.x, meio.y, cor) });
+      const lado = Math.min(Math.hypot(cantos[1].x - cantos[0].x, cantos[1].y - cantos[0].y),
+        Math.hypot(cantos[2].x - cantos[1].x, cantos[2].y - cantos[1].y));
+      const xs = cantos.map((p) => p.x);
+      const ys = cantos.map((p) => p.y);
+      nomes.push({ id, texto, cor, meio, lado,
+        caixa: { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) } });
 
       // Balão com a avaliação: durante o arraste e na planta tocada
       if (emArraste || id === selecionada) {
@@ -190,7 +202,51 @@ export function iniciarPlantas({ lista, vazio, avisos, aoMudar }) {
         ctx.fillText("↻", botaoGirar.x, botaoGirar.y + 1);
       }
     }
+    espalharNomes(ctx, nomes);
     if (balaoDepois) desenharBalao(ctx, balaoDepois);
+  }
+
+  // Põe cada nome no meio da região ou, se ela for pequena na tela (ou o
+  // lugar já estiver ocupado por outro nome), do lado de fora com uma linha.
+  // Testa posições em volta e fica com a primeira livre.
+  function espalharNomes(ctx, nomes) {
+    const larguraTela = ctx.canvas.clientWidth || 2000;
+    const alturaTela = ctx.canvas.clientHeight || 2000;
+    ctx.font = "bold 13px system-ui, sans-serif";
+    const ocupadas = [];
+    for (const n of nomes) {
+      const w = ctx.measureText(n.texto).width + 12;
+      const h = 22;
+      const { x, y, w: cw, h: ch } = n.caixa;
+      const caixaEm = (cx, cy) => ({ x: cx - w / 2, y: cy - h / 2, w, h });
+      const candidatos = [];
+      if (n.lado >= LADO_MINIMO_PX) candidatos.push([n.meio.x, n.meio.y, false]);
+      for (const d of [10, 34, 58]) {
+        candidatos.push(
+          [x + cw / 2, y - h / 2 - d, true], [x + cw / 2, y + ch + h / 2 + d, true],
+          [x + cw + w / 2 + d, y + ch / 2, true], [x - w / 2 - d, y + ch / 2, true],
+          [x + cw + w / 2 + d, y - h / 2 - d, true], [x - w / 2 - d, y - h / 2 - d, true],
+          [x + cw + w / 2 + d, y + ch + h / 2 + d, true], [x - w / 2 - d, y + ch + h / 2 + d, true]
+        );
+      }
+      const cabe = (c) => c.x >= 2 && c.y >= 2 && c.x + c.w <= larguraTela - 2 && c.y + c.h <= alturaTela - 2;
+      let escolhido = candidatos.find(([cx, cy]) => {
+        const c = caixaEm(cx, cy);
+        return cabe(c) && !ocupadas.some((o) => baterem(c, o));
+      }) || candidatos[0];
+      const caixa = caixaEm(escolhido[0], escolhido[1]);
+      if (escolhido[2]) {
+        // Linha fina ligando o nome à região
+        ctx.beginPath();
+        ctx.moveTo(n.meio.x, n.meio.y);
+        ctx.lineTo(escolhido[0], escolhido[1]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = n.cor;
+        ctx.stroke();
+      }
+      ocupadas.push(caixa);
+      caixasNomes.push({ id: n.id, ...etiqueta(ctx, n.texto, escolhido[0], escolhido[1], n.cor) });
+    }
   }
 
   // Balão de texto colado à região (em cima; se não couber, embaixo)
@@ -323,8 +379,61 @@ export function iniciarPlantas({ lista, vazio, avisos, aoMudar }) {
     avisos.hidden = mensagens.length === 0;
   }
 
+  // "3 plantas recomendadas, 1 aceitável, 1 não recomendada."
+  function mostrarResumo(ids) {
+    const conta = { recomendado: 0, aceitavel: 0, nao: 0 };
+    for (const id of ids) if (mapa && posicoes[id]) conta[avaliar(id, posicoes[id]).nivel]++;
+    const partes = [];
+    const total = conta.recomendado + conta.aceitavel + conta.nao;
+    if (conta.recomendado) partes.push(`${conta.recomendado} ${conta.recomendado > 1 ? "recomendadas" : "recomendada"}`);
+    if (conta.aceitavel) partes.push(`${conta.aceitavel} ${conta.aceitavel > 1 ? "aceitáveis" : "aceitável"}`);
+    if (conta.nao) partes.push(`${conta.nao} ${conta.nao > 1 ? "não recomendadas" : "não recomendada"}`);
+    // "planta"/"plantas" vai junto do primeiro número
+    if (partes.length) partes[0] = partes[0].replace(/^(\d+) /, (_, n) => `${n} ${Number(n) > 1 ? "plantas" : "planta"} `);
+    resumo.textContent = partes.length ? `${partes.join(", ")}.` : "";
+    resumo.hidden = total === 0;
+  }
+
+  // Botões e o filtro "Mostrar só as áreas boas para…"
+  function mostrarControles(ids) {
+    const sugestao = selecionada ? sugestoes[selecionada] : null;
+    const atual = selecionada ? posicoes[selecionada] : null;
+    const igual = sugestao && atual && sugestao.x === atual.x && sugestao.y === atual.y && sugestao.w === atual.w;
+    botaoVoltar.disabled = !sugestao || igual;
+    botaoVoltar.textContent = selecionada ? `↩ Voltar à sugestão (${culturaDe(selecionada).nome})` : "↩ Voltar à sugestão";
+    botaoSugerir.disabled = ids.length === 0 || !mapa;
+    if (filtroId && !ids.includes(filtroId)) filtroId = "";
+    filtro.replaceChildren(new Option("(mapa de sol normal)", ""),
+      ...ids.map((id) => new Option(culturaDe(id).nome, id, false, id === filtroId)));
+    filtro.value = filtroId;
+    const c = filtroId ? culturaDe(filtroId) : null;
+    filtroNota.hidden = !c;
+    if (c) filtroNota.textContent = `No mapa: verde = bom para ${c.nome.toLowerCase()} (${NECESSIDADE[c.sol].texto}); cinza = não recomendado.`;
+  }
+
+  botaoSugerir.addEventListener("click", () => {
+    for (const id of Object.keys(escolhidas)) if (sugestoes[id]) posicoes[id] = { ...sugestoes[id] };
+    selecionada = null;
+    mostrarLista();
+    aoMudar({ salvar: true });
+  });
+  botaoVoltar.addEventListener("click", () => {
+    if (!selecionada || !sugestoes[selecionada]) return;
+    posicoes[selecionada] = { ...sugestoes[selecionada] };
+    mostrarLista();
+    aoMudar({ salvar: true });
+  });
+  filtro.addEventListener("change", () => {
+    filtroId = filtro.value;
+    mostrarControles(CULTURAS.filter((c) => c.id in escolhidas).map((c) => c.id));
+    aoMudar({});
+  });
+
   function mostrarLista() {
     mostrarAvisos();
+    const idsEscolhidos = CULTURAS.filter((c) => c.id in escolhidas).map((c) => c.id);
+    mostrarResumo(idsEscolhidos);
+    mostrarControles(idsEscolhidos);
     const ids = CULTURAS.filter((c) => c.id in escolhidas).map((c) => c.id);
     vazio.hidden = ids.length > 0;
     lista.replaceChildren(...ids.map((id) => {
@@ -366,6 +475,8 @@ export function iniciarPlantas({ lista, vazio, avisos, aoMudar }) {
     desenhar,
     tocar,
     obterPosicoes: () => posicoes,
+    // Planta do filtro "Mostrar só as áreas boas para…" (ou null)
+    filtroCultura: () => (filtroId ? culturaDe(filtroId) : null),
     definirPosicoes: (novas) => { posicoes = novas && typeof novas === "object" ? { ...novas } : {}; selecionada = null; }
   };
 }

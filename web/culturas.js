@@ -211,17 +211,18 @@ export function textoAvaliacao(cultura, av) {
 // senão, quase quadrado. Deitado (w ≥ h); dá para girar 90°.
 export function tamanhoDoCanteiro(area, passo) {
   const n = Math.max(1, Math.round(area / (passo * passo)));
+  const m = (quadradinhos) => Math.round(quadradinhos * passo * 1000) / 1000;  // sem 1.2000000000000002
   for (let linhas = Math.floor(Math.sqrt(n)); linhas >= 1; linhas--) {
-    if (n % linhas === 0 && n / linhas <= 3 * linhas) return { w: (n / linhas) * passo, h: linhas * passo };
+    if (n % linhas === 0 && n / linhas <= 3 * linhas) return { w: m(n / linhas), h: m(linhas) };
   }
   const colunas = Math.ceil(Math.sqrt(n));
   const linhas = Math.ceil(n / colunas);
-  return { w: colunas * passo, h: linhas * passo };
+  return { w: m(colunas), h: m(linhas) };
 }
 
 // Encaixa na grade (arredonda para o quadradinho mais perto)
 export function encaixar(r, passo) {
-  const q = (v) => Math.round(v / passo) * passo;
+  const q = (v) => Math.round(Math.round(v / passo) * passo * 1000) / 1000;
   return { x: q(r.x), y: q(r.y), w: r.w, h: r.h };
 }
 

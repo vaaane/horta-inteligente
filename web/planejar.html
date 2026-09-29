@@ -158,6 +158,17 @@
           escolhem o lugar primeiro. O mapa mostra onde plantar cada uma.</p>
         <div id="escolha-plantas" class="planejar-escolha"></div>
         <h3 class="decisao-subtitulo">Onde plantar</h3>
+        <p class="planejar-nota">Arraste cada planta no mapa para mudar o lugar (a cor mostra se o lugar é bom);
+          toque numa planta para ver o motivo e o botão ↻, que gira o canteiro.</p>
+        <p id="resumo-plantas" class="planejar-resumo" hidden></p>
+        <div class="planejar-botoes">
+          <button type="button" id="sugerir-de-novo" class="planejar-botao">✨ Sugerir de novo</button>
+          <button type="button" id="voltar-sugestao" class="planejar-botao" disabled>↩ Voltar à sugestão</button>
+        </div>
+        <label class="planejar-filtro">Mostrar só as áreas boas para
+          <select id="filtro-planta"><option value="">(mapa de sol normal)</option></select>
+        </label>
+        <p id="filtro-nota" class="planejar-nota" hidden></p>
         <p id="sugestoes-vazio" class="planejar-nota">Marque pelo menos uma planta.</p>
         <ul id="sugestoes" class="planejar-sugestoes"></ul>
         <ul id="avisos-plantas" class="planejar-avisos" aria-live="polite" hidden></ul>
