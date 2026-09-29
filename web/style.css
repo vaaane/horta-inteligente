@@ -182,7 +182,7 @@ main {
 .clima-rodape { margin-top: 8px; font-size: 0.85rem; }
 .clima-aviso { margin: 8px 0 0; color: var(--aviso-texto); font-size: 0.85rem; }
 
-/* Faixa de chuva: só informativa (a rega ainda não é adiada pela previsão) */
+/* Faixa de chuva: só informativa (a decisão da rega fica no cartão "Por que regou") */
 .clima-faixa-chuva {
   margin: 4px 0 8px;
   padding: 10px 14px;
@@ -215,6 +215,46 @@ main {
 .qr-aviso { margin: 8px 0 0; color: var(--texto-suave); font-size: 0.9rem; }
 /* Na página Sobre, aparece sempre */
 .cartao-qr-sobre { text-align: center; max-width: 320px; margin: 0 auto 40px; }
+
+/* Cartão "Por que regou (ou não)" (decisao.js) */
+.decisao-atual {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 8px 0 20px;
+}
+.decisao-icone { font-size: clamp(3rem, 10vw, 4.5rem); line-height: 1; }
+.decisao-motivo {
+  margin: 0;
+  font-size: clamp(1.3rem, 4vw, 2rem);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.decisao-subtitulo {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--texto-suave);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.decisao-vazio { margin: 0; color: var(--texto-suave); }
+.decisao-lista { list-style: none; margin: 0; padding: 0; }
+.decisao-lista li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--borda);
+}
+.decisao-hora {
+  flex: none;
+  min-width: 6.5em;
+  color: var(--texto-suave);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.decisao-lista-icone { flex: none; }
 
 .area-grafico {
   position: relative;

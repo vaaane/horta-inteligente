@@ -12,7 +12,7 @@ const grupos = [
     titulo: "Decidir quando e quanto regar",
     itens: [
       { titulo: "Rega pela umidade do solo", frase: "Liga abaixo do limite e desliga no nível ideal; tem modo manual.", status: "funcionando" },
-      { titulo: "Adiar a rega se vai chover", frase: "Usa a previsão do Open-Meteo: com 60% ou mais de chance de chuva, espera.", status: "proxima" },
+      { titulo: "Adiar a rega se vai chover", frase: "Usa a previsão do Open-Meteo: com 60% ou mais de chance de chuva, espera.", status: "funcionando" },
       { titulo: "Confirmar se a chuva caiu", frase: "Sensor de chuva e pluviômetro: se não choveu, rega mesmo assim.", status: "proxima" },
       { titulo: "Horário inteligente", frase: "Evita o sol forte do meio-dia e prioriza manhã cedo e fim de tarde.", status: "proxima" },
       { titulo: "Quanto regar pela ET₀", frase: "Calcula a água a repor pela evapotranspiração do dia.", status: "proxima" },
@@ -35,7 +35,7 @@ const grupos = [
     itens: [
       { titulo: "Painel web ao vivo", frase: "Umidade, bomba e histórico atualizando sozinhos.", status: "funcionando" },
       { titulo: "Consulta do clima", frase: "Chance de chuva e ET₀ exibidas no painel.", status: "funcionando" },
-      { titulo: "Motivo de cada decisão", frase: "\"Não reguei às 17h porque havia 80% de chance de chuva.\"", status: "proxima" },
+      { titulo: "Motivo de cada decisão", frase: "\"Não reguei às 17h porque havia 80% de chance de chuva.\"", status: "funcionando" },
       { titulo: "Alertas no celular", frase: "Avisos pelo Telegram.", status: "proxima" },
       { titulo: "Modo demonstração", frase: "Simular \"70% de chance de chuva\" ao vivo, porque no DF setembro e outubro são muito secos.", status: "proxima" },
       { titulo: "Time-lapse de crescimento", frase: "Fotos com a ESP32-CAM (a avaliar).", status: "proxima" },

@@ -71,7 +71,7 @@ export function iniciarClima(db, raiz, opcoes = {}) {
     $("explica").textContent =
       `A planta de referência perde cerca de ${numero(c.et0, 1)} litros de água por m² hoje.`;
 
-    // Só informativo: o firmware da horta ainda não adia a rega
+    // Faixa só informativa: a decisão da rega aparece no cartão "Por que regou (ou não)"
     $("faixa-chuva").hidden = !(mostrarFaixaChuva && c.chanceChuva6h >= LIMITE_CHUVA_ALTA);
 
     // "Atualizado às HH:MM": usa a hora do Firebase; se não tiver, a da previsão

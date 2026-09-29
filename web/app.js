@@ -5,6 +5,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { iniciarClima } from "./clima.js";
+import { iniciarDecisao } from "./decisao.js";
 import { desenharQR } from "./qr.js";
 
 const app = initializeApp(firebaseConfig);
@@ -73,6 +74,9 @@ iniciarClima(db, document.getElementById("clima"), {
   textoSemDados: "Previsão do tempo indisponível no momento.",
   mostrarFaixaChuva: true
 });
+
+// ---------- Cartão "Por que regou (ou não)" (código em decisao.js) ----------
+iniciarDecisao(db, document.getElementById("decisao"));
 
 // ---------- QR code "Abra no seu celular" (só aparece na tela grande) ----------
 desenharQR(document.getElementById("qr"));

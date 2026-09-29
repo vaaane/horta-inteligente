@@ -18,9 +18,10 @@ O ESP32 mede a umidade do solo, liga a bomba quando a terra está seca e envia o
 | `firebase/` | As regras de segurança do banco de dados |
 
 Arquivos do site (`web/`):
-- `index.html` + `app.js`: o painel ao vivo (umidade, bomba, clima e gráfico).
+- `index.html` + `app.js`: o painel ao vivo (umidade, bomba, clima, motivo da rega e gráfico).
 - `sobre.html` + `sobre.js`: a página "Sobre o projeto" para a feira (funcionalidades, materiais, evolução). Para mudar o status de uma funcionalidade, edite a lista no `sobre.js`.
 - `clima.js`: o cartão "Clima agora", usado no painel e na `teste.html` (o mesmo código nas duas páginas).
+- `decisao.js`: o cartão "Por que regou (ou não)" do painel: motivo da decisão atual do ESP32 e as 5 últimas decisões (`/horta/decisoes`). Fica escondido se o firmware ainda não manda a decisão.
 - `qr.js`: desenha o QR code "Abra no seu celular" (no painel só aparece em telas largas; na `sobre.html`, sempre).
 - `teste.html`: a página do teste acende/apaga.
 
