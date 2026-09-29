@@ -9,8 +9,9 @@
 //   3. Decide se rega: liga a bomba quando a terra está seca, MAS adia a
 //      rega se a chance de chuva nas próximas 6 h for alta (a não ser que
 //      o solo esteja seco demais). Desliga quando a terra está molhada.
-//      Se a chuva ficar provável no meio da rega, para. O site pode
-//      simular a chance de chuva (cartão "Modo demonstração").
+//      Se a chuva ficar provável no meio da rega, para. Também não rega
+//      no sol forte (10h às 16h), a não ser que o solo esteja seco demais.
+//      O site pode simular a chance de chuva e o horário ("Modo demonstração").
 //   4. Cada decisão tem um código e um motivo em português, que aparecem
 //      no Serial Monitor e no painel ("Por que regou (ou não)").
 //   5. Envia o estado para o Firebase na hora em que a bomba, a decisão
@@ -114,6 +115,10 @@ const int LIMITE_CHUVA   = 60;  // chance de chuva (%) a partir da qual a rega �
 const int LIMITE_CRITICO = 20;  // abaixo disso rega mesmo com chuva prevista
 const unsigned long VALIDADE_CLIMA = 90UL * 60 * 1000; // previsão mais velha que isso é ignorada
 
+// Sol forte: boa parte da água evapora antes de chegar à raiz.
+const int HORA_QUENTE_INICIO = 10;  // a partir das 10h00
+const int HORA_QUENTE_FIM    = 16;  // até 15h59
+
 // Só para testar em casa: -1 = usa a previsão real.
 // Coloque, por exemplo, 80 para fingir 80% de chance de chuva.
 // (O mais prático é o cartão "Modo demonstração" do site, que tem prioridade.)
@@ -211,7 +216,14 @@ unsigned long simulacaoDesdeMs = 0;   // millis() de quando a simulação começ
 bool gravarSimulacaoPendente = false; // a simulação venceu e falta gravar -1 no Firebase
 int simulacaoVencida = -1;            // valor que venceu (ignorado até o -1 ser gravado)
 unsigned long ultimaGravacaoSimulacao = 0;
-bool pareiPorChuva = false;           // a rega foi interrompida porque a chuva ficou provável
+String codigoParado = "";             // a rega foi interrompida por esta decisão (chuva ou sol)
+
+// Modo demonstração: hora simulada pelo site (-1 = usar a hora real)
+int simularHoraSite = -1;
+unsigned long simHoraDesdeMs = 0;
+bool gravarSimHoraPendente = false;
+int simHoraVencida = -1;
+unsigned long ultimaGravacaoSimHora = 0;
 bool estadoUrgente = false;           // enviar o estado na próxima volta (ex.: mudou a simulação)
 
 // Login no Firebase
@@ -518,6 +530,28 @@ bool chuvaSimulada() {
   return simularChuvaSite >= 0 || SIMULAR_CHANCE_CHUVA >= 0;
 }
 
+// Hora usada na decisão (0 a 23): a simulada pelo site ou a do relógio da
+// internet. -1 = o NTP ainda não respondeu (aí a regra do horário é ignorada).
+int horaDaDecisao() {
+  if (simularHoraSite >= 0) return simularHoraSite;
+  if (!horaValida()) return -1;
+  time_t agora = time(nullptr);
+  struct tm local;
+  localtime_r(&agora, &local);
+  return local.tm_hour;
+}
+
+// Das 10h00 às 15h59: sol forte
+bool horaQuente(int hora) {
+  return hora >= HORA_QUENTE_INICIO && hora < HORA_QUENTE_FIM;
+}
+
+// "Parei de regar" se a bomba está ligada agora (vai parar) ou se esta mesma
+// decisão já tinha interrompido a rega; senão, "Não reguei"
+const char* textoParei(const char* codigo) {
+  return (bombaLigada || codigoParado == codigo) ? "Parei de regar" : "Não reguei";
+}
+
 // Guarda a decisão. Quando o CÓDIGO muda, avisa no Serial Monitor e
 // coloca a mudança na fila para o histórico (/horta/decisoes).
 // (O motivo muda a cada leitura porque tem a umidade; o código não.)
@@ -555,13 +589,18 @@ void controlarBomba() {
 
   // O que a bomba deveria fazer agora, e por quê?
   int chance = chanceDeChuva();  // -1 = sem previsão válida
-  const char* simulado = chuvaSimulada() ? " (simulado)" : "";
+  const char* chuvaSim = chuvaSimulada() ? " (simulado)" : "";
+  int hora = horaDaDecisao();    // -1 = ainda sem hora certa (ignora a regra do horário)
+  const char* horaSim = simularHoraSite >= 0 ? " (simulado)" : "";
   bool querLigar = false;
   const char* codigo;
   char motivo[200];
 
+  // Precisa de água? Abaixo de LIMITE_LIGAR, ou já regando e abaixo de LIMITE_DESLIGAR
+  bool precisaAgua = umidade < LIMITE_LIGAR || (bombaLigada && umidade < LIMITE_DESLIGAR);
+
   if (emPausa) {
-    // 1) Durante a pausa de segurança a bomba não liga de jeito nenhum
+    // 1) Pausa de segurança (nunca acontece no MODO_TESTE): não liga de jeito nenhum
     codigo = "pausa_seguranca";
     snprintf(motivo, sizeof(motivo), "Pausa de segurança: a bomba ficou %lu s ligada e está descansando %lu min.",
              TEMPO_MAX_BOMBA / 1000, TEMPO_PAUSA_BOMBA / 60000);
@@ -572,58 +611,55 @@ void controlarBomba() {
     codigo = bombaManual ? "manual_ligada" : "manual_desligada";
     snprintf(motivo, sizeof(motivo), "Modo manual: bomba %s pelo painel.", bombaManual ? "ligada" : "desligada");
 
-  } else if (bombaLigada && umidade < LIMITE_DESLIGAR && chance >= LIMITE_CHUVA && umidade >= LIMITE_CRITICO) {
-    // 3a) Estava regando, mas agora a chuva ficou provável (ex.: alguém
-    //     simulou 80% no site): para e deixa a chuva regar.
-    codigo = "adiada_chuva";
-    pareiPorChuva = true;
-    snprintf(motivo, sizeof(motivo), "Parei de regar: %d%% de chance de chuva nas próximas 6 h.%s", chance, simulado);
-
-  } else if (bombaLigada && umidade < LIMITE_DESLIGAR) {
-    // 3) Já está regando: continua até passar de LIMITE_DESLIGAR.
-    querLigar = true;
-    // Se ligou por "solo crítico" ou "sem previsão", mantém esse motivo até
-    // terminar a rega. Senão ele seria trocado por "regando" 2 s depois e
-    // o motivo mais importante sumiria do painel e do histórico.
-    if (decisaoAtual == "solo_critico" || decisaoAtual == "sem_previsao") {
-      acionarBomba(true, decisaoAtual.c_str());
-      return;
-    }
-    codigo = "regando";
-    snprintf(motivo, sizeof(motivo), "Regando: o solo está com %d%%, vai até %d%%.", umidade, LIMITE_DESLIGAR);
-
-  } else if (umidade < LIMITE_LIGAR) {
-    // 4) Solo seco: olha a previsão antes de gastar água
-    if (chance < 0) {
-      // Sem previsão: rega, que é o comportamento seguro
-      querLigar = true;
-      codigo = "sem_previsao";
-      snprintf(motivo, sizeof(motivo), "Sem previsão do tempo: reguei só pelo sensor (solo com %d%%).", umidade);
-    } else if (chance >= LIMITE_CHUVA && umidade >= LIMITE_CRITICO) {
-      // Vai chover: deixa a chuva regar
-      // (se a rega foi interrompida pela chuva, continua dizendo "Parei de regar")
-      codigo = "adiada_chuva";
-      snprintf(motivo, sizeof(motivo), "%s: %d%% de chance de chuva nas próximas 6 h.%s",
-               pareiPorChuva ? "Parei de regar" : "Não reguei", chance, simulado);
-    } else if (chance >= LIMITE_CHUVA) {
-      // Vai chover, mas o solo está seco demais para esperar
-      querLigar = true;
-      codigo = "solo_critico";
-      snprintf(motivo, sizeof(motivo), "Reguei mesmo com %d%% de chance de chuva: o solo chegou a %d%%.%s", chance, umidade, simulado);
-    } else {
-      // Chance de chuva baixa: rega
-      querLigar = true;
-      codigo = "regando";
-      snprintf(motivo, sizeof(motivo), "Regando: o solo chegou a %d%% e a chance de chuva é de %d%%.%s", umidade, chance, simulado);
-    }
-
-  } else {
-    // 5) Solo úmido: nada a fazer
+  } else if (!precisaAgua) {
+    // 3) Solo úmido o bastante: não rega (ou terminou de regar)
     codigo = "solo_ok";
     snprintf(motivo, sizeof(motivo), "Solo úmido o bastante (%d%%): não precisa regar.", umidade);
+
+  } else if (umidade < LIMITE_CRITICO) {
+    // 4a) Seco demais: rega mesmo com chuva prevista ou sol forte
+    querLigar = true;
+    codigo = "solo_critico";
+    snprintf(motivo, sizeof(motivo), "Reguei mesmo assim: o solo chegou a %d%%, abaixo do mínimo de %d%%.",
+             umidade, LIMITE_CRITICO);
+
+  } else if (chance >= LIMITE_CHUVA) {
+    // 4b) Vai chover: não liga (ou para) e deixa a chuva regar
+    codigo = "adiada_chuva";
+    snprintf(motivo, sizeof(motivo), "%s: %d%% de chance de chuva nas próximas 6 h.%s",
+             textoParei(codigo), chance, chuvaSim);
+
+  } else if (hora >= 0 && horaQuente(hora)) {
+    // 4c) Sol forte: boa parte da água evaporaria. Espera o fim do horário quente.
+    codigo = "horario_quente";
+    snprintf(motivo, sizeof(motivo), "%s: são %dh, sol forte. A água evaporaria. Volto a regar a partir das %dh.%s",
+             textoParei(codigo), hora, HORA_QUENTE_FIM, horaSim);
+
+  } else if (chance < 0) {
+    // 4d) Sem previsão: rega só pelo sensor, que é o comportamento seguro
+    querLigar = true;
+    codigo = "sem_previsao";
+    snprintf(motivo, sizeof(motivo), "Sem previsão do tempo: reguei só pelo sensor (solo com %d%%).", umidade);
+
+  } else {
+    // 4e) Tudo certo para regar
+    querLigar = true;
+    codigo = "regando";
+    if (bombaLigada) {
+      snprintf(motivo, sizeof(motivo), "Regando: o solo está com %d%%, vai até %d%%.", umidade, LIMITE_DESLIGAR);
+    } else {
+      snprintf(motivo, sizeof(motivo), "Regando: o solo chegou a %d%% e a chance de chuva é de %d%%.%s",
+               umidade, chance, chuvaSim);
+    }
   }
 
-  if (strcmp(codigo, "adiada_chuva") != 0) pareiPorChuva = false;
+  // Lembra se a rega foi INTERROMPIDA (chuva ou sol) para o motivo dizer
+  // "Parei de regar" enquanto essa decisão durar
+  if (bombaLigada && !querLigar && (strcmp(codigo, "adiada_chuva") == 0 || strcmp(codigo, "horario_quente") == 0)) {
+    codigoParado = codigo;
+  }
+  if (codigoParado != codigo) codigoParado = "";
+
   registrarDecisao(codigo, motivo, chance);
   acionarBomba(querLigar, codigo);
 }
@@ -845,6 +881,7 @@ void enviarEstado(bool avisar) {
   estado["umidadeBruta"] = umidadeBruta;
   estado["bomba"] = bombaLigada;
   estado["modoTeste"] = MODO_TESTE;  // o site esconde a contagem do manual e mostra o selo
+  if (horaDaDecisao() >= 0) estado["hora"] = horaDaDecisao();  // "Hora da horta" no painel
   // Com a bomba ligada: quando ela ligou, no relógio do Firebase. O cartão
   // "Água" soma essa rega ao vivo, mesmo para quem abre o painel no meio dela.
   // (Com a bomba desligada o campo não vai, e o PUT apaga o anterior.)
@@ -1120,9 +1157,43 @@ bool aplicarSimulacao(int valor) {
   return true;
 }
 
-// Fora do MODO_TESTE, a simulação do site desliga sozinha em 15 min:
-// o ESP32 volta à previsão real e grava simularChuva: -1 no Firebase.
+// Modo demonstração: aplica o "simularHora" do site (0 a 23, -1 = hora real).
+// Devolve true se mudou (aí quem chamou decide de novo na hora).
+bool aplicarSimulacaoHora(int valor) {
+  if (valor < -1 || valor > 23) valor = -1;
+  if (gravarSimHoraPendente) {
+    if (valor == simHoraVencida) return false;
+    gravarSimHoraPendente = false;
+  }
+  if (valor == simularHoraSite) return false;
+
+  simularHoraSite = valor;
+  simHoraDesdeMs = millis();
+  estadoUrgente = true;
+  if (valor >= 0) Serial.printf("[Demo] Simulação de horário: %dh\n", valor);
+  else            Serial.println("[Demo] Simulação de horário desligada: usando a hora real");
+  return true;
+}
+
+// Fora do MODO_TESTE, as simulações do site desligam sozinhas em 15 min:
+// o ESP32 volta ao valor real e grava -1 no Firebase.
 void cuidarDaSimulacao() {
+  if (!MODO_TESTE && simularHoraSite >= 0 && millis() - simHoraDesdeMs >= TEMPO_MAX_SIMULACAO) {
+    Serial.println("[Demo] A simulação de horário passou de 15 min: voltando para a hora real.");
+    simHoraVencida = simularHoraSite;
+    aplicarSimulacaoHora(-1);
+    gravarSimHoraPendente = true;
+    controlarBomba();
+  }
+  if (gravarSimHoraPendente && millis() - ultimaGravacaoSimHora >= 3000) {
+    ultimaGravacaoSimHora = millis();
+    String resposta;
+    if (prontoParaFirebase() &&
+        requisicaoBanco("PATCH", urlBanco("/horta/comandos"), "{\"simularHora\":-1}", resposta) == 200) {
+      gravarSimHoraPendente = false;
+    }
+  }
+
   if (!MODO_TESTE && simularChuvaSite >= 0 && millis() - simulacaoDesdeMs >= TEMPO_MAX_SIMULACAO) {
     Serial.println("[Demo] A simulação passou de 15 min: voltando para a previsão real.");
     simulacaoVencida = simularChuvaSite;
@@ -1186,7 +1257,8 @@ bool lerComandos() {
                                    comandos["bombaManual"] | false,
                                    comandos["manualDesde"] | 0.0);
   bool mudouSimulacao = aplicarSimulacao(comandos["simularChuva"] | -1);
-  return mudouModo || mudouSimulacao;
+  bool mudouHora = aplicarSimulacaoHora(comandos["simularHora"] | -1);
+  return mudouModo || mudouSimulacao || mudouHora;
 }
 
 // ---------------------------------------------------------------------
@@ -1221,7 +1293,8 @@ String dadoSse = "";
 String cmdModo = "auto";
 bool cmdBomba = false;
 double cmdDesde = 0;
-int cmdSimular = -1;  // modo demonstração (-1 = previsão real)
+int cmdSimular = -1;      // modo demonstração: chuva (-1 = previsão real)
+int cmdSimularHora = -1;  // modo demonstração: horário (-1 = hora real)
 
 void fecharStream(const char* motivo, unsigned long espera, bool contaFalha) {
   if (streamAberto) Serial.printf("[Stream] Fechado: %s. Reconecto em %lu s.\n", motivo, espera / 1000);
@@ -1344,12 +1417,14 @@ void tratarEventoSse(const String& evento, const String& dado) {
       cmdBomba = dados["bombaManual"] | false;
       cmdDesde = dados["manualDesde"] | 0.0;
       cmdSimular = dados["simularChuva"] | -1;
+      cmdSimularHora = dados["simularHora"] | -1;
     } else {
       // patch = só os campos que mudaram
       if (!dados["modo"].isNull()) cmdModo = dados["modo"] | "auto";
       if (!dados["bombaManual"].isNull()) cmdBomba = dados["bombaManual"] | false;
       if (!dados["manualDesde"].isNull()) cmdDesde = dados["manualDesde"] | 0.0;
       if (!dados["simularChuva"].isNull()) cmdSimular = dados["simularChuva"] | -1;
+      if (!dados["simularHora"].isNull()) cmdSimularHora = dados["simularHora"] | -1;
     }
   } else if (caminho == "/modo") {
     cmdModo = dados | "auto";
@@ -1359,6 +1434,8 @@ void tratarEventoSse(const String& evento, const String& dado) {
     cmdDesde = dados | 0.0;
   } else if (caminho == "/simularChuva") {
     cmdSimular = dados | -1;
+  } else if (caminho == "/simularHora") {
+    cmdSimularHora = dados | -1;
   }
 
   falhasStream = 0;  // o streaming está funcionando
@@ -1366,7 +1443,8 @@ void tratarEventoSse(const String& evento, const String& dado) {
                 cmdModo.c_str(), cmdBomba ? "ligada" : "desligada");
   bool mudouModo = aplicarComandos(cmdModo == "manual", cmdBomba, cmdDesde);
   bool mudouSimulacao = aplicarSimulacao(cmdSimular);
-  if (mudouModo || mudouSimulacao) controlarBomba();
+  bool mudouHora = aplicarSimulacaoHora(cmdSimularHora);
+  if (mudouModo || mudouSimulacao || mudouHora) controlarBomba();
 }
 
 // Monta as linhas do SSE, um caractere de cada vez
