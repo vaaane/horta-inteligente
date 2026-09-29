@@ -9,6 +9,8 @@
 //   3. Decide se rega: liga a bomba quando a terra está seca, MAS adia a
 //      rega se a chance de chuva nas próximas 6 h for alta (a não ser que
 //      o solo esteja seco demais). Desliga quando a terra está molhada.
+//      Se a chuva ficar provável no meio da rega, para. O site pode
+//      simular a chance de chuva (cartão "Modo demonstração").
 //   4. Cada decisão tem um código e um motivo em português, que aparecem
 //      no Serial Monitor e no painel ("Por que regou (ou não)").
 //   5. Envia o estado para o Firebase na hora em que a bomba, a decisão
@@ -113,7 +115,12 @@ const unsigned long VALIDADE_CLIMA = 90UL * 60 * 1000; // previsão mais velha q
 
 // Só para testar em casa: -1 = usa a previsão real.
 // Coloque, por exemplo, 80 para fingir 80% de chance de chuva.
+// (O mais prático é o cartão "Modo demonstração" do site, que tem prioridade.)
 const int SIMULAR_CHANCE_CHUVA = -1;
+
+// Simulação de chuva feita pelo site: fora do MODO_TESTE, desliga sozinha
+// depois de 15 min (para a horta não ficar sem regar por esquecimento).
+const unsigned long TEMPO_MAX_SIMULACAO = 15UL * 60 * 1000;
 
 // Segurança: a bomba nunca fica ligada mais que 60 s seguidos.
 // Depois disso ela descansa 5 min (a água precisa de tempo para chegar ao sensor).
@@ -191,6 +198,15 @@ int umidadeEnviada = -100;         // -100 = ainda não enviou
 // O manual venceu e falta gravar "auto" no Firebase
 bool gravarAutoPendente = false;
 unsigned long ultimaGravacaoAuto = 0;
+
+// Modo demonstração: chance de chuva simulada pelo site (-1 = usar a previsão real)
+int simularChuvaSite = -1;
+unsigned long simulacaoDesdeMs = 0;   // millis() de quando a simulação começou/mudou
+bool gravarSimulacaoPendente = false; // a simulação venceu e falta gravar -1 no Firebase
+int simulacaoVencida = -1;            // valor que venceu (ignorado até o -1 ser gravado)
+unsigned long ultimaGravacaoSimulacao = 0;
+bool pareiPorChuva = false;           // a rega foi interrompida porque a chuva ficou provável
+bool estadoUrgente = false;           // enviar o estado na próxima volta (ex.: mudou a simulação)
 
 // Login no Firebase
 String idToken = "";
@@ -397,11 +413,19 @@ void lerSensor() {
 
 // Chance de chuva a usar na decisão, ou -1 se não houver previsão válida
 // (nunca consultou, a consulta falhou ou a previsão tem mais de 90 min).
+// Prioridade: 1) simulação do site, 2) SIMULAR_CHANCE_CHUVA do código,
+// 3) a previsão real do Open-Meteo.
 int chanceDeChuva() {
-  if (SIMULAR_CHANCE_CHUVA >= 0) return SIMULAR_CHANCE_CHUVA;  // modo de teste
+  if (simularChuvaSite >= 0) return simularChuvaSite;           // modo demonstração (site)
+  if (SIMULAR_CHANCE_CHUVA >= 0) return SIMULAR_CHANCE_CHUVA;   // teste pelo código
   if (!clima.valido) return -1;
   if (millis() - clima.atualizadoEmMs > VALIDADE_CLIMA) return -1;
   return clima.chanceChuva6h;
+}
+
+// A chance usada na decisão é de mentira? (aí o motivo termina com "(simulado)")
+bool chuvaSimulada() {
+  return simularChuvaSite >= 0 || SIMULAR_CHANCE_CHUVA >= 0;
 }
 
 // Guarda a decisão. Quando o CÓDIGO muda, avisa no Serial Monitor e
@@ -441,6 +465,7 @@ void controlarBomba() {
 
   // O que a bomba deveria fazer agora, e por quê?
   int chance = chanceDeChuva();  // -1 = sem previsão válida
+  const char* simulado = chuvaSimulada() ? " (simulado)" : "";
   bool querLigar = false;
   const char* codigo;
   char motivo[200];
@@ -456,6 +481,13 @@ void controlarBomba() {
     querLigar = bombaManual;
     codigo = bombaManual ? "manual_ligada" : "manual_desligada";
     snprintf(motivo, sizeof(motivo), "Modo manual: bomba %s pelo painel.", bombaManual ? "ligada" : "desligada");
+
+  } else if (bombaLigada && umidade < LIMITE_DESLIGAR && chance >= LIMITE_CHUVA && umidade >= LIMITE_CRITICO) {
+    // 3a) Estava regando, mas agora a chuva ficou provável (ex.: alguém
+    //     simulou 80% no site): para e deixa a chuva regar.
+    codigo = "adiada_chuva";
+    pareiPorChuva = true;
+    snprintf(motivo, sizeof(motivo), "Parei de regar: %d%% de chance de chuva nas próximas 6 h.%s", chance, simulado);
 
   } else if (bombaLigada && umidade < LIMITE_DESLIGAR) {
     // 3) Já está regando: continua até passar de LIMITE_DESLIGAR.
@@ -479,19 +511,20 @@ void controlarBomba() {
       snprintf(motivo, sizeof(motivo), "Sem previsão do tempo: reguei só pelo sensor (solo com %d%%).", umidade);
     } else if (chance >= LIMITE_CHUVA && umidade >= LIMITE_CRITICO) {
       // Vai chover: deixa a chuva regar
+      // (se a rega foi interrompida pela chuva, continua dizendo "Parei de regar")
       codigo = "adiada_chuva";
-      snprintf(motivo, sizeof(motivo), "Não reguei: %d%% de chance de chuva nas próximas 6 h.%s",
-               chance, SIMULAR_CHANCE_CHUVA >= 0 ? " (simulado)" : "");
+      snprintf(motivo, sizeof(motivo), "%s: %d%% de chance de chuva nas próximas 6 h.%s",
+               pareiPorChuva ? "Parei de regar" : "Não reguei", chance, simulado);
     } else if (chance >= LIMITE_CHUVA) {
       // Vai chover, mas o solo está seco demais para esperar
       querLigar = true;
       codigo = "solo_critico";
-      snprintf(motivo, sizeof(motivo), "Reguei mesmo com %d%% de chance de chuva: o solo chegou a %d%%.", chance, umidade);
+      snprintf(motivo, sizeof(motivo), "Reguei mesmo com %d%% de chance de chuva: o solo chegou a %d%%.%s", chance, umidade, simulado);
     } else {
       // Chance de chuva baixa: rega
       querLigar = true;
       codigo = "regando";
-      snprintf(motivo, sizeof(motivo), "Regando: o solo chegou a %d%% e a chance de chuva é de %d%%.", umidade, chance);
+      snprintf(motivo, sizeof(motivo), "Regando: o solo chegou a %d%% e a chance de chuva é de %d%%.%s", umidade, chance, simulado);
     }
 
   } else {
@@ -500,6 +533,7 @@ void controlarBomba() {
     snprintf(motivo, sizeof(motivo), "Solo úmido o bastante (%d%%): não precisa regar.", umidade);
   }
 
+  if (strcmp(codigo, "adiada_chuva") != 0) pareiPorChuva = false;
   registrarDecisao(codigo, motivo, chance);
   acionarBomba(querLigar, codigo);
 }
@@ -738,6 +772,7 @@ void enviarEstado(bool avisar) {
   erroEscritaFirebase = (codigo != 200);  // LED do Firebase pisca rápido se foi recusado
   if (codigo == 200) {
     bombaEnviada = bombaLigada;     // agora o painel sabe
+    estadoUrgente = false;
     decisaoEnviada = decisaoAtual;
     umidadeEnviada = umidade;
   }
@@ -768,7 +803,7 @@ void enviarEstado(bool avisar) {
 //    ESP32 está vivo.
 void cuidarDoEstado() {
   unsigned long desdeUltimo = millis() - ultimaTentativaEstado;
-  bool mudou = bombaLigada != bombaEnviada || decisaoAtual != decisaoEnviada ||
+  bool mudou = estadoUrgente || bombaLigada != bombaEnviada || decisaoAtual != decisaoEnviada ||
                (MODO_TESTE && abs(umidade - umidadeEnviada) >= 2);
   if (!mudou && desdeUltimo < INTERVALO_ESTADO) return;
   if (desdeUltimo < INTERVALO_MIN_ESTADO) return;
@@ -800,10 +835,11 @@ void enviarLeitura() {
   if (codigo != 200) erroEscritaFirebase = true;
 }
 
-// Grava "auto" em /horta/comandos (o site mostra o modo automático de novo)
+// Grava "auto" em /horta/comandos (o site mostra o modo automático de novo).
+// PATCH muda só esses campos: a simulação de chuva continua como está.
 bool gravarModoAutomatico() {
   String resposta;
-  int codigo = requisicaoBanco("PUT", urlBanco("/horta/comandos"),
+  int codigo = requisicaoBanco("PATCH", urlBanco("/horta/comandos"),
                                "{\"modo\":\"auto\",\"bombaManual\":false}", resposta);
   if (codigo != 200) Serial.printf("[Comandos] Não consegui gravar o modo automático (código %d).\n", codigo);
   return codigo == 200;
@@ -854,6 +890,46 @@ bool aplicarComandos(bool novoManual, bool novaBomba, double desde) {
   return mudou;
 }
 
+// Modo demonstração: aplica o "simularChuva" do site (-1 = previsão real).
+// Devolve true se mudou (aí quem chamou decide de novo na hora).
+bool aplicarSimulacao(int valor) {
+  if (valor < -1 || valor > 100) valor = -1;
+
+  // A simulação venceu e ainda estamos gravando -1: ignora o valor velho
+  if (gravarSimulacaoPendente) {
+    if (valor == simulacaoVencida) return false;
+    gravarSimulacaoPendente = false;  // chegou -1 (gravado) ou uma simulação nova
+  }
+  if (valor == simularChuvaSite) return false;
+
+  simularChuvaSite = valor;
+  simulacaoDesdeMs = millis();
+  estadoUrgente = true;  // o painel vê o motivo novo na hora
+  if (valor >= 0) Serial.printf("[Demo] Simulação de chuva: %d%%\n", valor);
+  else            Serial.println("[Demo] Simulação desligada: usando a previsão real");
+  return true;
+}
+
+// Fora do MODO_TESTE, a simulação do site desliga sozinha em 15 min:
+// o ESP32 volta à previsão real e grava simularChuva: -1 no Firebase.
+void cuidarDaSimulacao() {
+  if (!MODO_TESTE && simularChuvaSite >= 0 && millis() - simulacaoDesdeMs >= TEMPO_MAX_SIMULACAO) {
+    Serial.println("[Demo] A simulação passou de 15 min: voltando para a previsão real.");
+    simulacaoVencida = simularChuvaSite;
+    aplicarSimulacao(-1);
+    gravarSimulacaoPendente = true;
+    controlarBomba();
+  }
+  if (gravarSimulacaoPendente && millis() - ultimaGravacaoSimulacao >= 3000) {
+    ultimaGravacaoSimulacao = millis();
+    String resposta;
+    if (prontoParaFirebase() &&
+        requisicaoBanco("PATCH", urlBanco("/horta/comandos"), "{\"simularChuva\":-1}", resposta) == 200) {
+      gravarSimulacaoPendente = false;
+    }
+  }
+}
+
 // Confere o limite do manual mesmo sem comando novo, e grava "auto" no
 // Firebase quando ele vence (tenta de novo a cada 3 s se falhar).
 void cuidarDoLimiteManual() {
@@ -868,7 +944,7 @@ void cuidarDoLimiteManual() {
 
 // ---------------------------------------------------------------------
 //  Plano B: lê /horta/comandos a cada 1 s, reaproveitando a conexão.
-//  Devolve true se o modo ou a bomba manual mudaram.
+//  Devolve true se o modo, a bomba manual ou a simulação mudaram.
 // ---------------------------------------------------------------------
 bool lerComandos() {
   if (!prontoParaFirebase()) {
@@ -896,9 +972,11 @@ bool lerComandos() {
 
   // Se ainda não existir nada em /comandos, fica no automático
   const char* modo = comandos["modo"] | "auto";
-  return aplicarComandos(strcmp(modo, "manual") == 0,
-                         comandos["bombaManual"] | false,
-                         comandos["manualDesde"] | 0.0);
+  bool mudouModo = aplicarComandos(strcmp(modo, "manual") == 0,
+                                   comandos["bombaManual"] | false,
+                                   comandos["manualDesde"] | 0.0);
+  bool mudouSimulacao = aplicarSimulacao(comandos["simularChuva"] | -1);
+  return mudouModo || mudouSimulacao;
 }
 
 // ---------------------------------------------------------------------
@@ -933,6 +1011,7 @@ String dadoSse = "";
 String cmdModo = "auto";
 bool cmdBomba = false;
 double cmdDesde = 0;
+int cmdSimular = -1;  // modo demonstração (-1 = previsão real)
 
 void fecharStream(const char* motivo, unsigned long espera, bool contaFalha) {
   if (streamAberto) Serial.printf("[Stream] Fechado: %s. Reconecto em %lu s.\n", motivo, espera / 1000);
@@ -1054,11 +1133,13 @@ void tratarEventoSse(const String& evento, const String& dado) {
       cmdModo = dados["modo"] | "auto";
       cmdBomba = dados["bombaManual"] | false;
       cmdDesde = dados["manualDesde"] | 0.0;
+      cmdSimular = dados["simularChuva"] | -1;
     } else {
       // patch = só os campos que mudaram
       if (!dados["modo"].isNull()) cmdModo = dados["modo"] | "auto";
       if (!dados["bombaManual"].isNull()) cmdBomba = dados["bombaManual"] | false;
       if (!dados["manualDesde"].isNull()) cmdDesde = dados["manualDesde"] | 0.0;
+      if (!dados["simularChuva"].isNull()) cmdSimular = dados["simularChuva"] | -1;
     }
   } else if (caminho == "/modo") {
     cmdModo = dados | "auto";
@@ -1066,12 +1147,16 @@ void tratarEventoSse(const String& evento, const String& dado) {
     cmdBomba = dados | false;
   } else if (caminho == "/manualDesde") {
     cmdDesde = dados | 0.0;
+  } else if (caminho == "/simularChuva") {
+    cmdSimular = dados | -1;
   }
 
   falhasStream = 0;  // o streaming está funcionando
   Serial.printf("[Comandos] recebido por streaming: modo=%s, bomba=%s\n",
                 cmdModo.c_str(), cmdBomba ? "ligada" : "desligada");
-  if (aplicarComandos(cmdModo == "manual", cmdBomba, cmdDesde)) controlarBomba();
+  bool mudouModo = aplicarComandos(cmdModo == "manual", cmdBomba, cmdDesde);
+  bool mudouSimulacao = aplicarSimulacao(cmdSimular);
+  if (mudouModo || mudouSimulacao) controlarBomba();
 }
 
 // Monta as linhas do SSE, um caractere de cada vez
@@ -1445,6 +1530,7 @@ void loop() {
   }
 
   cuidarDoLimiteManual();
+  cuidarDaSimulacao();
 
   // Estado para o painel: na hora quando muda, e "estou vivo" sem mudança
   cuidarDoEstado();
