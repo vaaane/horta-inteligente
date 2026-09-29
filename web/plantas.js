@@ -15,7 +15,25 @@ const culturaDe = (id) => CULTURAS.find((c) => c.id === id);
 const numero = (v, casas = 1) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas });
 const MOTIVOS = { fora: "Aqui não dá: fora do terreno", obstaculo: "Aqui não dá: obstáculo" };
 
-export function iniciarPlantas({ lista, vazio, aoMudar }) {
+const VIZINHAS_M = 0.5;  // canteiros a menos de 0,5 m um do outro são vizinhos
+
+// Os dois canteiros se sobrepõem (por dentro, não só encostando)?
+function sobrepoe(a, b) {
+  const sx = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const sy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return sx > 1e-6 && sy > 1e-6;
+}
+// Distância entre as bordas de dois canteiros (0 se encostam)
+function distancia(a, b) {
+  const dx = Math.max(0, Math.max(a.x, b.x) - Math.min(a.x + a.w, b.x + b.w));
+  const dy = Math.max(0, Math.max(a.y, b.y) - Math.min(a.y + a.h, b.y + b.h));
+  return Math.hypot(dx, dy);
+}
+// Faixas de umidade sem nenhuma parte em comum. Encostar só na borda
+// (70–90% e 50–70% se tocam em 70) também não dá uma faixa boa para as duas.
+const regaIncompativel = (u1, u2) => u1[1] <= u2[0] || u2[1] <= u1[0];
+
+export function iniciarPlantas({ lista, vazio, avisos, aoMudar }) {
   let mapa = null;          // horas de sol (sol.js)
   let terreno = null;       // terreno do cálculo
   let escolhidas = {};      // { tomate: 0.5 } (área em m²)
@@ -70,6 +88,43 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
     mostrarLista();
   }
 
+  // Lugar atual de cada planta (durante o arraste, o lugar para onde está indo)
+  function lugares() {
+    const saida = {};
+    for (const id of Object.keys(escolhidas)) {
+      const r = arraste && arraste.id === id ? (arraste.valido ? arraste.candidato : null) : posicoes[id];
+      if (r) saida[id] = r;
+    }
+    return saida;
+  }
+
+  // ---------- Convivência: sobreposição e rega ----------
+  function convivencia() {
+    const atuais = lugares();
+    const ids = Object.keys(atuais);
+    const sobrepostas = new Set();
+    const mensagens = [];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const [a, b] = [culturaDe(ids[i]), culturaDe(ids[j])];
+        const [ra, rb] = [atuais[ids[i]], atuais[ids[j]]];
+        if (sobrepoe(ra, rb)) {
+          sobrepostas.add(ids[i]);
+          sobrepostas.add(ids[j]);
+          mensagens.push({ tipo: "sobreposicao", texto: `${a.nome} e ${b.nome} estão no mesmo lugar.` });
+        } else if (distancia(ra, rb) < VIZINHAS_M && regaIncompativel(a.umidade, b.umidade)) {
+          // Só uma dica: não muda a cor da avaliação de sol
+          mensagens.push({
+            tipo: "rega",
+            texto: `${a.nome} (${a.umidade[0]}–${a.umidade[1]}%) ao lado de ${b.nome} (${b.umidade[0]}–${b.umidade[1]}%): ` +
+              "precisam de rega diferente. Numa zona de rega só, uma delas vai sofrer."
+          });
+        }
+      }
+    }
+    return { sobrepostas, mensagens };
+  }
+
   // ---------- Desenho (o mesmo nos dois modos) ----------
   // pt(x, y): metros no terreno -> pixel na tela
   let balaoDepois = null;   // o balão é desenhado por último (por cima de tudo)
@@ -78,6 +133,7 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
     botaoGirar = null;
     balaoDepois = null;
     if (!mapa || !terreno) return;
+    const { sobrepostas } = convivencia();
     for (const id of Object.keys(escolhidas)) {
       const emArraste = arraste && arraste.id === id;
       const r = emArraste ? arraste.candidato : posicoes[id];
@@ -89,15 +145,17 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
       ctx.closePath();
       const invalido = emArraste && !arraste.valido;
       const nivel = invalido ? null : NIVEIS[avaliar(id, r).nivel];
-      const cor = invalido ? "#616161" : nivel.cor;
+      // Sobreposta a outra planta: contorno vermelho
+      const cor = invalido ? "#616161" : sobrepostas.has(id) ? "#c62828" : nivel.cor;
       ctx.save();
       ctx.globalAlpha = invalido ? 0.3 : 0.4;       // preenchimento semitransparente
       ctx.fillStyle = invalido ? "#9e9e9e" : nivel.cor;
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.lineWidth = id === selecionada || emArraste ? 4 : 3;
+      ctx.lineWidth = id === selecionada || emArraste || sobrepostas.has(id) ? 4 : 3;
       ctx.strokeStyle = cor;
       if (invalido) ctx.setLineDash([6, 4]);        // cinza tracejado: aqui não dá
+      else if (sobrepostas.has(id)) ctx.setLineDash([10, 4]);
       ctx.stroke();
       ctx.restore();
 
@@ -254,7 +312,19 @@ export function iniciarPlantas({ lista, vazio, aoMudar }) {
   }
 
   // ---------- Lista ao lado ----------
+  function mostrarAvisos() {
+    const { mensagens } = convivencia();
+    avisos.replaceChildren(...mensagens.map((m) => {
+      const li = document.createElement("li");
+      li.className = `planejar-aviso-${m.tipo}`;
+      li.textContent = `${m.tipo === "sobreposicao" ? "✕" : "💧"} ${m.texto}`;
+      return li;
+    }));
+    avisos.hidden = mensagens.length === 0;
+  }
+
   function mostrarLista() {
+    mostrarAvisos();
     const ids = CULTURAS.filter((c) => c.id in escolhidas).map((c) => c.id);
     vazio.hidden = ids.length > 0;
     lista.replaceChildren(...ids.map((id) => {

@@ -787,6 +787,7 @@ function salvarCanteiros() {
 const plantas = iniciarPlantas({
   lista: $("sugestoes"),
   vazio: $("sugestoes-vazio"),
+  avisos: $("avisos-plantas"),
   aoMudar: (opcoes) => {
     desenhar();
     if (opcoes.salvar) salvarCanteiros();

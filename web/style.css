@@ -933,3 +933,8 @@ main {
 .planejar-selo-avaliacao.nivel-aceitavel { background: #f9a825; color: #1b2a1c; }
 .planejar-selo-avaliacao.nivel-nao { background: #c62828; color: #fff; }
 .planejar-sugestoes li { flex-wrap: wrap; }
+/* Convivência entre plantas */
+.planejar-avisos { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.planejar-avisos li { padding: 8px 10px; border-radius: 10px; line-height: 1.4; font-size: 0.95rem; }
+.planejar-aviso-sobreposicao { background: #ffebee; color: #b71c1c; border: 2px solid #e53935; font-weight: 700; }
+.planejar-aviso-rega { background: #fff8e1; color: #6b4e00; border: 1px solid #f9d77e; }
