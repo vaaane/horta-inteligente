@@ -27,6 +27,9 @@
       "horaPrevisao": {
         ".validate": "newData.isString()"
       },
+      "chuvaHojeMm": {
+        ".validate": "newData.isNumber() && newData.val() >= 0"
+      },
       "atualizadoEm": {
         ".validate": "newData.isNumber() && newData.val() <= now"
       },

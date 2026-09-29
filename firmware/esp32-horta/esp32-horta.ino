@@ -188,7 +188,7 @@ const char* URL_OPEN_METEO =
   "?latitude=%s&longitude=%s"
   "&current=temperature_2m,relative_humidity_2m,precipitation"
   "&hourly=precipitation_probability"
-  "&daily=et0_fao_evapotranspiration,precipitation_probability_max"
+  "&daily=et0_fao_evapotranspiration,precipitation_probability_max,precipitation_sum"
   "&timezone=America/Sao_Paulo&forecast_days=2";
 
 const int HORAS_CHUVA = 6;  // olha a chance de chuva nas próximas 6 horas
@@ -265,6 +265,7 @@ struct DadosClima {
   float chuvaAgoraMm = 0;    // mm de chuva agora
   int chanceChuva6h = 0;     // maior chance de chuva nas próximas 6 h (%)
   float et0 = 0;             // água que a planta de referência perde hoje (mm)
+  float chuvaHojeMm = 0;     // chuva que já caiu (ou vai cair) hoje, em mm
   String horaPrevisao = "";  // hora da previsão, ex.: "2026-09-28T19:30"
   unsigned long atualizadoEmMs = 0;  // millis() da última consulta que deu certo
   bool valido = false;       // true depois da primeira consulta que deu certo
@@ -574,10 +575,12 @@ bool et0Valido() {
   return clima.valido && millis() - clima.atualizadoEmMs <= VALIDADE_CLIMA;
 }
 
-// Litros que a planta precisa hoje: ET0 (mm) × área (m²) × Kc
+// Litros que a planta precisa hoje: (ET0 × Kc − chuva de hoje) × área.
+// A chuva que já caiu é água que não precisamos repor.
+// Se choveu mais do que a planta perdeu, a cota é 0.
 float cotaHoje() {
   if (!et0Valido()) return COTA_SEM_ET0;
-  return clima.et0 * AREA_M2 * KC;
+  return max(0.0f, clima.et0 * KC - clima.chuvaHojeMm) * AREA_M2;
 }
 
 // Litros regados hoje: o resumo do dia (Tarefa 1) + regas ainda não somadas
@@ -709,7 +712,11 @@ void controlarBomba() {
   } else if (litrosCota() >= cotaHoje()) {
     // 4d) Já repôs a água que a planta perdeu hoje: não liga (ou para)
     codigo = "cota_atingida";
-    if (et0Valido()) {
+    if (et0Valido() && cotaHoje() <= 0) {
+      // Choveu mais do que a planta perdeu: não precisa repor nada hoje
+      snprintf(motivo, sizeof(motivo), "Choveu %s mm hoje: mais que a planta perdeu. Não preciso regar.",
+               decimal(clima.chuvaHojeMm, 1).c_str());
+    } else if (et0Valido()) {
       snprintf(motivo, sizeof(motivo), "Já repus %s L hoje (ET₀ %s mm × %s m²). A cota do dia foi atingida.",
                decimal(litrosCota(), 1).c_str(), decimal(clima.et0, 1).c_str(), decimal(AREA_M2, 2).c_str());
     } else {
@@ -1672,6 +1679,7 @@ bool consultarOpenMeteo() {
   filtro["hourly"]["time"] = true;
   filtro["hourly"]["precipitation_probability"] = true;
   filtro["daily"]["et0_fao_evapotranspiration"] = true;
+  filtro["daily"]["precipitation_sum"] = true;
 
   JsonDocument doc;
   DeserializationError erro = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filtro));
@@ -1718,6 +1726,7 @@ bool consultarOpenMeteo() {
   clima.chuvaAgoraMm = agora["precipitation"];
   clima.chanceChuva6h = chanceMax;
   clima.et0 = et0;
+  clima.chuvaHojeMm = doc["daily"]["precipitation_sum"][0] | 0.0;  // se faltar, 0 mm
   clima.horaPrevisao = horaAtual;
   clima.atualizadoEmMs = millis();
   clima.valido = true;
@@ -1736,6 +1745,7 @@ int enviarClimaFirebase() {
   doc["chuvaAgoraMm"] = serialized(String(clima.chuvaAgoraMm, 2));
   doc["chanceChuva6h"] = clima.chanceChuva6h;
   doc["et0"] = serialized(String(clima.et0, 2));
+  doc["chuvaHojeMm"] = serialized(String(clima.chuvaHojeMm, 1));
   doc["horaPrevisao"] = clima.horaPrevisao;
   doc["atualizadoEm"][".sv"] = "timestamp";  // o Firebase coloca a hora dele
   String json;
