@@ -11,7 +11,7 @@ const grupos = [
   {
     titulo: "Decidir quando e quanto regar",
     itens: [
-      { titulo: "Rega pela umidade do solo", frase: "Liga abaixo do limite e desliga no nível ideal; tem modo manual.", status: "funcionando" },
+      { titulo: "Rega pela umidade do solo", frase: "Liga abaixo do limite e desliga no nível ideal. Pelo painel dá para mudar para o modo manual e ligar ou desligar a bomba.", status: "funcionando" },
       { titulo: "Adiar a rega se vai chover", frase: "Usa a previsão do Open-Meteo: com 60% ou mais de chance de chuva, espera.", status: "funcionando" },
       { titulo: "Confirmar se a chuva caiu", frase: "Sensor de chuva e pluviômetro: se não choveu, rega mesmo assim.", status: "proxima" },
       { titulo: "Horário inteligente", frase: "Evita o sol forte do meio-dia e prioriza manhã cedo e fim de tarde.", status: "proxima" },

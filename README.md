@@ -21,6 +21,7 @@ Arquivos do site (`web/`):
 - `index.html` + `app.js`: o painel ao vivo (umidade, bomba, clima, motivo da rega e gráfico).
 - `sobre.html` + `sobre.js`: a página "Sobre o projeto" para a feira (funcionalidades, materiais, evolução). Para mudar o status de uma funcionalidade, edite a lista no `sobre.js`.
 - `clima.js`: o cartão "Clima agora", usado no painel e na `teste.html` (o mesmo código nas duas páginas).
+- `controle.js`: o controle da bomba no cartão "Bomba d'água" (Automático | Manual e Ligar/Desligar). Veja "Controle pelo site" no final.
 - `decisao.js`: o cartão "Por que regou (ou não)" do painel: motivo da decisão atual do ESP32 e as 5 últimas decisões (`/horta/decisoes`). Fica escondido se o firmware ainda não manda a decisão.
 - `qr.js`: desenha o QR code "Abra no seu celular" (no painel só aparece em telas largas; na `sobre.html`, sempre).
 - `teste.html`: a página do teste acende/apaga.
@@ -85,6 +86,19 @@ O `secrets.h` não vai para o GitHub (está no `.gitignore`).
 
 ⚠️ **A bomba usa uma fonte separada**, ligada pelos contatos do relé (COM e NA). Nunca alimente a bomba pelo ESP32.
 
+### Montagem de teste com LED e potenciômetro
+Para testar tudo na mesa, sem bomba e sem sensor de verdade:
+
+| No lugar de | Use | Ligação |
+|---|---|---|
+| Módulo relé | LED + resistor de 220 a 330 Ω | GPIO 26 → resistor → perna comprida do LED; perna curta → GND |
+| Sensor de umidade | Potenciômetro (10 kΩ, por exemplo) | uma ponta no **3V3**, a outra no **GND**, o pino do meio no **GPIO 34** |
+
+- No `esp32-horta.ino`, deixe `RELE_ATIVO_EM_LOW = false` (LED ligado direto no pino). Com um módulo relé de verdade, normalmente é `true`.
+- ⚠️ Potenciômetro no **3V3, nunca no 5V**: 5 V queima a entrada do ESP32.
+- O GPIO 34 é um pino próprio, marcado "34" ou "D34" na placa. **Não** é o VP (GPIO 36) nem o VN (GPIO 39).
+- Girando o potenciômetro, a "umidade" vai de 0% a 100% (com a calibração padrão: valor bruto acima de 3200 = 0%, abaixo de 1300 = 100%). O LED acende abaixo de 35% e apaga acima de 60%.
+
 ---
 
 ## Teste rápido (acende/apaga)
@@ -141,7 +155,6 @@ Em setembro e outubro quase não chove no DF, então dá para **fingir** a previ
 3. Abaixo de 20% a horta rega mesmo assim (`solo_critico`).
 
 ⚠️ **Antes da feira**, volte para `SIMULAR_CHANCE_CHUVA = -1` e grave o ESP32 de novo. Se o Serial Monitor ainda mostrar `[Teste] SIMULAR_CHANCE_CHUVA ativo` ou o painel mostrar "(simulado)", a simulação continua ligada.
-
 ## Dica: testar o modo manual
 Pelo console do Firebase (Realtime Database → Dados), crie:
 
@@ -151,3 +164,15 @@ horta/comandos/bombaManual: true
 ```
 
 Em até 30 s o ESP32 obedece. Para voltar ao normal, mude `modo` para `"auto"`.
+
+## Controle pelo site
+No cartão **"Bomba d'água"** do painel tem dois botões: **Automático** | **Manual**. Não precisa de login.
+
+- **Automático:** o ESP32 decide sozinho (veja "Como a rega funciona").
+- **Manual:** aparece o botão **Ligar bomba** / **Desligar bomba**.
+- O ESP32 lê os comandos a cada **3 s**. Depois de um clique, o LED/bomba responde e o painel mostra o estado real em poucos segundos. O círculo da bomba sempre mostra o que o ESP32 **fez**, não o que foi pedido; enquanto não bate, aparece "Pedido enviado… aguardando o ESP32". Se passar 15 s sem resposta, o painel avisa.
+- **Limites de segurança** (valem também no manual, porque o site é aberto):
+  - cada acionamento dura no máximo **60 s**; depois a bomba descansa **5 min** (o painel mostra o motivo);
+  - o modo manual dura no máximo **10 min**: depois o ESP32 grava `modo: "auto"` sozinho e volta para o automático (o painel mostra a contagem regressiva);
+  - se o ESP32 não conseguir ler o Firebase 3 vezes seguidas (ou ficar sem Wi-Fi), ele volta para o automático.
+- Com o ESP32 offline, os botões ficam desativados.
