@@ -112,7 +112,18 @@ const int LIMITE_LIGAR    = 35;  // abaixo de 35% -> liga a bomba
 const int LIMITE_DESLIGAR = 60;  // acima de 60%  -> desliga a bomba
 
 const int LIMITE_CHUVA   = 60;  // chance de chuva (%) a partir da qual a rega é adiada
-const int LIMITE_CRITICO = 20;  // abaixo disso rega mesmo com chuva prevista
+// Solo crítico com HISTERESE (como 35%/60% do ligar/desligar): entra abaixo
+// de 20%, mas só sai acima de 25%. Sem isso, com a leitura oscilando entre
+// 19% e 20%, a decisão trocava a cada leitura e a bomba ficava piscando.
+const int LIMITE_CRITICO       = 20;  // entra no crítico abaixo de 20%
+const int LIMITE_SAIR_CRITICO  = 25;  // só sai do crítico acima de 25%
+
+// Proteção contra oscilação: a decisão AUTOMÁTICA não troca o estado da
+// bomba mais de uma vez a cada 3 s (manual, falha e comandos do site são na hora)
+const unsigned long TEMPO_MIN_TROCA = 3000;
+// Histórico: uma decisão só vai para /horta/decisoes se durar 10 s.
+// Assim, A→B→A em menos de 10 s não enche o histórico de entradas.
+const unsigned long TEMPO_DECISAO_ESTAVEL = 10000;
 const unsigned long VALIDADE_CLIMA = 90UL * 60 * 1000; // previsão mais velha que isso é ignorada
 
 // Sol forte: boa parte da água evapora antes de chegar à raiz.
@@ -330,6 +341,17 @@ String motivoAtual = "";   // frase em português
 // Fila de um item para o histórico /horta/decisoes: guarda só a última
 // mudança de decisão que ainda não foi enviada (ex.: estava sem Wi-Fi).
 bool decisaoPendente = false;
+// Candidata ao histórico: a decisão nova só é registrada depois de 10 s estável
+String decisaoEstavel = "";        // a última que foi para o histórico
+String candidataDecisao = "";      // "" = nenhuma esperando
+String candidataMotivo = "";
+int candidataUmidade = 0;
+int candidataChance = -1;
+unsigned long candidataDesde = 0;
+// Solo crítico (com histerese) e proteção contra troca rápida da bomba
+bool emCritico = false;
+unsigned long ultimaTrocaBomba = 0;  // millis() da última troca de estado da bomba
+bool trocaImediata = false;          // true = decisão pedida pelo site (não espera os 3 s)
 String pendenteDecisao = "";
 String pendenteMotivo = "";
 int pendenteUmidade = 0;
@@ -530,6 +552,7 @@ void acionarBomba(bool ligar, const char* motivo) {
   if (ligar == bombaLigada) return;  // já está como queremos
 
   bombaLigada = ligar;
+  ultimaTrocaBomba = millis();
   if (ligar) {
     bombaLigadaDesde = millis();
     motivoRegaAtual = motivo;  // vai junto com a rega em /horta/regas
@@ -566,8 +589,19 @@ void lerSensor() {
   umidadeBruta = soma / 10;
 
   // Converte o valor bruto em porcentagem (seco = 0%, molhado = 100%)
-  umidade = map(umidadeBruta, VALOR_SECO, VALOR_MOLHADO, 0, 100);
-  umidade = constrain(umidade, 0, 100);
+  int agora = constrain(map(umidadeBruta, VALOR_SECO, VALOR_MOLHADO, 0, 100), 0, 100);
+
+  // Média móvel das últimas 5 leituras: evita a umidade "tremer" entre dois
+  // valores (ex.: 19% e 20%) bem na divisa de um limite
+  static int ultimas[5];
+  static int quantas = 0;
+  static int posicao = 0;
+  ultimas[posicao] = agora;
+  posicao = (posicao + 1) % 5;
+  if (quantas < 5) quantas++;
+  long somaUltimas = 0;
+  for (int i = 0; i < quantas; i++) somaUltimas += ultimas[i];
+  umidade = (somaUltimas + quantas / 2) / quantas;  // arredonda
 
   // No MODO_TESTE (leitura a cada 300 ms) só mostra quando a umidade muda
   static int umidadeMostrada = -1;
@@ -740,16 +774,33 @@ bool aplicarSimularFimDia(double valor) {
 // (O motivo muda a cada leitura porque tem a umidade; o código não.)
 void registrarDecisao(const char* codigo, const char* motivo, int chance) {
   motivoAtual = motivo;
-  if (decisaoAtual == codigo) return;
 
-  decisaoAtual = codigo;
+  // A candidata durou 10 s sem mudar? Agora vai para o histórico.
+  if (candidataDecisao != "" && millis() - candidataDesde >= TEMPO_DECISAO_ESTAVEL) {
+    decisaoPendente = true;  // se já tinha uma na fila, a nova substitui
+    pendenteDecisao = candidataDecisao;
+    pendenteMotivo = candidataMotivo;
+    pendenteUmidade = candidataUmidade;
+    pendenteChance = candidataChance;
+    decisaoEstavel = candidataDecisao;
+    candidataDecisao = "";
+  }
+
+  if (decisaoAtual == codigo) return;
+  decisaoAtual = codigo;  // o painel vê na hora (vai no estado)
   Serial.printf("[Decisão] %s — %s\n", codigo, motivo);
 
-  decisaoPendente = true;  // se já tinha uma na fila, a nova substitui
-  pendenteDecisao = codigo;
-  pendenteMotivo = motivo;
-  pendenteUmidade = umidade;
-  pendenteChance = chance;
+  if (decisaoEstavel == codigo) {
+    // Voltou para a última decisão registrada em menos de 10 s (A→B→A):
+    // a troca não entra no histórico
+    candidataDecisao = "";
+  } else {
+    candidataDecisao = codigo;
+    candidataMotivo = motivo;
+    candidataUmidade = umidade;
+    candidataChance = chance;
+    candidataDesde = millis();
+  }
 }
 
 // A rega automática não fez a umidade subir: bloqueia e avisa
@@ -847,6 +898,13 @@ void cuidarDoAjuste() {
   }
 }
 
+// Decide na hora, sem a espera de 3 s entre trocas (comandos do site)
+void controlarBombaAgora() {
+  trocaImediata = true;
+  controlarBomba();
+  trocaImediata = false;
+}
+
 void controlarBomba() {
   unsigned long agora = millis();
 
@@ -867,6 +925,10 @@ void controlarBomba() {
 
   // A rega automática está fazendo a umidade subir?
   conferirRega();
+
+  // Solo crítico com histerese: entra abaixo de 20%, só sai acima de 25%
+  if (umidade < LIMITE_CRITICO) emCritico = true;
+  else if (umidade >= LIMITE_SAIR_CRITICO) emCritico = false;
 
   // O que a bomba deveria fazer agora, e por quê? Ordem das regras:
   //   1) pausa de segurança  2) manual  3) falha  4) solo úmido  5) solo crítico
@@ -908,12 +970,20 @@ void controlarBomba() {
     codigo = "solo_ok";
     snprintf(motivo, sizeof(motivo), "Solo úmido o bastante (%d%%): não precisa regar.", umidade);
 
-  } else if (umidade < LIMITE_CRITICO) {
-    // 5) Seco demais: rega mesmo com chuva prevista ou sol forte
+  } else if (emCritico) {
+    // 5) Seco demais: rega mesmo com chuva prevista, sol forte ou cota
+    //    atingida, e continua até passar de 25% (histerese). Depois de sair,
+    //    só volta se cair abaixo de 20% de novo: a cota/margem que parou a
+    //    rega não recomeça por oscilação de 1 ponto entre 20% e 25%.
     querLigar = true;
     codigo = "solo_critico";
-    snprintf(motivo, sizeof(motivo), "Reguei mesmo assim: o solo chegou a %d%%, abaixo do mínimo de %d%%.",
-             umidade, LIMITE_CRITICO);
+    if (umidade < LIMITE_CRITICO) {
+      snprintf(motivo, sizeof(motivo), "Reguei mesmo assim: o solo chegou a %d%%, abaixo do mínimo de %d%%.",
+               umidade, LIMITE_CRITICO);
+    } else {
+      snprintf(motivo, sizeof(motivo), "Solo crítico: continuo regando até passar de %d%% (agora %d%%).",
+               LIMITE_SAIR_CRITICO, umidade);
+    }
 
   } else if (chance >= LIMITE_CHUVA) {
     // 6) Vai chover: não liga (ou para) e deixa a chuva regar
@@ -973,6 +1043,15 @@ void controlarBomba() {
       snprintf(motivo, sizeof(motivo), "Regando: o solo chegou a %d%% e a chance de chuva é de %d%%.%s",
                umidade, chance, chuvaSim);
     }
+  }
+
+  // Proteção contra oscilação: a decisão automática não liga/desliga a bomba
+  // de novo antes de 3 s da última troca. Manual, falha e comandos do site
+  // (trocaImediata) passam na hora. Enquanto espera, fica tudo como está.
+  bool automatica = !modoManual && strcmp(codigo, "falha_agua") != 0 && strcmp(codigo, "pausa_seguranca") != 0;
+  if (automatica && !trocaImediata && querLigar != bombaLigada &&
+      ultimaTrocaBomba != 0 && millis() - ultimaTrocaBomba < TEMPO_MIN_TROCA) {
+    return;
   }
 
   // Lembra se a rega foi INTERROMPIDA (chuva ou sol) para o motivo dizer
@@ -1549,7 +1628,7 @@ void cuidarDaSimulacao() {
     simHoraVencida = simularHoraSite;
     aplicarSimulacaoHora(-1);
     gravarSimHoraPendente = true;
-    controlarBomba();
+    controlarBombaAgora();
   }
   if (gravarSimHoraPendente && millis() - ultimaGravacaoSimHora >= 3000) {
     ultimaGravacaoSimHora = millis();
@@ -1565,7 +1644,7 @@ void cuidarDaSimulacao() {
     simulacaoVencida = simularChuvaSite;
     aplicarSimulacao(-1);
     gravarSimulacaoPendente = true;
-    controlarBomba();
+    controlarBombaAgora();
   }
   if (gravarSimulacaoPendente && millis() - ultimaGravacaoSimulacao >= 3000) {
     ultimaGravacaoSimulacao = millis();
@@ -1581,7 +1660,7 @@ void cuidarDaSimulacao() {
 // Firebase quando ele vence (tenta de novo a cada 3 s se falhar).
 void cuidarDoLimiteManual() {
   if (modoManual && manualVencido()) {
-    if (aplicarComandos(true, bombaManual, sessaoManual)) controlarBomba();
+    if (aplicarComandos(true, bombaManual, sessaoManual)) controlarBombaAgora();
   }
   if (gravarAutoPendente && millis() - ultimaGravacaoAuto >= 3000) {
     ultimaGravacaoAuto = millis();
@@ -1838,7 +1917,7 @@ void tratarEventoSse(const String& evento, const String& dado) {
   bool saiuFalha = aplicarResetFalha(cmdResetFalha);
   aplicarDetectarFalha(cmdDetectarFalha);
   bool fimDia = aplicarSimularFimDia(cmdSimularFimDia);
-  if (mudouModo || mudouSimulacao || mudouHora || zerouCota || saiuFalha || fimDia) controlarBomba();
+  if (mudouModo || mudouSimulacao || mudouHora || zerouCota || saiuFalha || fimDia) controlarBombaAgora();
 }
 
 // Monta as linhas do SSE, um caractere de cada vez
@@ -2214,7 +2293,7 @@ void loop() {
   // Plano B (streaming instável): pergunta a cada 1 s
   if (planoB && millis() - ultimaLeituraComandos >= INTERVALO_POLLING) {
     ultimaLeituraComandos = millis();
-    if (lerComandos()) controlarBomba();
+    if (lerComandos()) controlarBombaAgora();
   }
 
   cuidarDoLimiteManual();
