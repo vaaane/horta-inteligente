@@ -871,3 +871,45 @@ main {
 .planejar-camada { display: flex; align-items: center; gap: 6px; min-height: 44px; font-weight: 600; }
 .planejar-mapa-caixa { position: relative; }
 .planejar-mapa-sat { height: max(360px, 62vh); border-radius: 12px; overflow: hidden; background: #cfd8dc; }
+/* Desenho por cima do mapa (mapa.js): não pega os toques (quem decide é o mapa.js) */
+.planejar-mapa-desenho { position: absolute; top: 0; left: 0; z-index: 450; pointer-events: none; }
+.planejar-mapa-sat.desenhando { cursor: crosshair; }
+.planejar-ferramentas .planejar-botao[aria-pressed="true"] { background: #ffeb3b; color: #1b2a1c; border-color: #f9a825; }
+.planejar-rosa {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 900;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  line-height: 1;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid #5b6b5c;
+  color: #c62828;
+  font-size: 1rem;
+  pointer-events: none;
+}
+.planejar-rosa span { color: #1b2a1c; font-weight: 800; font-size: 0.9rem; }
+.planejar-tipo { min-height: 40px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; max-width: 11em; }
+.planejar-ferramenta-ajuda {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 900;
+  width: max-content;
+  max-width: calc(100% - 140px);
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #ffeb3b;
+  color: #1b2a1c;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}

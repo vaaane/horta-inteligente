@@ -431,12 +431,14 @@ function atualizarEditor() {
 
 // Botões
 $("add-retangulo").addEventListener("click", () => {
+  if (modo === "mapa") { modoMapa.usarFerramenta("retangulo"); return; }
   terreno.obstaculos.push({ tipo: "retangulo", nome: "Muro", x: 0, y: 0,
     largura: Math.min(2, terreno.largura), profundidade: 0.2, altura: 2 });
   selecionado = terreno.obstaculos.length - 1;
   aoMudar({ lista: true, editor: true });
 });
 $("add-circulo").addEventListener("click", () => {
+  if (modo === "mapa") { modoMapa.usarFerramenta("circulo"); return; }
   terreno.obstaculos.push({ tipo: "circulo", nome: "Árvore", x: terreno.largura / 2,
     y: terreno.comprimento / 2, raio: 0.5, altura: 3 });
   selecionado = terreno.obstaculos.length - 1;
@@ -449,6 +451,7 @@ $("exemplo").addEventListener("click", () => {
   aoMudar({ redimensionar: true, lista: true, editor: true });
 });
 $("zerar").addEventListener("click", () => {
+  if (modo === "mapa") { modoMapa.definirDesenho(null, []); return; }
   terreno = copia(PADRAO);
   selecionado = -1;
   preencherCampos();
@@ -813,8 +816,15 @@ const modoMapa = iniciarModoMapa({
   buscaTexto: $("busca-texto"),
   buscaStatus: $("busca-status"),
   botaoLocalizacao: $("minha-localizacao"),
-  camadaNomes: $("camada-nomes")
+  camadaNomes: $("camada-nomes"),
+  lista: $("lista-obstaculos"),
+  editor: $("editor"),
+  ferramentaStatus: $("ferramenta-status"),
+  aoMudar: () => {}
 });
+for (const botao of document.querySelectorAll("[data-ferramenta]")) {
+  botao.addEventListener("click", () => modoMapa.usarFerramenta(botao.dataset.ferramenta));
+}
 
 function trocarModo(novo) {
   modo = novo;
@@ -826,7 +836,10 @@ function trocarModo(novo) {
   if (modo === "mapa") {
     modoMapa.mostrar();
   } else {
+    modoMapa.usarFerramenta(null);
     medir();
+    mostrarLista();
+    mostrarEditor();
     desenhar();
   }
 }

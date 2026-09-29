@@ -50,10 +50,21 @@
             <label class="planejar-camada"><input type="checkbox" id="camada-nomes"> Nomes de ruas</label>
           </div>
           <p id="busca-status" class="planejar-nota" aria-live="polite"></p>
+          <div class="planejar-botoes planejar-ferramentas" role="group" aria-label="Desenhar no mapa">
+            <button type="button" class="planejar-botao" data-ferramenta="terreno" aria-pressed="false">▭ Desenhar terreno</button>
+            <button type="button" class="planejar-botao" data-ferramenta="retangulo" aria-pressed="false">🏠 Casa ou muro</button>
+            <button type="button" class="planejar-botao" data-ferramenta="circulo" aria-pressed="false">🌳 Árvore</button>
+          </div>
         </div>
         <div class="so-mapa planejar-mapa-caixa">
           <div id="mapa-satelite" class="planejar-mapa-sat"></div>
+          <!-- Ajuda da ferramenta: por cima do mapa, para a página não "pular" -->
+          <p id="ferramenta-status" class="planejar-ferramenta-ajuda" aria-live="polite" hidden></p>
+          <!-- Rosa dos ventos fixa: no mapa o norte é sempre para cima -->
+          <div class="planejar-rosa" aria-hidden="true"><span>N</span>▲</div>
         </div>
+        <p class="so-mapa planejar-nota"><strong>No hemisfério sul, o lado norte recebe mais sol.</strong>
+          Toque em uma forma para selecionar; arraste os quadradinhos para mudar o tamanho e a bolinha ↻ para girar.</p>
         <p class="so-mapa planejar-nota">Busca de endereços: © colaboradores do
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (Nominatim).</p>
 
@@ -91,13 +102,13 @@
       <aside class="cartao planejar-painel" aria-label="Configurações do terreno">
         <h2>Configurar</h2>
 
-        <fieldset class="planejar-grupo">
+        <fieldset class="planejar-grupo so-livre">
           <legend>Tamanho do terreno (m)</legend>
           <label>Largura <input type="number" id="largura" min="1" max="100" step="0.5"></label>
           <label>Comprimento <input type="number" id="comprimento" min="1" max="100" step="0.5"></label>
         </fieldset>
 
-        <fieldset class="planejar-grupo">
+        <fieldset class="planejar-grupo so-livre">
           <legend>Norte</legend>
           <label class="planejar-norte">Ângulo do norte
             <input type="range" id="norte" min="0" max="359" step="1">
@@ -108,8 +119,9 @@
 
         <fieldset class="planejar-grupo">
           <legend>Local</legend>
-          <label>Latitude <input type="number" id="latitude" min="-90" max="90" step="0.01"></label>
-          <label>Longitude <input type="number" id="longitude" min="-180" max="180" step="0.01"></label>
+          <label class="so-livre">Latitude <input type="number" id="latitude" min="-90" max="90" step="0.01"></label>
+          <label class="so-livre">Longitude <input type="number" id="longitude" min="-180" max="180" step="0.01"></label>
+          <p id="centro-terreno" class="so-mapa planejar-nota">O cálculo usa o centro do terreno desenhado no mapa.</p>
         </fieldset>
 
         <fieldset class="planejar-grupo">
