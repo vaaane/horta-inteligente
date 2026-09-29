@@ -5,6 +5,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { iniciarClima } from "./clima.js";
+import { desenharQR } from "./qr.js";
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -68,6 +69,9 @@ iniciarClima(db, document.getElementById("clima"), {
   textoSemDados: "Previsão do tempo indisponível no momento.",
   mostrarFaixaChuva: true
 });
+
+// ---------- QR code "Abra no seu celular" (só aparece na tela grande) ----------
+desenharQR(document.getElementById("qr"));
 
 // ---------- Gráfico com as últimas 50 leituras ----------
 const grafico = new Chart(document.getElementById("grafico"), {

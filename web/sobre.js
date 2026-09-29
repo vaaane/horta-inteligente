@@ -1,5 +1,6 @@
 // Página "Sobre o projeto" — monta os cartões de funcionalidades
 // Para mudar o status de um item, troque "proxima" por "funcionando" (ou o contrário).
+import { desenharQR } from "./qr.js";
 
 const STATUS = {
   funcionando: { texto: "Funcionando", classe: "selo-funcionando" },
@@ -79,3 +80,6 @@ for (const grupo of grupos) {
 
   elFuncionalidades.append(lista);
 }
+
+// ---------- QR code no fim da página ----------
+desenharQR(document.getElementById("qr"));

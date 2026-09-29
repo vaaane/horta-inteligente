@@ -38,6 +38,12 @@
       <section id="clima" class="cartao clima">
         <h2>Clima agora</h2>
       </section>
+
+      <!-- Só aparece na tela grande (no celular o visitante já está no site) -->
+      <section class="cartao cartao-qr">
+        <h2>Abra no seu celular</h2>
+        <div id="qr" class="qr"></div>
+      </section>
     </div>
 
     <p id="atualizacao" class="atualizacao">Conectando ao Firebase...</p>
@@ -54,6 +60,8 @@
 
   <!-- Chart.js: biblioteca que desenha o gráfico -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- qrcode-generator: biblioteca que desenha o QR code -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
