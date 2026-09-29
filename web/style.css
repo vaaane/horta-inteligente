@@ -917,3 +917,4 @@ main {
 .planejar-opacidade { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; font-weight: 600; }
 .planejar-opacidade input { flex: 1 1 160px; min-height: 40px; accent-color: var(--verde); }
 .planejar-opacidade output { min-width: 3em; text-align: right; font-variant-numeric: tabular-nums; }
+.planejar-link { width: 100%; min-height: 40px; margin-top: 6px; padding: 6px 8px; font: inherit; font-size: 0.85rem; border: 1px solid var(--borda); border-radius: 8px; }

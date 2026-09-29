@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="planejar modo-livre">
+<body class="planejar modo-mapa">
   <header>
     <h1>🌱 Horta Inteligente</h1>
     <p class="subtitulo">CED São Bartolomeu · Feira de Ciências</p>
@@ -30,8 +30,8 @@
 
     <!-- Como desenhar: sobre a imagem de satélite ou à mão -->
     <div class="planejar-modos" role="group" aria-label="Como desenhar o terreno">
-      <button type="button" class="planejar-modo" data-modo="mapa" aria-pressed="false">🛰️ Sobre o mapa</button>
-      <button type="button" class="planejar-modo" data-modo="livre" aria-pressed="true">✏️ Desenho livre</button>
+      <button type="button" class="planejar-modo" data-modo="mapa" aria-pressed="true">🛰️ Sobre o mapa</button>
+      <button type="button" class="planejar-modo" data-modo="livre" aria-pressed="false">✏️ Desenho livre</button>
     </div>
 
     <div class="planejar-area">
@@ -141,7 +141,10 @@
         <div class="planejar-botoes">
           <button type="button" id="exemplo" class="planejar-botao planejar-botao-forte">Carregar exemplo</button>
           <button type="button" id="zerar" class="planejar-botao">Começar do zero</button>
+          <button type="button" id="copiar-link" class="planejar-botao">🔗 Copiar link</button>
         </div>
+        <p id="link-status" class="planejar-nota" aria-live="polite"></p>
+        <input type="text" id="link-texto" class="planejar-link" readonly hidden aria-label="Link da horta">
       </aside>
     </div>
 

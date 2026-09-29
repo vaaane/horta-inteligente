@@ -452,13 +452,14 @@ $("add-circulo").addEventListener("click", () => {
   aoMudar({ lista: true, editor: true });
 });
 $("exemplo").addEventListener("click", () => {
+  if (modo === "mapa") { modoMapa.carregarExemplo(); return; }
   terreno = copia(EXEMPLO);
   selecionado = -1;
   preencherCampos();
   aoMudar({ redimensionar: true, lista: true, editor: true });
 });
 $("zerar").addEventListener("click", () => {
-  if (modo === "mapa") { modoMapa.definirDesenho(null, []); return; }
+  if (modo === "mapa") { modoMapa.definirDesenho(null, []); salvarMapa(); agendarCalculo(0); return; }
   terreno = copia(PADRAO);
   selecionado = -1;
   preencherCampos();
@@ -851,7 +852,11 @@ const modoMapa = iniciarModoMapa({
   lista: $("lista-obstaculos"),
   editor: $("editor"),
   ferramentaStatus: $("ferramenta-status"),
-  aoMudar: (opcoes) => agendarCalculo(opcoes.arrastando ? 300 : 150),
+  aoMudar: (opcoes) => {
+    agendarCalculo(opcoes.arrastando ? 300 : 150);
+    if (!opcoes.arrastando) salvarMapa();
+  },
+  aoMudarVista: () => salvarMapa(),
   textoDoPonto: textoDaDica
 });
 for (const botao of document.querySelectorAll("[data-ferramenta]")) {
@@ -859,7 +864,9 @@ for (const botao of document.querySelectorAll("[data-ferramenta]")) {
 }
 
 function trocarModo(novo) {
+  if (novo === "mapa" && !modoMapa.disponivel) novo = "livre";  // sem Leaflet (sem internet)
   modo = novo;
+  try { localStorage.setItem(CHAVE_MODO, modo); } catch { /* sem salvar */ }
   document.body.classList.toggle("modo-mapa", modo === "mapa");
   document.body.classList.toggle("modo-livre", modo === "livre");
   for (const botao of document.querySelectorAll(".planejar-modo")) {
@@ -958,3 +965,113 @@ modoMapa.adicionarCamada((ctx2, { terreno: noMapa, pixelDaForma }) => {
   }
   ctx2.restore();
 });
+
+// =====================================================================
+//  SALVAR E COMPARTILHAR
+// =====================================================================
+const CHAVE_MODO = "horta-planejar-modo-v1";
+const CHAVE_MAPA = "horta-planejar-mapa-v1";
+
+// Salva o desenho do mapa (centro, zoom, terreno e obstáculos) no navegador
+function salvarMapa() {
+  try { localStorage.setItem(CHAVE_MAPA, JSON.stringify(modoMapa.obterEstado())); } catch { /* sem salvar */ }
+}
+function lerSalvo(chave) {
+  try { return JSON.parse(localStorage.getItem(chave)); } catch { return null; }
+}
+
+// ---------- Link: o desenho vai inteiro no endereço (#p=...) ----------
+// JSON "compacto" (nomes curtos, números arredondados) -> texto em base64.
+const arred = (v, casas) => Math.round(v * 10 ** casas) / 10 ** casas;
+const ponto = (latlng) => [arred(latlng[0], 7), arred(latlng[1], 7)];
+
+function compactar() {
+  const dados = { v: 1, m: modo, p: escolhidas };
+  if (modo === "mapa") {
+    const e = modoMapa.obterEstado();
+    dados.c = ponto(e.centro);
+    dados.z = e.zoom;
+    if (e.terreno) {
+      const t = e.terreno;
+      dados.t = [...ponto(t.centro), arred(t.largura, 2), arred(t.comprimento, 2), t.angulo || 0];
+    }
+    dados.o = e.obstaculos.map((ob) => (ob.tipo === "circulo"
+      ? ["c", ob.nome, ...ponto(ob.centro), arred(ob.raio, 2), ob.altura]
+      : ["r", ob.nome, ...ponto(ob.centro), arred(ob.largura, 2), arred(ob.profundidade, 2), ob.angulo || 0, ob.altura]));
+  } else {
+    dados.l = terreno;
+  }
+  return dados;
+}
+
+function descompactar(dados) {
+  if (!dados || dados.v !== 1) return false;
+  if (dados.p && typeof dados.p === "object") escolhidas = dados.p;
+  if (dados.m === "mapa") {
+    const t = dados.t;
+    modoMapa.aplicarEstado({
+      centro: dados.c,
+      zoom: dados.z,
+      terreno: t ? { centro: [t[0], t[1]], largura: t[2], comprimento: t[3], angulo: t[4] } : null,
+      obstaculos: (dados.o || []).map((o) => (o[0] === "c"
+        ? { tipo: "circulo", nome: o[1], centro: [o[2], o[3]], raio: o[4], altura: o[5] }
+        : { tipo: "retangulo", nome: o[1], centro: [o[2], o[3]], largura: o[4], profundidade: o[5], angulo: o[6], altura: o[7] }))
+    });
+  } else if (dados.l && typeof dados.l.largura === "number") {
+    terreno = dados.l;
+  }
+  return dados.m === "mapa" ? "mapa" : "livre";
+}
+
+// base64 que aceita acentos (UTF-8) e não usa "+" nem "/" (ficam estranhos no link)
+function paraBase64(texto) {
+  const bytes = new TextEncoder().encode(texto);
+  let binario = "";
+  bytes.forEach((b) => { binario += String.fromCharCode(b); });
+  return btoa(binario).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function deBase64(codigo) {
+  const binario = atob(codigo.replace(/-/g, "+").replace(/_/g, "/"));
+  return new TextDecoder().decode(Uint8Array.from(binario, (c) => c.charCodeAt(0)));
+}
+
+$("copiar-link").addEventListener("click", async () => {
+  const link = `${location.origin}${location.pathname}#p=${paraBase64(JSON.stringify(compactar()))}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    $("link-status").textContent = "Link copiado! Quem abrir vê a mesma horta.";
+    $("link-texto").hidden = true;
+  } catch {
+    // Sem permissão para copiar: mostra o link para copiar à mão
+    $("link-status").textContent = "Copie o link abaixo:";
+    $("link-texto").value = link;
+    $("link-texto").hidden = false;
+    $("link-texto").select();
+  }
+});
+
+// ---------- Ao abrir a página: link compartilhado, ou o que estava salvo ----------
+function iniciarModo() {
+  let modoInicial = null;
+  const codigo = location.hash.match(/[#&]p=([\w-]+)/);
+  if (codigo) {
+    try {
+      modoInicial = descompactar(JSON.parse(deBase64(codigo[1])));
+      salvar();
+      salvarPlantas();
+      montarEscolha();
+      preencherCampos();
+    } catch {
+      modoInicial = null;  // link quebrado: abre normalmente
+    }
+    history.replaceState(null, "", location.pathname);  // tira o #p= do endereço
+  }
+  if (!modoInicial) {
+    const salvoMapa = lerSalvo(CHAVE_MAPA);
+    if (salvoMapa) modoMapa.aplicarEstado(salvoMapa);
+    try { modoInicial = localStorage.getItem(CHAVE_MODO); } catch { /* sem salvo */ }
+  }
+  trocarModo(modoInicial || "mapa");
+  if (modoInicial === "mapa" || !modoInicial) salvarMapa();
+}
+iniciarModo();

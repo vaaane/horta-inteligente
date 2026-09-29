@@ -63,7 +63,7 @@ export function metrosParaForma(e, n, angulo) {
 export function iniciarModoMapa(opcoes) {
   const {
     elemento, busca, buscaTexto, buscaStatus, botaoLocalizacao, camadaNomes,
-    lista, editor, ferramentaStatus, aoMudar, textoDoPonto
+    lista, editor, ferramentaStatus, aoMudar, textoDoPonto, aoMudarVista
   } = opcoes;
 
   let mapa = null;          // o mapa do Leaflet (criado na primeira vez que aparece)
@@ -78,6 +78,7 @@ export function iniciarModoMapa(opcoes) {
   let selecionado = null;   // "terreno", um índice de obstáculo, ou null
   let ferramenta = null;    // "terreno" | "retangulo" | "circulo" | null
   let gesto = null;         // o que o dedo/mouse está fazendo agora
+  let vista = { centro: CENTRO_INICIAL, zoom: ZOOM_INICIAL };  // onde o mapa começa (salvo ou do link)
 
   // Quem desenha por baixo das formas (mapa de sol, plantas): outras partes se registram
   const camadas = [];
@@ -87,8 +88,8 @@ export function iniciarModoMapa(opcoes) {
 
   function criarMapa() {
     mapa = L.map(elemento, {
-      center: CENTRO_INICIAL,
-      zoom: ZOOM_INICIAL,
+      center: vista.centro,
+      zoom: vista.zoom,
       maxZoom: 21,
       zoomAnimation: false  // o desenho por cima acompanha o zoom sem "pular"
     });
@@ -107,6 +108,7 @@ export function iniciarModoMapa(opcoes) {
     ctx = canvas.getContext("2d");
     mapa.on("move zoom resize viewreset", redesenhar);
     mapa.on("resize", medirCanvas);
+    mapa.on("moveend", () => aoMudarVista());  // salva onde o mapa está
     medirCanvas();
 
     // Gestos: "capture" = recebemos antes do Leaflet e decidimos quem fica com o toque
@@ -723,8 +725,51 @@ export function iniciarModoMapa(opcoes) {
     else nomes.remove();
   });
 
+  // ---------- Salvar, abrir e exemplo ----------
+  function obterEstado() {
+    const c = mapa ? mapa.getCenter() : null;
+    return {
+      centro: c ? [c.lat, c.lng] : vista.centro,
+      zoom: mapa ? mapa.getZoom() : vista.zoom,
+      terreno,
+      obstaculos
+    };
+  }
+
+  function aplicarEstado(estado) {
+    if (Array.isArray(estado.centro) && typeof estado.zoom === "number") {
+      vista = { centro: estado.centro, zoom: estado.zoom };
+      if (mapa) mapa.setView(vista.centro, vista.zoom);
+    }
+    terreno = estado.terreno || null;
+    obstaculos = Array.isArray(estado.obstaculos) ? estado.obstaculos : [];
+    selecionado = null;
+    redesenhar();
+    if (mapa) mostrarPainel();
+  }
+
+  // Exemplo: terreno de 6 × 4 m no meio do mapa, muro de 2 m no lado norte e
+  // árvore de 5 m no canto leste
+  function carregarExemplo() {
+    const c = mapa ? mapa.getCenter() : { lat: vista.centro[0], lng: vista.centro[1] };
+    const centro = [c.lat, c.lng];
+    terreno = { centro, largura: 6, comprimento: 4, angulo: 0 };
+    obstaculos = [
+      { tipo: "retangulo", nome: "Muro", centro: deMetros(0, 1.9, centro), largura: 6, profundidade: 0.2, angulo: 0, altura: 2 },
+      { tipo: "circulo", nome: "Árvore", centro: deMetros(2.3, -1.2, centro), raio: 0.8, altura: 5 }
+    ];
+    selecionado = null;
+    if (mapa) mapa.setView(centro, 21);  // bem perto, para o terreno de 6 × 4 m aparecer grande
+    redesenhar();
+    mostrarPainel();
+    aoMudar({});
+  }
+
   return {
     disponivel,
+    obterEstado,
+    aplicarEstado,
+    carregarExemplo,
     mostrar,
     mostrarPainel,
     redesenhar,
