@@ -167,3 +167,10 @@ No cartão **"Bomba d'água"** do painel tem dois botões: **Automático** | **M
   - o modo manual dura no máximo **10 min**: depois o ESP32 grava `modo: "auto"` sozinho e volta para o automático (o painel mostra a contagem regressiva);
   - se o ESP32 não conseguir ler o Firebase 3 vezes seguidas (ou ficar sem Wi-Fi), ele volta para o automático.
 - Com o ESP32 offline, os botões ficam desativados.
+
+### Modo teste (`MODO_TESTE`)
+No topo do `esp32-horta.ino`, `MODO_TESTE = true` é para a montagem com LED: **sem pausa de segurança, sem tempo máximo e sem o limite de 10 min do manual**, e tudo mais rápido (sensor a cada 300 ms, estado na hora quando algo muda e a cada 5 s, histórico a cada 10 s). Os limites de umidade (35% / 60%) e a previsão de chuva continuam valendo. O painel mostra o selo "Modo teste" e considera o ESP32 offline depois de 20 s sem dado novo (no modo normal, 2 min).
+
+⚠️ **Com a bomba de verdade, troque para `MODO_TESTE = false`** e grave de novo: volta a valer tudo acima (60 s, 5 min de pausa, 10 min de manual).
+
+Os comandos do site chegam ao ESP32 por **streaming** (o Firebase avisa na hora). Se o streaming falhar várias vezes seguidas, o ESP32 passa a perguntar a cada 1 s (plano B) e tenta o streaming de novo a cada minuto.

@@ -12,7 +12,10 @@ import { desenharQR } from "./qr.js";
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Se passar 2 minutos sem dado novo, consideramos o ESP32 offline
+// Sem dado novo por um tempo, consideramos o ESP32 offline.
+// No modo teste ele manda o estado a cada 5 s: 20 s sem nada já é offline.
+// No modo normal ele manda a cada 30 s: aí esperamos 2 min.
+const LIMITE_OFFLINE_TESTE_MS = 20 * 1000;
 const LIMITE_OFFLINE_MS = 2 * 60 * 1000;
 
 // Elementos da página
@@ -26,6 +29,7 @@ const elOffline = document.getElementById("offline");
 const controle = iniciarControle(db, document.getElementById("controle"));
 
 let ultimoTs = null;     // horário (do servidor) do último dado recebido
+let modoTeste = false;   // o ESP32 está com MODO_TESTE ligado?
 let diferencaRelogio = 0; // diferença entre o relógio do servidor e o do computador
 
 // O Firebase informa a diferença entre o relógio dele e o nosso,
@@ -53,6 +57,7 @@ onValue(ref(db, "horta/estado"), (snap) => {
   elBomba.classList.toggle("ligada", estado.bomba);
 
   ultimoTs = estado.ts;
+  modoTeste = estado.modoTeste === true;
   atualizarTempo();
 });
 
@@ -69,7 +74,9 @@ function atualizarTempo() {
   else texto = `há ${Math.floor(segundos / 3600)} h`;
   elAtualizacao.textContent = `Última atualização: ${texto}`;
 
-  const online = agora - ultimoTs < LIMITE_OFFLINE_MS;
+  const limite = modoTeste ? LIMITE_OFFLINE_TESTE_MS : LIMITE_OFFLINE_MS;
+  const online = agora - ultimoTs < limite;
+  elOffline.textContent = `⚠️ ESP32 offline — nenhum dado novo há mais de ${modoTeste ? "20 segundos" : "2 minutos"}.`;
   elOffline.hidden = online;
   controle.definirOffline(!online);  // sem ESP32, os botões ficam desativados
 }
