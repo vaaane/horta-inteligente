@@ -12,8 +12,9 @@
 import {
   calcularHorasDeSol, meioDiaLocal, classificar, SOMBRA, MEIA_SOMBRA, PLENO_SOL
 } from "./sol.js";
-import { CULTURAS, NECESSIDADE, sugerirLugares, descreverLugar } from "./culturas.js";
+import { CULTURAS, NECESSIDADE } from "./culturas.js";
 import { iniciarModoMapa } from "./mapa.js";
+import { iniciarPlantas } from "./plantas.js";
 
 // ---------- Terreno padrão ----------
 const PADRAO = {
@@ -109,7 +110,8 @@ function medir() {
 // Outras partes da página (mapa de sol, sugestões) desenham por cima do chão
 // e embaixo dos obstáculos. Elas se registram aqui.
 const camadas = [];
-export function adicionarCamada(funcao) { camadas.push(funcao); }
+const camadasPorCima = [];  // plantas: por cima dos obstáculos
+export function adicionarCamada(funcao, porCima = false) { (porCima ? camadasPorCima : camadas).push(funcao); }
 
 // Desenha no modo atual: por cima do mapa, ou no canvas do Desenho livre
 function desenhar() {
@@ -145,6 +147,7 @@ function desenharLivre() {
 
   desenharRegua(L, C);
   terreno.obstaculos.forEach((ob, i) => desenharObstaculo(ob, i === selecionado));
+  for (const camada of camadasPorCima) camada(ctx, { paraPxX, paraPxY, escala, terreno });
   desenharBussola();
 }
 
@@ -256,7 +259,12 @@ export function obstaculoEm(x, y) {
 canvas.addEventListener("pointerdown", (evento) => {
   const { px, py } = pontoDoEvento(evento);
   const b = centroBussola();
-  if (Math.hypot(px - b.x, py - b.y) <= RAIO_BUSSOLA) {
+  // Tocou numa planta? (quem cuida é o plantas.js)
+  const planta = plantas.tocar({ x: paraMetro(px), y: paraMetro(py) }, { x: px, y: py });
+  if (planta === true) { evento.preventDefault(); return; }
+  if (planta) {
+    arrastando = { tipo: "planta", manipulador: planta };
+  } else if (Math.hypot(px - b.x, py - b.y) <= RAIO_BUSSOLA) {
     arrastando = { tipo: "norte" };
   } else {
     const x = paraMetro(px);
@@ -277,6 +285,10 @@ canvas.addEventListener("pointerdown", (evento) => {
 canvas.addEventListener("pointermove", (evento) => {
   if (!arrastando) return;
   const { px, py } = pontoDoEvento(evento);
+  if (arrastando.tipo === "planta") {
+    arrastando.manipulador.mover({ x: paraMetro(px), y: paraMetro(py) });
+    return;
+  }
   if (arrastando.tipo === "norte") {
     const b = centroBussola();
     // Ângulo a partir do topo, no sentido do relógio
@@ -293,6 +305,12 @@ canvas.addEventListener("pointermove", (evento) => {
 
 function soltar(evento) {
   if (!arrastando) return;
+  if (arrastando.tipo === "planta") {
+    arrastando.manipulador.soltar();
+    arrastando = null;
+    if (canvas.hasPointerCapture(evento.pointerId)) canvas.releasePointerCapture(evento.pointerId);
+    return;
+  }
   arrastando = null;
   if (canvas.hasPointerCapture(evento.pointerId)) canvas.releasePointerCapture(evento.pointerId);
   aoMudar();
@@ -689,7 +707,6 @@ agendarCalculo(0);
 const CHAVE_PLANTAS = "horta-planejar-plantas-v1";
 const AREA_PADRAO = 0.5;  // m²
 let escolhidas = carregarPlantas();  // { tomate: 0.5, alface: 1 }
-let sugestoes = [];
 
 function carregarPlantas() {
   try { return JSON.parse(localStorage.getItem(CHAVE_PLANTAS)) || {}; } catch { return {}; }
@@ -698,8 +715,6 @@ function salvarPlantas() {
   try { localStorage.setItem(CHAVE_PLANTAS, JSON.stringify(escolhidas)); } catch { /* sem salvar */ }
 }
 
-// Arredonda para meia hora: "~7 h", "~4,5 h"
-const horasTela = (h) => numero(Math.round(h * 2) / 2, 1);
 
 // Lista para marcar as plantas
 function montarEscolha() {
@@ -755,75 +770,40 @@ function montarEscolha() {
   }));
 }
 
-// Escolhe os lugares e explica
-function calcularSugestoes() {
-  const pedidos = CULTURAS.filter((c) => c.id in escolhidas).map((cultura) => ({ cultura, area: escolhidas[cultura.id] }));
-  sugestoes = mapa && pedidos.length ? sugerirLugares(mapa, pedidos) : [];
-  const quando = anoTodo ? " no pior mês" : "";
+// ---------- Canteiros das plantas (arrastar e girar: plantas.js) ----------
+const CHAVE_CANTEIROS = "horta-planejar-canteiros-v1";
+let canteirosPorModo = lerCanteiros();  // { livre: { tomate: {...} }, mapa: {...} }
+let modoDosCanteiros = null;            // de qual modo são os canteiros que estão no plantas.js
 
-  $("sugestoes-vazio").hidden = pedidos.length > 0;
-  $("sugestoes").replaceChildren(...sugestoes.map((s) => {
-    const li = document.createElement("li");
-    const cor = document.createElement("span");
-    cor.className = "planejar-cor";
-    cor.style.background = s.cultura.cor;
-    const texto = document.createElement("span");
-    const precisa = NECESSIDADE[s.cultura.sol];
-    const nome = s.cultura.nome;
-    if (s.celulas.length > 0) {
-      let frase = `${nome}: ${descreverLugar(s.celulas, mapa, terrenoCalculado)}, ~${horasTela(s.horasMedia)} h de sol${quando}.`;
-      if (s.areaConseguida < s.area - 1e-6) {
-        frase += ` Só coube ${numero(s.areaConseguida, 2)} m² dos ${numero(s.area, 2)} m² pedidos.`;
-      }
-      texto.textContent = frase;
-    } else if (s.melhorHoras < precisa.minimo) {
-      texto.textContent = `Não há sol suficiente para ${nome.toLowerCase()} neste terreno: o melhor ponto tem ` +
-        `${horasTela(s.melhorHoras)} h${quando}. Tente tirar ou baixar um obstáculo.`;
-      li.className = "sem-lugar";
-    } else {
-      texto.textContent = `Não sobrou lugar com ${precisa.texto} para ${nome.toLowerCase()}: ` +
-        "os melhores pontos já ficaram com outras plantas. Diminua as áreas.";
-      li.className = "sem-lugar";
-    }
-    li.append(cor, texto);
-    return li;
-  }));
+function lerCanteiros() {
+  try { return JSON.parse(localStorage.getItem(CHAVE_CANTEIROS)) || { livre: {}, mapa: {} }; } catch { return { livre: {}, mapa: {} }; }
+}
+function salvarCanteiros() {
+  if (modoDosCanteiros !== modo) return;
+  canteirosPorModo[modo] = plantas.obterPosicoes();
+  try { localStorage.setItem(CHAVE_CANTEIROS, JSON.stringify(canteirosPorModo)); } catch { /* sem salvar */ }
+}
+
+const plantas = iniciarPlantas({
+  lista: $("sugestoes"),
+  vazio: $("sugestoes-vazio"),
+  aoMudar: (opcoes) => {
+    desenhar();
+    if (opcoes.salvar) salvarCanteiros();
+  }
+});
+
+// Depois do cálculo (ou quando mudam as plantas): cada planta ganha ou mantém o seu canteiro
+function calcularSugestoes() {
+  plantas.atualizar(mapa, terrenoCalculado, escolhidas);
+  salvarCanteiros();
   desenhar();
 }
 
-// Camada das plantas: pinta a região de cada uma e escreve o nome
-adicionarCamada((ctx2, { paraPxX: px, paraPxY: py, escala: esc }) => {
-  if (!mapa) return;
-  for (const s of sugestoes) {
-    if (!s.celulas.length) continue;
-    ctx2.fillStyle = s.cultura.cor;
-    ctx2.globalAlpha = 0.85;
-    let sx = 0;
-    let sy = 0;
-    for (const i of s.celulas) {
-      const x0 = (i % mapa.colunas) * mapa.passo;
-      const y0 = Math.floor(i / mapa.colunas) * mapa.passo;
-      ctx2.fillRect(px(x0), py(y0), mapa.passo * esc + 0.5, mapa.passo * esc + 0.5);
-      sx += x0 + mapa.passo / 2;
-      sy += y0 + mapa.passo / 2;
-    }
-    ctx2.globalAlpha = 1;
-    // Nome no meio da região
-    const cx = px(sx / s.celulas.length);
-    const cy = py(sy / s.celulas.length);
-    ctx2.font = "bold 13px system-ui, sans-serif";
-    ctx2.textAlign = "center";
-    ctx2.textBaseline = "middle";
-    const largura = ctx2.measureText(s.cultura.nome).width + 10;
-    ctx2.fillStyle = "rgba(255, 255, 255, 0.92)";
-    ctx2.fillRect(cx - largura / 2, cy - 10, largura, 20);
-    ctx2.strokeStyle = s.cultura.cor;
-    ctx2.lineWidth = 2;
-    ctx2.strokeRect(cx - largura / 2, cy - 10, largura, 20);
-    ctx2.fillStyle = "#1b2a1c";
-    ctx2.fillText(s.cultura.nome, cx, cy);
-  }
-});
+// Desenho livre: canteiros por cima dos obstáculos
+adicionarCamada((ctx2, { paraPxX: px, paraPxY: py }) => {
+  plantas.desenhar(ctx2, (x, y) => ({ x: px(x), y: py(y) }));
+}, true);
 
 // Tabela "Umidade e sol por cultura"
 $("tabela-culturas").replaceChildren(...CULTURAS.map((cultura) => {
@@ -857,7 +837,18 @@ const modoMapa = iniciarModoMapa({
     if (!opcoes.arrastando) salvarMapa();
   },
   aoMudarVista: () => salvarMapa(),
-  textoDoPonto: textoDaDica
+  textoDoPonto: textoDaDica,
+  // Toque numa planta: o plantas.js cuida (e o mapa não anda enquanto ela é arrastada)
+  pegarToque: (p) => {
+    const t = modoMapa.pontoNoTerreno(p);
+    if (!t) return null;
+    const manipulador = plantas.tocar(t, p);
+    if (!manipulador || manipulador === true) return manipulador;
+    return {
+      mover: (p2) => manipulador.mover(modoMapa.pontoNoTerreno(p2)),
+      soltar: () => manipulador.soltar()
+    };
+  }
 });
 for (const botao of document.querySelectorAll("[data-ferramenta]")) {
   botao.addEventListener("click", () => modoMapa.usarFerramenta(botao.dataset.ferramenta));
@@ -865,6 +856,7 @@ for (const botao of document.querySelectorAll("[data-ferramenta]")) {
 
 function trocarModo(novo) {
   if (novo === "mapa" && !modoMapa.disponivel) novo = "livre";  // sem Leaflet (sem internet)
+  salvarCanteiros();  // guarda os canteiros do modo que está saindo
   modo = novo;
   try { localStorage.setItem(CHAVE_MODO, modo); } catch { /* sem salvar */ }
   document.body.classList.toggle("modo-mapa", modo === "mapa");
@@ -873,7 +865,9 @@ function trocarModo(novo) {
     botao.setAttribute("aria-pressed", String(botao.dataset.modo === modo));
   }
   mapa = null;  // o mapa de sol era do outro modo: calcula de novo
-  sugestoes = [];
+  // Cada modo tem os seus canteiros (o terreno é outro)
+  plantas.definirPosicoes(canteirosPorModo[modo] || {});
+  modoDosCanteiros = modo;
   agendarCalculo(0);
   if (modo === "mapa") {
     modoMapa.mostrar();
@@ -936,35 +930,16 @@ modoMapa.adicionarCamada((ctx2, { terreno: noMapa, pixelDaForma }) => {
     ctx2.fillStyle = ctx2.strokeStyle = CORES_SOL[classificar(mapa.horas[i])];
     pintar(i);
   }
-  // Regiões das plantas, com o nome no meio
-  for (const s of sugestoes) {
-    if (!s.celulas.length) continue;
-    ctx2.globalAlpha = 0.85;
-    ctx2.fillStyle = ctx2.strokeStyle = s.cultura.cor;
-    let sx = 0;
-    let sy = 0;
-    for (const i of s.celulas) {
-      pintar(i);
-      sx += ((i % mapa.colunas) + 0.5) * mapa.passo;
-      sy += (Math.floor(i / mapa.colunas) + 0.5) * mapa.passo;
-    }
-    ctx2.globalAlpha = 1;
-    const meio = pixel(sx / s.celulas.length, sy / s.celulas.length);
-    ctx2.font = "bold 13px system-ui, sans-serif";
-    ctx2.textAlign = "center";
-    ctx2.textBaseline = "middle";
-    const largura = ctx2.measureText(s.cultura.nome).width + 10;
-    ctx2.fillStyle = "rgba(255, 255, 255, 0.92)";
-    ctx2.fillRect(meio.x - largura / 2, meio.y - 10, largura, 20);
-    ctx2.lineWidth = 2;
-    ctx2.strokeStyle = s.cultura.cor;
-    ctx2.strokeRect(meio.x - largura / 2, meio.y - 10, largura, 20);
-    ctx2.fillStyle = "#1b2a1c";
-    ctx2.fillText(s.cultura.nome, meio.x, meio.y);
-    ctx2.lineWidth = 1;
-  }
   ctx2.restore();
 });
+
+// Canteiros das plantas por cima do mapa (e dos obstáculos)
+modoMapa.adicionarCamada((ctx2, { terreno: noMapa, pixelDaForma }) => {
+  if (!noMapa || !terrenoCalculado) return;
+  const L = terrenoCalculado.largura;
+  const C = terrenoCalculado.comprimento;
+  plantas.desenhar(ctx2, (x, y) => pixelDaForma(noMapa, x - L / 2, C / 2 - y));
+}, true);
 
 // =====================================================================
 //  SALVAR E COMPARTILHAR
@@ -987,6 +962,11 @@ const ponto = (latlng) => [arred(latlng[0], 7), arred(latlng[1], 7)];
 
 function compactar() {
   const dados = { v: 1, m: modo, p: escolhidas };
+  // Canteiros: [x, y, w, h, girada] de cada planta
+  dados.k = {};
+  for (const [id, r] of Object.entries(plantas.obterPosicoes())) {
+    if (r) dados.k[id] = [arred(r.x, 2), arred(r.y, 2), arred(r.w, 2), arred(r.h, 2), r.girada ? 1 : 0];
+  }
   if (modo === "mapa") {
     const e = modoMapa.obterEstado();
     dados.c = ponto(e.centro);
@@ -1007,6 +987,12 @@ function compactar() {
 function descompactar(dados) {
   if (!dados || dados.v !== 1) return false;
   if (dados.p && typeof dados.p === "object") escolhidas = dados.p;
+  if (dados.k && typeof dados.k === "object") {
+    const canteiros = {};
+    for (const [id, k] of Object.entries(dados.k)) canteiros[id] = { x: k[0], y: k[1], w: k[2], h: k[3], girada: !!k[4] };
+    canteirosPorModo[dados.m === "mapa" ? "mapa" : "livre"] = canteiros;
+    try { localStorage.setItem(CHAVE_CANTEIROS, JSON.stringify(canteirosPorModo)); } catch { /* sem salvar */ }
+  }
   if (dados.m === "mapa") {
     const t = dados.t;
     modoMapa.aplicarEstado({

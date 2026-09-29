@@ -22,10 +22,11 @@ export const CULTURAS = [
 ];
 
 // O que cada tipo de sol precisa
+// maximo: acima disso a planta sofre (meia-sombra: as folhas podem queimar no calor)
 export const NECESSIDADE = {
-  pleno: { minimo: 6, texto: "pleno sol (6 h ou mais)" },
-  quatro: { minimo: 4, texto: "4 h ou mais" },
-  meia: { minimo: 3, texto: "meia-sombra (3–6 h)" }
+  pleno: { minimo: 6, maximo: null, texto: "pleno sol (6 h ou mais)", precisa: "Precisa de 6 h ou mais" },
+  quatro: { minimo: 4, maximo: null, texto: "4 h ou mais", precisa: "Precisa de 4 h ou mais" },
+  meia: { minimo: 3, maximo: 6, texto: "meia-sombra (3–6 h)", precisa: "Ideal entre 3 e 6 h" }
 };
 
 // Quem escolhe primeiro: as mais exigentes (precisam de mais sol)
@@ -158,4 +159,134 @@ export function descreverLugar(celulas, mapa, terreno) {
   const indice = Math.round(rumo / 45) % 8;
   const lado = indice % 2 === 1 ? `canto ${DIRECOES[indice]}` : `lado ${DIRECOES[indice]}`;  // diagonais = canto
   return distancia < 0.65 ? `${lado}, perto do centro` : lado;
+}
+
+// =====================================================================
+//  CANTEIROS: a região de cada planta é um retângulo alinhado à grade
+//  (x, y, w, h em metros no terreno; x para a direita, y para baixo)
+// =====================================================================
+
+// Avalia um lugar pelas horas de sol dos quadradinhos dele:
+//   Recomendado     = todos os quadradinhos dentro da faixa da planta
+//   Aceitável       = falta menos de 1 h na média, ou passa do máximo (meia-sombra)
+//   Não recomendado = falta 1 h ou mais na média
+export const NIVEIS = {
+  recomendado: { texto: "Recomendado", icone: "✓", cor: "#2e7d32" },
+  aceitavel: { texto: "Aceitável", icone: "!", cor: "#f9a825" },
+  nao: { texto: "Não recomendado", icone: "✕", cor: "#c62828" }
+};
+
+export function avaliarRegiao(horas, cultura) {
+  const { minimo: min, maximo: max } = NECESSIDADE[cultura.sol];
+  if (!horas.length) return { nivel: "nao", minimo: 0, media: 0, maior: 0, falta: min, excesso: 0 };
+  const minimo = Math.min(...horas);
+  const maior = Math.max(...horas);
+  const media = horas.reduce((s, h) => s + h, 0) / horas.length;
+  const falta = Math.max(0, min - media);
+  const excesso = max === null ? 0 : Math.max(0, media - max);
+  let nivel;
+  if (minimo >= min && (max === null || maior <= max)) nivel = "recomendado";
+  else if (falta >= 1) nivel = "nao";
+  else nivel = "aceitavel";  // quase lá, ou sol demais para meia-sombra
+  return { nivel, minimo, media, maior, falta, excesso };
+}
+
+const umaCasa = (h) => (Math.round(h * 2) / 2).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+
+// "Tomate aqui: 4,5 h de sol (mín. 3,5 h). Precisa de 6 h ou mais. Não recomendado."
+export function textoAvaliacao(cultura, av) {
+  const necessidade = NECESSIDADE[cultura.sol];
+  let texto = `${cultura.nome} aqui: ${umaCasa(av.media)} h de sol`;
+  if (av.media - av.minimo >= 0.5) texto += ` (mín. ${umaCasa(av.minimo)} h)`;
+  if (av.excesso > 0) {
+    texto += `. Ideal até ${necessidade.maximo} h: pode queimar as folhas no calor.`;
+  } else {
+    texto += `. ${necessidade.precisa}.`;
+  }
+  return `${texto} ${NIVEIS[av.nivel].texto}.`;
+}
+
+// Tamanho do canteiro para uma área, em quadradinhos inteiros. Prefere a
+// área exata num retângulo não muito comprido (até 3 × 1), ex.: 8 = 4 × 2;
+// senão, quase quadrado. Deitado (w ≥ h); dá para girar 90°.
+export function tamanhoDoCanteiro(area, passo) {
+  const n = Math.max(1, Math.round(area / (passo * passo)));
+  for (let linhas = Math.floor(Math.sqrt(n)); linhas >= 1; linhas--) {
+    if (n % linhas === 0 && n / linhas <= 3 * linhas) return { w: (n / linhas) * passo, h: linhas * passo };
+  }
+  const colunas = Math.ceil(Math.sqrt(n));
+  const linhas = Math.ceil(n / colunas);
+  return { w: colunas * passo, h: linhas * passo };
+}
+
+// Encaixa na grade (arredonda para o quadradinho mais perto)
+export function encaixar(r, passo) {
+  const q = (v) => Math.round(v / passo) * passo;
+  return { x: q(r.x), y: q(r.y), w: r.w, h: r.h };
+}
+
+// Quadradinhos do canteiro e se o lugar vale: dentro do terreno e sem obstáculo
+//   devolve { ok, motivo: "fora" | "obstaculo" | null, celulas }
+export function validarCanteiro(mapa, terreno, r) {
+  const folga = 1e-6;
+  if (r.x < -folga || r.y < -folga || r.x + r.w > terreno.largura + folga || r.y + r.h > terreno.comprimento + folga) {
+    return { ok: false, motivo: "fora", celulas: [] };
+  }
+  const celulas = [];
+  const c0 = Math.round(r.x / mapa.passo);
+  const l0 = Math.round(r.y / mapa.passo);
+  const nc = Math.round(r.w / mapa.passo);
+  const nl = Math.round(r.h / mapa.passo);
+  for (let l = l0; l < l0 + nl; l++) {
+    for (let c = c0; c < c0 + nc; c++) {
+      if (c < 0 || l < 0 || c >= mapa.colunas || l >= mapa.linhas) return { ok: false, motivo: "fora", celulas: [] };
+      const i = l * mapa.colunas + c;
+      if (mapa.ocupado[i]) return { ok: false, motivo: "obstaculo", celulas: [] };
+      celulas.push(i);
+    }
+  }
+  return { ok: true, motivo: null, celulas };
+}
+
+// Melhor lugar para um canteiro w × h (deitado ou em pé), sem usar os
+// quadradinhos de "evitar" (outras plantas). Nota: primeiro a avaliação
+// (recomendado > aceitável > não), depois a preferência de sol da planta,
+// e no empate o mais perto do centro.
+export function melhorPosicao(mapa, terreno, cultura, w, h, evitar = new Set()) {
+  let melhor = null;
+  let melhorNota = -Infinity;
+  const posicoes = w === h ? [[w, h]] : [[w, h], [h, w]];
+  const PESO = { recomendado: 2000, aceitavel: 1000, nao: 0 };
+  for (const [ww, hh] of posicoes) {
+    const nc = Math.round(ww / mapa.passo);
+    const nl = Math.round(hh / mapa.passo);
+    for (let l = 0; l + nl <= mapa.linhas; l++) {
+      for (let c = 0; c + nc <= mapa.colunas; c++) {
+        const r = { x: c * mapa.passo, y: l * mapa.passo, w: ww, h: hh };
+        const v = validarCanteiro(mapa, terreno, r);
+        if (!v.ok || v.celulas.some((i) => evitar.has(i))) continue;
+        const av = avaliarRegiao(v.celulas.map((i) => mapa.horas[i]), cultura);
+        const cx = (c + nc / 2) / mapa.colunas - 0.5;
+        const cy = (l + nl / 2) / mapa.linhas - 0.5;
+        const n = PESO[av.nivel] + nota(av.media, cultura.sol) * 10 - Math.hypot(cx, cy);
+        if (n > melhorNota) { melhorNota = n; melhor = r; }
+      }
+    }
+  }
+  return melhor;
+}
+
+// Sugere um canteiro para cada planta (as mais exigentes escolhem primeiro)
+//   pedidos: [{ cultura, area }] -> { id: { x, y, w, h } | null }
+export function sugerirCanteiros(mapa, terreno, pedidos) {
+  const ocupados = new Set();
+  const resultado = {};
+  const ordenados = [...pedidos].sort((a, b) => ORDEM[a.cultura.sol] - ORDEM[b.cultura.sol]);
+  for (const { cultura, area } of ordenados) {
+    const { w, h } = tamanhoDoCanteiro(area, mapa.passo);
+    const r = melhorPosicao(mapa, terreno, cultura, w, h, ocupados);
+    resultado[cultura.id] = r;
+    if (r) validarCanteiro(mapa, terreno, r).celulas.forEach((i) => ocupados.add(i));
+  }
+  return resultado;
 }

@@ -6,7 +6,9 @@ import {
   calcularHorasDeSol, meioDiaLocal, posicoesDoSol, direcaoNoDesenho,
   entradaNoRetangulo, entradaNoCirculo, entradaNoObstaculo, dentroDoObstaculo
 } from "./sol.js";
-import { CULTURAS, sugerirLugares, descreverLugar } from "./culturas.js";
+import {
+  CULTURAS, sugerirLugares, descreverLugar, avaliarRegiao, textoAvaliacao, sugerirCanteiros, validarCanteiro
+} from "./culturas.js";
 
 const URL_SUNCALC = "https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js";
 
@@ -110,6 +112,39 @@ teste("sugestão: tomate no sol, alface na meia-sombra, sem dividir quadradinho"
   assert.ok(!alface.celulas.some((i) => tomate.celulas.includes(i)));
   console.log(`   tomate: ${descreverLugar(tomate.celulas, mapa, terreno)}, ~${tomate.horasMedia.toFixed(1)} h`);
   console.log(`   alface: ${descreverLugar(alface.celulas, mapa, terreno)}, ~${alface.horasMedia.toFixed(1)} h`);
+});
+
+teste("avaliação do lugar de uma planta", () => {
+  const tomate = CULTURAS.find((c) => c.id === "tomate");
+  const alface = CULTURAS.find((c) => c.id === "alface");
+  assert.equal(avaliarRegiao([7, 7, 7, 7], tomate).nivel, "recomendado");
+  assert.equal(avaliarRegiao([5, 6, 5.5, 5.5], tomate).nivel, "aceitavel");   // média 5,5 h
+  assert.equal(avaliarRegiao([4, 4, 4, 4], tomate).nivel, "nao");             // média 4 h
+  const excesso = avaliarRegiao([7.5, 7.5, 7.5], alface);
+  assert.equal(excesso.nivel, "aceitavel");                                   // sol demais para alface
+  assert.ok(excesso.excesso > 0);
+  assert.equal(avaliarRegiao([5, 5], alface).nivel, "recomendado");
+  console.log("   " + textoAvaliacao(tomate, avaliarRegiao([4.5, 4.5, 3.5, 5.5], tomate)));
+  console.log("   " + textoAvaliacao(alface, excesso));
+});
+
+teste("canteiros sugeridos: dentro do terreno, fora dos obstáculos e sem se sobrepor", () => {
+  const data = meioDiaLocal(2026, 5, 21, LNG);
+  const terreno = {
+    largura: 6, comprimento: 6, norte: 0, latitude: LAT, longitude: LNG,
+    obstaculos: [{ tipo: "retangulo", nome: "Muro", x: 0, y: 2, largura: 6, profundidade: 0.2, altura: 3 }]
+  };
+  const mapa = calcularHorasDeSol(SunCalc, terreno, [data]);
+  const cultura = (id) => CULTURAS.find((c) => c.id === id);
+  const canteiros = sugerirCanteiros(mapa, terreno, [
+    { cultura: cultura("tomate"), area: 1 }, { cultura: cultura("alface"), area: 1 }
+  ]);
+  const t = validarCanteiro(mapa, terreno, canteiros.tomate);
+  const a = validarCanteiro(mapa, terreno, canteiros.alface);
+  assert.ok(t.ok && a.ok);
+  assert.ok(!t.celulas.some((i) => a.celulas.includes(i)));
+  assert.equal(avaliarRegiao(t.celulas.map((i) => mapa.horas[i]), cultura("tomate")).nivel, "recomendado");
+  assert.equal(avaliarRegiao(a.celulas.map((i) => mapa.horas[i]), cultura("alface")).nivel, "recomendado");
 });
 
 console.log(`\n${passou} testes passaram.`);

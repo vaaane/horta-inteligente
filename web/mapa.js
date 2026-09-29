@@ -63,7 +63,7 @@ export function metrosParaForma(e, n, angulo) {
 export function iniciarModoMapa(opcoes) {
   const {
     elemento, busca, buscaTexto, buscaStatus, botaoLocalizacao, camadaNomes,
-    lista, editor, ferramentaStatus, aoMudar, textoDoPonto, aoMudarVista
+    lista, editor, ferramentaStatus, aoMudar, textoDoPonto, aoMudarVista, pegarToque
   } = opcoes;
 
   let mapa = null;          // o mapa do Leaflet (criado na primeira vez que aparece)
@@ -80,8 +80,9 @@ export function iniciarModoMapa(opcoes) {
   let gesto = null;         // o que o dedo/mouse está fazendo agora
   let vista = { centro: CENTRO_INICIAL, zoom: ZOOM_INICIAL };  // onde o mapa começa (salvo ou do link)
 
-  // Quem desenha por baixo das formas (mapa de sol, plantas): outras partes se registram
+  // Quem desenha junto (mapa de sol embaixo das formas; plantas por cima)
   const camadas = [];
+  const camadasPorCima = [];
 
   // O Leaflet não carregou (sem internet?): o modo mapa não funciona
   const disponivel = typeof L !== "undefined";
@@ -242,6 +243,7 @@ export function iniciarModoMapa(opcoes) {
     for (const camada of camadas) camada(ctx, ferramentasDeDesenho());
     if (terreno) desenharTerreno();
     obstaculos.forEach((ob, i) => desenharObstaculo(ob, selecionado === i));
+    for (const camada of camadasPorCima) camada(ctx, ferramentasDeDesenho());
     const forma = formaSelecionada();
     if (forma) desenharAlcas(forma);
     if (gesto && gesto.tipo === "criar") desenharPrevia();
@@ -403,6 +405,16 @@ export function iniciarModoMapa(opcoes) {
       } else if (forma && perto(p, pixelDaForma(forma, forma.raio, 0), raio)) {
         gesto = { tipo: "raio", forma };
       }
+      if (!gesto && pegarToque) {
+        // Tocou numa planta? (quem cuida é o plantas.js)
+        const externo = pegarToque(p);
+        if (externo === true) {  // toque usado (ex.: girar a planta)
+          evento.stopPropagation();
+          evento.preventDefault();
+          return;
+        }
+        if (externo) gesto = { tipo: "externo", manipulador: externo };
+      }
       if (!gesto) {
         // Tocou numa forma? (obstáculos por cima do terreno)
         let alvo = null;
@@ -436,6 +448,10 @@ export function iniciarModoMapa(opcoes) {
 
   function aoMover(evento) {
     if (!gesto || !evento.isPrimary) return;
+    if (gesto.tipo === "externo") {  // arrastando uma planta
+      gesto.manipulador.mover(pontoDoEvento(evento));
+      return;
+    }
     const latlng = mapa.containerPointToLatLng(pontoDoEvento(evento));
     const aqui = [latlng.lat, latlng.lng];
     const { forma } = gesto;
@@ -480,7 +496,12 @@ export function iniciarModoMapa(opcoes) {
     window.removeEventListener("pointermove", aoMover);
     window.removeEventListener("pointerup", aoSoltar);
     window.removeEventListener("pointercancel", aoSoltar);
-    mapa.dragging.enable();
+    mapa.dragging.enable();  // o mapa volta a andar
+    if (gesto.tipo === "externo") {
+      gesto.manipulador.soltar();
+      gesto = null;
+      return;
+    }
     if (gesto.tipo === "criar") criarForma(gesto.inicio, gesto.atual);
     gesto = null;
     redesenhar();
@@ -774,7 +795,13 @@ export function iniciarModoMapa(opcoes) {
     mostrarPainel,
     redesenhar,
     usarFerramenta,
-    adicionarCamada: (funcao) => camadas.push(funcao),
+    adicionarCamada: (funcao, porCima = false) => (porCima ? camadasPorCima : camadas).push(funcao),
+    // Pixel no mapa -> metros no terreno (null se não há terreno)
+    pontoNoTerreno: (p) => {
+      if (!terreno || !mapa) return null;
+      const latlng = mapa.containerPointToLatLng(p);
+      return noTerreno([latlng.lat, latlng.lng]);
+    },
     obterTerreno: () => terreno,
     terrenoParaCalculo,
     obterObstaculos: () => obstaculos,
