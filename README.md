@@ -25,6 +25,7 @@ Arquivos do site (`web/`):
 - `demo.js`: o cartão "Modo demonstração": simular a chance de chuva pelo site. Veja "Modo demonstração" no final.
 - `agua.js`: o cartão "Água": água usada e economizada (estimativa). Veja "Água (estimativa)" no final.
 - `planejar.html` + `planejar.js`: a página "Planeje sua horta" (desenho do terreno, mapa de sol e sugestão de lugar para cada planta).
+- `mapa.js`: o modo "Sobre o mapa" da página Planeje sua horta (imagem de satélite, busca de endereço e desenho por cima).
 - `sol.js`: o cálculo das horas de sol (sem mexer na página). Testes: `node web/sol.test.mjs` (precisa de internet para baixar o SunCalc).
 - `culturas.js`: sol e umidade de referência de cada planta e a escolha do melhor lugar.
 - `decisao.js`: o cartão "Por que regou (ou não)" do painel: motivo da decisão atual do ESP32 e as 5 últimas decisões (`/horta/decisoes`). Fica escondido se o firmware ainda não manda a decisão.
@@ -237,3 +238,21 @@ Como o mapa de sol é calculado (`web/sol.js`):
 Dá para ver o mapa de um dia (Hoje, Verão, Inverno, Equinócio) ou do **Ano todo (pior caso)**: o menor valor de cada ponto entre os 12 meses. Em **O que você quer plantar?**, a pessoa marca as plantas e a área de cada uma. As que precisam de mais sol escolhem primeiro; cada uma ganha uma região junta, com as horas de sol que ela precisa, e uma explicação em texto.
 
 **Roteiro para a feira:** Carregar exemplo → mostrar a sombra do muro no mapa → trocar para **Inverno (21/06)** e mostrar a sombra maior (o sol fica mais baixo, ao norte) → marcar tomate e alface → mostrar onde cada um ficou e ler a explicação.
+
+### Modo "Sobre o mapa"
+A página abre no modo **Sobre o mapa**: a imagem de satélite do lugar, para desenhar o terreno por cima. O modo **Desenho livre** (o canvas) continua existindo, para quem não quer usar o mapa ou está sem internet boa.
+
+- **Encontrar o lugar:** busque o endereço (ex.: "CED São Bartolomeu, São Sebastião, DF") ou toque em **Usar minha localização**. A busca só acontece quando a pessoa toca em **Buscar**.
+- **Desenhar:** **Desenhar terreno** (arraste no mapa), **Casa ou muro** e **Árvore**. Toque numa forma para selecionar: os quadradinhos mudam o tamanho, a bolinha ↻ gira e arrastar o meio move. Ao criar, escolha o tipo sugerido (casa térrea 3 m, sobrado 6 m, muro 2 m, árvore média 5 m) e ajuste o nome e a altura no painel. A imagem mostra onde as coisas estão; **a altura você informa**.
+- No mapa o **norte é sempre para cima** (rosa dos ventos fixa). O cálculo usa a latitude e a longitude do centro do terreno.
+- **Como o cálculo usa o desenho:** tudo vira metros num plano em volta do terreno (1° de latitude ≈ 111 320 m; 1° de longitude ≈ 111 320 × cos(latitude) m). A grade de quadradinhos segue os lados do terreno, mesmo girado, e o `sol.js` faz a mesma conta do Desenho livre.
+- O mapa de calor fica por cima da imagem, só dentro do terreno, com a transparência ajustável (30% a 90%).
+- **Salvar e compartilhar:** o desenho fica salvo no navegador. **Copiar link** põe o desenho inteiro no endereço (`#p=...`): quem abrir o link vê a mesma horta, com as mesmas plantas marcadas.
+
+**Bibliotecas e atribuições (obrigatórias):**
+- Mapa: [Leaflet](https://leafletjs.com) 1.9.4, carregado pelo cdnjs.
+- Imagens de satélite e nomes de ruas: **Esri World Imagery** e **Esri World Boundaries and Places**, gratuitas e sem chave. Atribuição que aparece no mapa: "Imagens © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community".
+- Busca de endereços: **Nominatim**, do **OpenStreetMap** (© colaboradores do OpenStreetMap). Pela regra de uso, no máximo uma busca por clique, sem busca automática enquanto digita.
+- Não usamos Google Maps (exige chave e cartão).
+
+**Roteiro para a feira (modo mapa):** buscar "CED São Bartolomeu, São Sebastião, DF" (ou usar minha localização) → desenhar o terreno sobre a imagem → marcar a casa (3 m) e uma árvore (5 m) → ver o mapa de calor → marcar tomate e alface → ver as sugestões → **Copiar link** e abrir numa aba anônima.
