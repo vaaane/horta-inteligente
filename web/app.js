@@ -8,6 +8,7 @@ import { iniciarClima } from "./clima.js";
 import { iniciarDecisao } from "./decisao.js";
 import { iniciarControle } from "./controle.js";
 import { iniciarDemo } from "./demo.js";
+import { iniciarAgua } from "./agua.js";
 import { desenharQR } from "./qr.js";
 
 const app = initializeApp(firebaseConfig);
@@ -95,6 +96,9 @@ iniciarClima(db, document.getElementById("clima"), {
 
 // ---------- Cartão "Por que regou (ou não)" (código em decisao.js) ----------
 iniciarDecisao(db, document.getElementById("decisao"));
+
+// ---------- Cartão "Água" (código em agua.js) ----------
+iniciarAgua(db, document.getElementById("agua"));
 
 // ---------- QR code "Abra no seu celular" (só aparece na tela grande) ----------
 desenharQR(document.getElementById("qr"));

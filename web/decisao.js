@@ -23,7 +23,7 @@ const ICONES = {
 const icone = (codigo) => ICONES[codigo] || "🌱";
 
 // "hoje 17:05", "ontem 06:40" ou "27/09 09:15"
-function quando(ts) {
+export function quando(ts) {
   const data = new Date(ts);
   const hora = data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 

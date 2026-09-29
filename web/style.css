@@ -264,6 +264,52 @@ main {
 /* Linha embaixo do "Clima agora" enquanto a simulação estiver ativa */
 .clima-simulada { margin: 8px 0 0; font-size: 0.85rem; font-weight: 600; color: #6b3a00; }
 
+/* Cartão "Água" (agua.js) */
+.agua h2 .selo { text-transform: none; letter-spacing: 0; }
+.agua-regando {
+  margin: 4px 0 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #e3f2fd;
+  color: #0d47a1;
+  border: 1px solid #90caf9;
+  font-weight: 600;
+}
+.agua-valores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin: 8px 0 12px;
+}
+.agua-valores dt { font-size: 0.9rem; color: var(--texto-suave); }
+.agua-valores dd {
+  margin: 2px 0 0;
+  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  font-weight: 700;
+  color: var(--verde);
+  font-variant-numeric: tabular-nums;
+}
+.agua-valores dd.agua-negativa { color: var(--aviso-texto); }
+.agua-sub { margin: 2px 0 0; font-size: 0.85rem; color: var(--texto-suave); }
+.agua-traducao { margin: 0 0 8px; font-size: 1.15rem; font-weight: 700; }
+.agua-nota { margin: 0 0 12px; font-size: 0.85rem; color: var(--texto-suave); }
+.agua-lista { margin-bottom: 12px; }
+.agua-lista summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.agua-zerar { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.agua-confirmar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; }
+.agua-botao {
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--cartao);
+  color: var(--texto);
+  border: 2px solid var(--borda);
+}
+.agua-botao-forte { background: var(--aviso-texto); color: #fff; border-color: var(--aviso-texto); }
+
 /* Cartões antes do primeiro dado do ESP32 */
 .espera-esp32 {
   margin: 12px 0 0;
@@ -487,6 +533,7 @@ main {
 }
 .selo-funcionando { background: var(--verde); color: #fff; }
 .selo-proxima { background: #eceff1; color: var(--texto-suave); }
+.selo-estimativa { background: #1565c0; color: #fff; }
 
 .legenda { color: var(--texto-suave); margin: 0 0 8px; line-height: 2; }
 
