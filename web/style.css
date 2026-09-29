@@ -309,6 +309,28 @@ main {
   border: 2px solid var(--borda);
 }
 .agua-botao-forte { background: var(--aviso-texto); color: #fff; border-color: var(--aviso-texto); }
+/* "Água por dia": seletor de período, gráfico de altura fixa e tabela com rolagem própria */
+.agua-dias { margin: 16px 0; padding-top: 16px; border-top: 1px solid var(--borda); }
+.agua-periodos { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.agua-periodo {
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--cartao);
+  color: var(--verde);
+  border: 2px solid var(--verde);
+}
+.agua-periodo.ativo { background: var(--verde); color: #fff; }
+.agua-resumo { margin: 0 0 12px; font-size: 1.1rem; font-weight: 600; line-height: 1.4; }
+.agua-grafico { position: relative; height: 280px; margin-bottom: 8px; }
+.agua-tabela { margin-top: 8px; }
+.agua-tabela summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.tabela-agua { min-width: 560px; }
+.tabela-agua th, .tabela-agua td { white-space: nowrap; }
+@media (min-width: 1400px) { .painel .agua-grafico { height: 360px; } }
 
 /* Cartões antes do primeiro dado do ESP32 */
 .espera-esp32 {

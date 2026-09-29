@@ -1,12 +1,13 @@
 // Cartão "Água" — água usada pela horta e quanto um timer fixo teria usado
 // ESTIMATIVA: não há sensor de fluxo. O ESP32 grava cada rega em
-// horta/regas com o tempo de bomba ligada × a vazão de referência.
+// horta/regas com o tempo de bomba ligada × a vazão de referência, e o
+// resumo de cada dia em horta/agua/dias/{AAAA-MM-DD} (gráfico "Água por dia").
 //
 // Como usar:
 //   iniciarAgua(db, document.getElementById("agua"));
 // O elemento raiz já deve ter o título do cartão; o resto é criado aqui.
 import {
-  ref, onValue, query, orderByChild, startAt, limitToLast, set, serverTimestamp
+  ref, onValue, query, orderByChild, orderByKey, startAt, limitToLast, set, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 import { quando } from "./decisao.js";
 
@@ -17,7 +18,25 @@ const VAZAO_L_MIN = 1.5;            // igual à do firmware
 const LITROS_BANHO_5MIN = 45;       // banho de 5 minutos, chuveiro comum (estimativa)
 const LITROS_GARRAFAO = 20;
 
+// Água recomendada pela ET₀: 1 mm de água em 1 m² = 1 litro.
+// Então a planta "pede" et0 (mm) × área (m²) litros por dia.
+const AREA_M2 = 0.25;               // área do canteiro da maquete (0,5 m × 0,5 m)
+
 const DIA_MS = 24 * 60 * 60 * 1000;
+
+// Dias no horário de Brasília (UTC-3, sem horário de verão), igual ao ESP32
+const FUSO_MS = 3 * 60 * 60 * 1000;
+const chaveDia = (ms) => new Date(ms - FUSO_MS).toISOString().slice(0, 10);  // "2026-09-30"
+const inicioDoDia = (chave) => Date.parse(chave + "T00:00:00Z") + FUSO_MS;
+const SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const PERIODOS = [7, 14, 30];
+
+// "seg 28", "ter 29"… e "hoje"
+function rotuloDia(chave, hoje) {
+  if (chave === hoje) return "hoje";
+  const data = new Date(chave + "T12:00:00Z");
+  return `${SEMANA[data.getUTCDay()]} ${data.getUTCDate()}`;
+}
 
 // Números no jeito brasileiro: 1,5
 const numero = (valor, casas = 1) =>
@@ -46,6 +65,25 @@ export function iniciarAgua(db, raiz) {
     <p data-agua="traducao" class="agua-traducao" hidden></p>
     <p class="agua-nota">Calculado pelo tempo de bomba ligada × vazão de ${numero(VAZAO_L_MIN)} L/min. Sem sensor de fluxo.
       Timer de comparação: ${TIMER_REGAS_POR_DIA} regas por dia de ${TIMER_MINUTOS_POR_REGA} min.</p>
+
+    <section class="agua-dias">
+      <h3 class="decisao-subtitulo">Água por dia</h3>
+      <div class="agua-periodos" role="group" aria-label="Período do gráfico">
+        ${PERIODOS.map((n) => `<button type="button" class="agua-periodo" data-periodo="${n}" aria-pressed="false">${n} dias</button>`).join("")}
+      </div>
+      <p data-agua="resumo-dias" class="agua-resumo"></p>
+      <div class="agua-grafico"><canvas data-agua="grafico-dias" aria-label="Gráfico de barras da água por dia"></canvas></div>
+      <p class="agua-nota">Recomendado pela ET₀: ET₀ do dia (mm) × ${numero(AREA_M2, 2)} m² do canteiro (1 mm em 1 m² = 1 L). Dias sem previsão ficam sem essa barra.</p>
+      <details class="agua-tabela">
+        <summary>Tabela por dia</summary>
+        <div class="tabela-rolagem">
+          <table class="tabela-materiais tabela-agua">
+            <thead><tr><th>Dia</th><th>Regas</th><th>Tempo de bomba</th><th class="preco">Usado</th><th class="preco">Timer fixo</th><th class="preco">Economia</th></tr></thead>
+            <tbody data-agua="tabela-dias"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
 
     <details class="agua-lista">
       <summary>Últimas regas</summary>
@@ -121,7 +159,27 @@ export function iniciarAgua(db, raiz) {
   }
 
   // A rega que começou em "desde" já está entre as fechadas? (o registro chegou)
-  const jaRegistrada = (desde) => regas.some((r) => r.fim > desde);
+  const jaRegistrada = (desde) => regas.some((r) => r.fim > desde) || regasHoje.some((r) => r.fim > desde);
+
+  // Parte ao vivo: a rega de agora, ou a que acabou e ainda não foi registrada.
+  // Devolve { desde, fim, emAndamento } ou null.
+  function aoVivo() {
+    const inicioAtual = inicioRegaAtual();
+    if (inicioAtual !== null && !jaRegistrada(inicioAtual)) {
+      return { desde: inicioAtual, fim: agora(), emAndamento: true };
+    }
+    if (terminada && (jaRegistrada(terminada.desde) || agora() > terminada.ate)) {
+      terminada = null;  // o registro chegou: a rega passa a contar entre as fechadas
+    }
+    return terminada ? { desde: terminada.desde, fim: terminada.fim, emAndamento: false } : null;
+  }
+
+  // Litros da parte ao vivo a partir de "corte" (ex.: o zero da medição ou a meia-noite)
+  function litrosAoVivoDesde(vivo, corte) {
+    if (!vivo) return 0;
+    const desde = corte !== null ? Math.max(vivo.desde, corte) : vivo.desde;
+    return Math.max(0, vivo.fim - desde) / 1000 / 60 * VAZAO_L_MIN;
+  }
 
   let estadoAtual = {};
   onValue(ref(db, "horta/estado"), (snap) => {
@@ -151,28 +209,12 @@ export function iniciarAgua(db, raiz) {
   const litrosTela = (litros) => `${numero(meio(litros), 1)} L`;
 
   function mostrar() {
-    // Parte ao vivo: a rega de agora (ou a que acabou e ainda não foi registrada)
-    let desdeAoVivo = null;
-    let fimAoVivo = null;
-    let emAndamento = false;
+    const vivo = aoVivo();
     const inicioAtual = inicioRegaAtual();
-    if (inicioAtual !== null && !jaRegistrada(inicioAtual)) {
-      desdeAoVivo = inicioAtual;
-      fimAoVivo = agora();
-      emAndamento = true;
-    } else if (terminada && (jaRegistrada(terminada.desde) || agora() > terminada.ate)) {
-      terminada = null;  // o registro chegou: a rega passa a contar entre as fechadas
-    }
-    if (!emAndamento && terminada) {
-      desdeAoVivo = terminada.desde;
-      fimAoVivo = terminada.fim;
-    }
-    let litrosAoVivo = 0;
-    if (desdeAoVivo !== null) {
-      // Se zeraram a contagem no meio da rega, conta só a partir do zero
-      const desde = inicioMedicao !== null ? Math.max(desdeAoVivo, inicioMedicao) : desdeAoVivo;
-      litrosAoVivo = Math.max(0, fimAoVivo - desde) / 1000 / 60 * VAZAO_L_MIN;
-    }
+    const emAndamento = vivo !== null && vivo.emAndamento;
+    const desdeAoVivo = vivo ? vivo.desde : null;
+    // Se zeraram a contagem no meio da rega, conta só a partir do zero
+    const litrosAoVivo = litrosAoVivoDesde(vivo, inicioMedicao);
 
     // Água usada = regas fechadas + a parte ao vivo
     const litros = regas.reduce((soma, r) => soma + (Number(r.litros) || 0), 0) + litrosAoVivo;
@@ -234,6 +276,165 @@ export function iniciarAgua(db, raiz) {
         ? "💧 Regando agora…"
         : `💧 Regando agora… ${duracao((agora() - inicioAtual) / 1000)}`;
     }
+
+    mostrarDias(vivo);
+  }
+
+  // ================= Água por dia (gráfico e tabela) =================
+  let dias = {};              // horta/agua/dias: { "2026-09-30": { litros, segundos, regas, et0 } }
+  let regasHoje = [];         // regas que terminaram hoje (a barra de hoje é calculada ao vivo)
+  let chaveHojeLida = null;   // de que dia é a lista regasHoje
+  let pararRegasHoje = null;
+  let periodo = 7;
+  let grafico = null;
+  let ultimosDadosGrafico = "";
+
+  onValue(query(ref(db, "horta/agua/dias"), orderByKey(), limitToLast(31)), (snap) => {
+    dias = snap.val() || {};
+    mostrar();
+  });
+
+  // Lê as regas de hoje (e troca a leitura quando vira o dia)
+  function acompanharHoje() {
+    const hoje = chaveDia(agora());
+    if (hoje === chaveHojeLida) return;
+    chaveHojeLida = hoje;
+    if (pararRegasHoje) pararRegasHoje();
+    pararRegasHoje = onValue(
+      query(ref(db, "horta/regas"), orderByChild("fim"), startAt(inicioDoDia(hoje))),
+      (snap) => {
+        regasHoje = [];
+        snap.forEach((filho) => { regasHoje.push(filho.val()); });
+        mostrar();
+      }
+    );
+  }
+
+  for (const botao of raiz.querySelectorAll(".agua-periodo")) {
+    botao.addEventListener("click", () => {
+      periodo = Number(botao.dataset.periodo);
+      mostrar();
+    });
+  }
+
+  function mostrarDias(vivo) {
+    acompanharHoje();
+    const hoje = chaveDia(agora());
+    const timerDia = TIMER_REGAS_POR_DIA * TIMER_MINUTOS_POR_REGA * VAZAO_L_MIN;
+
+    // Um item por dia, do mais antigo para hoje
+    const lista = [];
+    for (let i = periodo - 1; i >= 0; i--) {
+      const chave = chaveDia(agora() - i * DIA_MS);
+      const resumo = dias[chave] || {};
+      const item = {
+        chave,
+        litros: Number(resumo.litros) || 0,
+        segundos: Number(resumo.segundos) || 0,
+        regas: Number(resumo.regas) || 0,
+        et0: typeof resumo.et0 === "number" ? resumo.et0 : null,
+        timer: timerDia  // o timer rega todo dia, com ou sem registro
+      };
+      if (chave === hoje) {
+        // Hoje: regas fechadas de hoje + a rega em andamento, ao vivo (mesma conta do cartão)
+        const aoVivoHoje = litrosAoVivoDesde(vivo, inicioDoDia(hoje));
+        item.litros = regasHoje.reduce((soma, r) => soma + (Number(r.litros) || 0), 0) + aoVivoHoje;
+        item.segundos = regasHoje.reduce((soma, r) => soma + (Number(r.segundos) || 0), 0) +
+          aoVivoHoje / VAZAO_L_MIN * 60;
+        item.regas = regasHoje.length + (vivo && !vivo.emAndamento ? 1 : 0);
+        item.emAndamento = vivo !== null && vivo.emAndamento;
+      }
+      lista.push(item);
+    }
+
+    // Frase-resumo do período
+    const usado = lista.reduce((soma, d) => soma + d.litros, 0);
+    const timer = lista.reduce((soma, d) => soma + d.timer, 0);
+    const porcento = timer > 0 ? Math.round(((timer - usado) / timer) * 100) : 0;
+    let frase = `Nos últimos ${periodo} dias a horta usou ${litrosTela(usado)}; um timer fixo usaria ${litrosTela(timer)}. `;
+    frase += porcento >= 0
+      ? `Economia de ${porcento}%.`
+      : `A horta gastou ${-porcento}% a mais que o timer nesse período.`;
+    $("resumo-dias").textContent = frase;
+
+    // Seletor de período
+    for (const botao of raiz.querySelectorAll(".agua-periodo")) {
+      const ativo = Number(botao.dataset.periodo) === periodo;
+      botao.classList.toggle("ativo", ativo);
+      botao.setAttribute("aria-pressed", String(ativo));
+    }
+
+    desenharGrafico(lista, hoje);
+    preencherTabela(lista, hoje);
+  }
+
+  function desenharGrafico(lista, hoje) {
+    if (typeof Chart === "undefined") return;  // biblioteca não carregou
+    const dados = {
+      rotulos: lista.map((d) => rotuloDia(d.chave, hoje)),
+      usado: lista.map((d) => meio(d.litros)),
+      timer: lista.map((d) => meio(d.timer)),
+      et0: lista.map((d) => (d.et0 === null ? null : meio(d.et0 * AREA_M2)))
+    };
+    const texto = JSON.stringify(dados);
+    if (texto === ultimosDadosGrafico) return;  // nada mudou (roda a cada segundo)
+    ultimosDadosGrafico = texto;
+
+    if (!grafico) {
+      grafico = new Chart($("grafico-dias"), {
+        type: "bar",
+        data: {
+          labels: [],
+          datasets: [
+            { label: "Usado pela horta", data: [], backgroundColor: "#2e7d32" },
+            { label: "Timer fixo", data: [], backgroundColor: "#9e9e9e" },
+            {
+              label: "Recomendado pela ET₀", data: [],
+              backgroundColor: "rgba(21, 101, 192, 0.25)", borderColor: "#1565c0", borderWidth: 2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: {
+            legend: { position: "bottom" },
+            tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${numero(ctx.raw, 1)} L` } }
+          },
+          scales: { y: { beginAtZero: true, ticks: { callback: (v) => `${numero(v, 1)} L` } } }
+        }
+      });
+    }
+    grafico.data.labels = dados.rotulos;
+    grafico.data.datasets[0].data = dados.usado;
+    grafico.data.datasets[1].data = dados.timer;
+    grafico.data.datasets[2].data = dados.et0;
+    grafico.update();
+  }
+
+  function preencherTabela(lista, hoje) {
+    const linhas = [...lista].reverse().map((d) => {  // hoje primeiro
+      const economia = meio(d.timer) - meio(d.litros);
+      const porcento = d.timer > 0 ? Math.round(((d.timer - d.litros) / d.timer) * 100) : 0;
+      const celulas = [
+        d.chave === hoje ? "hoje" : `${rotuloDia(d.chave, hoje)}/${d.chave.slice(5, 7)}`,
+        String(d.regas) + (d.emAndamento ? " + 1" : ""),
+        d.segundos > 0 ? duracao(d.segundos) : "—",
+        litrosTela(d.litros),
+        litrosTela(d.timer),
+        `${numero(economia, 1)} L (${porcento}%)`
+      ];
+      const tr = document.createElement("tr");
+      celulas.forEach((texto, i) => {
+        const td = document.createElement("td");
+        td.textContent = texto;
+        if (i >= 3) td.className = "preco";  // números alinhados à direita
+        tr.append(td);
+      });
+      return tr;
+    });
+    $("tabela-dias").replaceChildren(...linhas);
   }
 
   // Lista recolhível: as 10 regas mais recentes
