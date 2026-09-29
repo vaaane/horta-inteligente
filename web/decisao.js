@@ -14,6 +14,7 @@ const ICONES = {
   regando: "💧",
   solo_ok: "✅",
   adiada_chuva: "🌧️",
+  horario_quente: "☀️",
   solo_critico: "⚠️",
   sem_previsao: "📡",
   pausa_seguranca: "⏸️",

@@ -26,6 +26,7 @@ const elBarra = document.getElementById("barra");
 const elBomba = document.getElementById("bomba");
 const elAtualizacao = document.getElementById("atualizacao");
 const elOffline = document.getElementById("offline");
+const elHoraHorta = document.getElementById("hora-horta");
 
 // ---------- Controle da bomba no cartão "Bomba d'água" (código em controle.js) ----------
 const controle = iniciarControle(db, document.getElementById("controle"));
@@ -61,10 +62,28 @@ onValue(ref(db, "horta/estado"), (snap) => {
   elBomba.textContent = estado.bomba ? "Ligada 💧" : "Desligada";
   elBomba.classList.toggle("ligada", estado.bomba);
 
+  // "Hora da horta": a hora que o ESP32 está usando na decisão
+  horaHorta = typeof estado.hora === "number" ? estado.hora : null;
+  mostrarHoraHorta();
+
   ultimoTs = estado.ts;
   modoTeste = estado.modoTeste === true;
   atualizarTempo();
 });
+
+// ---------- "Hora da horta: 14h (simulada)" no cabeçalho ----------
+let horaHorta = null;      // hora usada pelo ESP32 (vem no estado)
+let horaSimulada = -1;     // hora que o site está simulando (-1 = hora real)
+onValue(ref(db, "horta/comandos/simularHora"), (snap) => {
+  horaSimulada = typeof snap.val() === "number" ? snap.val() : -1;
+  mostrarHoraHorta();
+});
+function mostrarHoraHorta() {
+  elHoraHorta.hidden = horaHorta === null;
+  // "(simulada)" só quando o ESP32 já está usando a hora simulada
+  const simulada = horaSimulada >= 0 && horaHorta === horaSimulada;
+  elHoraHorta.textContent = `Hora da horta: ${horaHorta}h${simulada ? " (simulada)" : ""}`;
+}
 
 // ---------- "Última atualização: há X s" ----------
 function atualizarTempo() {
