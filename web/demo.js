@@ -91,6 +91,14 @@ export function iniciarDemo(db, raiz, cartaoClima) {
       <button type="button" data-demo="zerar-cota" class="demo-voltar">🎯 Recomeçar a cota (demo)</button>
       <span class="agua-sub">A horta volta a contar a água do dia a partir de agora (cartão "Água").</span>
     </div>
+    <div class="demo-cota">
+      <button type="button" data-demo="fim-dia" class="demo-voltar">🌙 Simular fim do dia</button>
+      <span class="agua-sub">aplica o ajuste do Kc com os números de hoje</span>
+    </div>
+    <label class="demo-chave demo-falha">
+      <input type="checkbox" data-demo="detectar-falha" role="switch">
+      <span>Detectar falha (a umidade tem que subir durante a rega)</span>
+    </label>
     <p data-demo="erro" class="controle-status aviso-controle" hidden></p>
     <p data-demo="bloqueio" class="controle-bloqueio"></p>
   `);
@@ -179,6 +187,13 @@ export function iniciarDemo(db, raiz, cartaoClima) {
   // "Recomeçar a cota": o ESP32 passa a contar a cota do dia a partir de agora
   $("zerar-cota").addEventListener("click", () => gravar("zerarCotaEm", serverTimestamp()));
 
+  // "Simular fim do dia": o ESP32 ajusta o Kc com os números de hoje e recomeça a cota
+  $("fim-dia").addEventListener("click", () => gravar("simularFimDiaEm", serverTimestamp()));
+
+  // "Detectar falha": com o potenciômetro parado, toda rega longa daria falha.
+  // Desligada, o ESP32 não confere se a umidade subiu (ausente = ligada).
+  $("detectar-falha").addEventListener("change", () => gravar("detectarFalha", $("detectar-falha").checked));
+
   function mostrar() {
     const bloqueado = offline || comandos === undefined || gravando;
 
@@ -193,6 +208,8 @@ export function iniciarDemo(db, raiz, cartaoClima) {
       sim.faixaEl.hidden = !ativa;
       sim.faixaEl.querySelector('[data-parte="faixa-texto"]').textContent = sim.faixa(sim.valor);
     }
+
+    $("detectar-falha").checked = comandos?.detectarFalha !== false;
 
     // Linha no cartão do clima (só a chuva mexe na previsão)
     const chuva = SIMULACOES[0].valor;

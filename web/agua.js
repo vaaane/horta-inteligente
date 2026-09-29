@@ -21,7 +21,8 @@ const LITROS_GARRAFAO = 20;
 // Água recomendada pela ET₀: 1 mm de água em 1 m² = 1 litro.
 // Então a planta "pede" et0 (mm) × área (m²) litros por dia.
 const AREA_M2 = 0.25;               // área do canteiro da maquete (0,5 m × 0,5 m)
-const KC = 1.0;                     // coeficiente da cultura (igual ao firmware)
+const KC = 1.0;                     // Kc inicial (igual ao firmware); o em uso vem de horta/agua/ajuste
+const MARGEM_EXTRA = 0.5;           // igual ao firmware: até 50% a mais que a cota, se o solo continuar seco
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 
@@ -71,8 +72,14 @@ export function iniciarAgua(db, raiz) {
         <span class="agua-cota-titulo">Cota de hoje pela ET₀</span>
         <span data-agua="cota-valor" class="agua-cota-valor"></span>
       </div>
-      <div class="trilho"><div data-agua="cota-barra" class="barra"></div></div>
+      <!-- A barra vai até 150% da cota: até 100% verde, depois a margem extra listrada -->
+      <div class="trilho agua-cota-trilho">
+        <div data-agua="cota-barra" class="barra"></div>
+        <div data-agua="cota-extra" class="agua-cota-extra"></div>
+        <span class="agua-cota-margem">margem extra</span>
+      </div>
       <p data-agua="cota-conta" class="agua-sub"></p>
+      <p data-agua="cota-kc" class="agua-sub"></p>
     </div>
     <p class="agua-nota">Calculado pelo tempo de bomba ligada × vazão de ${numero(VAZAO_L_MIN)} L/min. Sem sensor de fluxo.
       Timer de comparação: ${TIMER_REGAS_POR_DIA} regas por dia de ${TIMER_MINUTOS_POR_REGA} min.</p>
@@ -84,7 +91,7 @@ export function iniciarAgua(db, raiz) {
       </div>
       <p data-agua="resumo-dias" class="agua-resumo"></p>
       <div class="agua-grafico"><canvas data-agua="grafico-dias" aria-label="Gráfico de barras da água por dia"></canvas></div>
-      <p class="agua-nota">Recomendado pela ET₀: ET₀ do dia (mm) × ${numero(AREA_M2, 2)} m² do canteiro (1 mm em 1 m² = 1 L). Dias sem previsão ficam sem essa barra.</p>
+      <p class="agua-nota">Recomendado pela ET₀: a cota do dia, (ET₀ × Kc − chuva) × ${numero(AREA_M2, 2)} m² do canteiro (1 mm em 1 m² = 1 L). Toque na barra para ver os números. Dias sem previsão ficam sem essa barra.</p>
       <details class="agua-tabela">
         <summary>Tabela por dia</summary>
         <div class="tabela-rolagem">
@@ -193,9 +200,14 @@ export function iniciarAgua(db, raiz) {
   }
 
   let estadoAtual = {};
-  let et0Clima = null;        // ET₀ do dia no nó /clima (só para mostrar a conta da cota)
-  onValue(ref(db, "clima/et0"), (snap) => {
-    et0Clima = typeof snap.val() === "number" ? snap.val() : null;
+  let climaAtual = {};        // /clima: ET₀ e chuva de hoje (só para mostrar a conta da cota)
+  onValue(ref(db, "clima"), (snap) => {
+    climaAtual = snap.val() || {};
+  });
+  let ajuste = {};            // /horta/agua/ajuste: Kc aprendido, quando e por quê
+  onValue(ref(db, "horta/agua/ajuste"), (snap) => {
+    ajuste = snap.val() || {};
+    mostrar();
   });
   onValue(ref(db, "horta/estado"), (snap) => {
     const estado = snap.val();
@@ -298,6 +310,8 @@ export function iniciarAgua(db, raiz) {
 
   // Barra "Cota de hoje pela ET₀": litros usados contra a cota (vêm do ESP32).
   // Entre um envio e outro, se a bomba está ligada, a barra continua subindo.
+  // A barra toda vale 150% da cota: até 2/3 é a cota (verde); o resto é a
+  // margem extra (listrada), que o ESP32 libera se o solo continuar seco.
   function mostrarCota() {
     const cota = estadoAtual.cotaHoje;
     $("cota").hidden = typeof cota !== "number";
@@ -307,20 +321,40 @@ export function iniciarAgua(db, raiz) {
     if (bombaLigada && typeof estadoAtual.ts === "number") {
       litros += Math.max(0, agora() - estadoAtual.ts) / 1000 / 60 * VAZAO_L_MIN;
     }
-    const cheia = litros >= cota;
-    // Enchendo: passos de 0,5 L. Cheia: com uma casa, para não parecer "1,5 de 1,8" quando já encheu
-    $("cota-valor").textContent = cheia
-      ? `🎯 ${numero(litros, 1)} L de ${numero(cota, 1)} L`
-      : `${litrosTela(litros)} de ${numero(cota, 1)} L`;
-    $("cota-barra").style.width = cota > 0 ? `${Math.min(100, (litros / cota) * 100)}%` : "100%";
-
-    // A conta em linguagem simples (1 mm em 1 m² = 1 L)
-    const umaCasa = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    if (et0Clima !== null && Math.abs(et0Clima * AREA_M2 * KC - cota) < 0.05) {
-      $("cota-conta").textContent =
-        `ET₀ ${umaCasa(et0Clima)} mm × ${numero(AREA_M2, 2)} m² × Kc ${umaCasa(KC)} = ${numero(cota, 1)} L`;
+    const limite = cota * (1 + MARGEM_EXTRA);
+    if (cota <= 0) {
+      $("cota-valor").textContent = "🎯 hoje não precisa regar";
+    } else if (litros < cota) {
+      $("cota-valor").textContent = `${litrosTela(litros)} de ${numero(cota, 2)} L`;
+    } else if (litros < limite) {
+      $("cota-valor").textContent = `🎯 ${numero(cota, 2)} L + ${numero(litros - cota, 2)} L extra`;
     } else {
-      $("cota-conta").textContent = `Sem previsão do tempo: cota fixa de ${numero(cota, 1)} L por dia.`;
+      $("cota-valor").textContent = `🎯 ${numero(litros, 1)} L (cota + ${Math.round(MARGEM_EXTRA * 100)}%)`;
+    }
+    const escala = limite > 0 ? limite : 1;
+    $("cota-barra").style.width = `${(Math.min(litros, cota) / escala) * 100}%`;
+    const fracaoCota = cota / escala;  // onde começa a margem extra (2/3 da barra)
+    $("cota-extra").style.left = `${fracaoCota * 100}%`;
+    $("cota-extra").style.width = `${(Math.max(0, Math.min(litros, limite) - cota) / escala) * 100}%`;
+
+    // A conta em linguagem simples: (ET₀ × Kc − chuva) × área. 1 mm em 1 m² = 1 L.
+    const umaCasa = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const kc = typeof ajuste.kc === "number" ? ajuste.kc : KC;
+    const et0 = climaAtual.et0;
+    const chuva = typeof climaAtual.chuvaHojeMm === "number" ? climaAtual.chuvaHojeMm : 0;
+    if (typeof et0 === "number" && Math.abs(Math.max(0, et0 * kc - chuva) * AREA_M2 - cota) < 0.05) {
+      $("cota-conta").textContent =
+        `(ET₀ ${umaCasa(et0)} mm × Kc ${umaCasa(kc)} − chuva ${numero(chuva, 1)} mm) × ${numero(AREA_M2, 2)} m² = ${numero(cota, 2)} L`;
+    } else {
+      $("cota-conta").textContent = `Sem previsão do tempo: cota fixa de ${numero(cota, 2)} L por dia.`;
+    }
+
+    // O Kc que a horta aprendeu
+    if (typeof ajuste.kc === "number" && ajuste.motivo) {
+      const em = typeof ajuste.atualizadoEm === "number" ? ` ${quando(ajuste.atualizadoEm)}` : "";
+      $("cota-kc").textContent = `Kc ${umaCasa(ajuste.kc)} — ajustado${em}: ${ajuste.motivo}`;
+    } else {
+      $("cota-kc").textContent = `Kc ${umaCasa(kc)} (inicial)`;
     }
   }
 
@@ -332,6 +366,7 @@ export function iniciarAgua(db, raiz) {
   let periodo = 7;
   let grafico = null;
   let ultimosDadosGrafico = "";
+  let detalhesEt0 = [];       // "ET₀ 7,1 mm, chuva 0 mm, Kc 1,0" de cada dia (dica da barra)
 
   onValue(query(ref(db, "horta/agua/dias"), orderByKey(), limitToLast(31)), (snap) => {
     dias = snap.val() || {};
@@ -377,6 +412,9 @@ export function iniciarAgua(db, raiz) {
         segundos: Number(resumo.segundos) || 0,
         regas: Number(resumo.regas) || 0,
         et0: typeof resumo.et0 === "number" ? resumo.et0 : null,
+        cota: typeof resumo.cota === "number" ? resumo.cota : null,  // já com Kc e chuva
+        chuvaMm: typeof resumo.chuvaMm === "number" ? resumo.chuvaMm : null,
+        kc: typeof resumo.kc === "number" ? resumo.kc : null,
         timer: timerDia  // o timer rega todo dia, com ou sem registro
       };
       if (chave === hoje) {
@@ -418,8 +456,17 @@ export function iniciarAgua(db, raiz) {
       rotulos: lista.map((d) => rotuloDia(d.chave, hoje)),
       usado: lista.map((d) => meio(d.litros)),
       timer: lista.map((d) => meio(d.timer)),
-      et0: lista.map((d) => (d.et0 === null ? null : meio(d.et0 * AREA_M2)))
+      // A cota salva no dia (com Kc e chuva). Dias antigos, sem ela: ET₀ × área.
+      et0: lista.map((d) => (d.cota !== null ? meio(d.cota) : d.et0 === null ? null : meio(d.et0 * AREA_M2))),
+      detalhes: lista.map((d) => {
+        if (d.et0 === null) return "";
+        const partes = [`ET₀ ${numero(d.et0, 1)} mm`];
+        if (d.chuvaMm !== null) partes.push(`chuva ${numero(d.chuvaMm, 1)} mm`);
+        if (d.kc !== null) partes.push(`Kc ${numero(d.kc, 2)}`);
+        return partes.join(", ");
+      })
     };
+    detalhesEt0 = dados.detalhes;
     const texto = JSON.stringify(dados);
     if (texto === ultimosDadosGrafico) return;  // nada mudou (roda a cada segundo)
     ultimosDadosGrafico = texto;
@@ -444,7 +491,13 @@ export function iniciarAgua(db, raiz) {
           animation: false,
           plugins: {
             legend: { position: "bottom" },
-            tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${numero(ctx.raw, 1)} L` } }
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${numero(ctx.raw, 1)} L`,
+                // Na barra da ET₀: de onde veio o número
+                afterLabel: (ctx) => (ctx.datasetIndex === 2 ? detalhesEt0[ctx.dataIndex] || "" : "")
+              }
+            }
           },
           scales: { y: { beginAtZero: true, ticks: { callback: (v) => `${numero(v, 1)} L` } } }
         }

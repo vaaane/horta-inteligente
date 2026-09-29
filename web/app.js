@@ -9,6 +9,7 @@ import { iniciarDecisao } from "./decisao.js";
 import { iniciarControle } from "./controle.js";
 import { iniciarDemo } from "./demo.js";
 import { iniciarAgua } from "./agua.js";
+import { iniciarFalha } from "./falha.js";
 import { desenharQR } from "./qr.js";
 
 const app = initializeApp(firebaseConfig);
@@ -115,6 +116,9 @@ iniciarClima(db, document.getElementById("clima"), {
 
 // ---------- Cartão "Por que regou (ou não)" (código em decisao.js) ----------
 iniciarDecisao(db, document.getElementById("decisao"));
+
+// ---------- Faixa vermelha de falha, no topo e no cartão da bomba (código em falha.js) ----------
+iniciarFalha(db, [document.getElementById("falha"), document.getElementById("falha-bomba")]);
 
 // ---------- Cartão "Água" (código em agua.js) ----------
 iniciarAgua(db, document.getElementById("agua"));

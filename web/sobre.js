@@ -19,7 +19,7 @@ const grupos = [
       { titulo: "Quanto regar pela ET₀", frase: "Calcula a água a repor pela evapotranspiração do dia (ET₀ × área) e para de regar quando a cota do dia é atingida.", status: "funcionando" },
       { titulo: "Prever quando o solo vai secar", frase: "Mostra algo como \"próxima rega em ~14 h\".", status: "proxima" },
       { titulo: "Limites por tipo de planta", frase: "Zonas separadas para alface, cebolinha e tomate.", status: "proxima" },
-      { titulo: "Detecção de falhas", frase: "Bomba ligada e umidade sem subir = reservatório vazio, mangueira solta ou bomba com defeito.", status: "proxima" }
+      { titulo: "Detecção de falhas", frase: "Por enquanto, pela umidade que não sobe. O sensor de fluxo e o sensor de nível vão confirmar se a água está passando e se há água no reservatório.", status: "funcionando" }
     ]
   },
   {

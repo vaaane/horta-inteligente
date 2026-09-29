@@ -19,6 +19,9 @@
   </header>
 
   <main>
+    <!-- Falha: regou e a umidade não subiu (código em falha.js) -->
+    <div id="falha" class="falha" role="alert" hidden></div>
+
     <div id="offline" class="aviso" hidden>
       ⚠️ ESP32 offline — nenhum dado novo há mais de 2 minutos.
     </div>
@@ -38,6 +41,7 @@
         <h2>Bomba d'água</h2>
         <p class="espera-esp32" data-espera>Aguardando o ESP32…</p>
         <p id="bomba" class="bomba" data-com-dados hidden>--</p>
+        <div id="falha-bomba" class="falha falha-cartao" hidden></div>
         <!-- Automático | Manual e Ligar/Desligar (código em controle.js) -->
         <div id="controle" class="controle"></div>
       </section>
