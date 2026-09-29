@@ -201,6 +201,21 @@ main {
   height: 280px;
 }
 
+/* ================= Tela grande / projetor ================= */
+/* Com o QR aparecendo são 4 cartões: 2 por linha até 1400px */
+@media (min-width: 1024px) and (max-width: 1399px) {
+  .painel .cartoes { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Projetor: letras maiores e umidade, bomba, clima e QR numa linha só */
+@media (min-width: 1400px) {
+  html { font-size: 20px; }
+  .painel main { max-width: 1400px; }
+  .painel .cartoes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .painel .numero { font-size: 5.5rem; }
+  .painel .area-grafico { height: 360px; }
+}
+
 /* Rodapé com o link discreto para a página de teste */
 .rodape {
   text-align: center;
