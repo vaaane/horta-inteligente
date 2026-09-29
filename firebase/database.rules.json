@@ -59,8 +59,11 @@
         "regaDesde": {
           ".validate": "newData.isNumber() && newData.val() <= now"
         },
+        "hora": {
+          ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 23"
+        },
         "decisao": {
-          ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
+          ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|horario_quente|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
         },
         "motivo": {
           ".validate": "newData.isString() && newData.val().length <= 160"
@@ -96,7 +99,7 @@
         "$decisaoId": {
           ".validate": "newData.hasChildren(['decisao', 'motivo', 'umidade', 'ts'])",
           "decisao": {
-            ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
+            ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|horario_quente|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
           },
           "motivo": {
             ".validate": "newData.isString() && newData.val().length <= 160"
@@ -134,7 +137,7 @@
             ".validate": "newData.isNumber() && newData.val() >= 0"
           },
           "motivo": {
-            ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
+            ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|horario_quente|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
           },
           "$outro": {
             ".validate": false
@@ -196,6 +199,9 @@
         },
         "atualizadoEm": {
           ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "simularHora": {
+          ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= -1 && newData.val() <= 23"
         },
         "simularChuva": {
           ".validate": "newData.isNumber() && newData.val() % 1 === 0 && ((newData.val() >= 0 && newData.val() <= 100) || newData.val() === -1)"
