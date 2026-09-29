@@ -82,7 +82,20 @@ O `secrets.h` não vai para o GitHub (está no `.gitignore`).
 | | AO (saída analógica) | GPIO 34 |
 | Módulo relé | VCC | 5 V (VIN) |
 | | GND | GND |
-| | IN | GPIO 26 |
+| | IN | GPIO 33 |
+| LED Wi-Fi (+ resistor) | perna comprida | GPIO 25 |
+| LED Firebase (+ resistor) | perna comprida | GPIO 26 |
+| LED Clima (+ resistor) | perna comprida | GPIO 27 |
+| LED azul embutido da placa | — | GPIO 2 (acende junto com a bomba) |
+
+A perna curta de cada LED vai no GND.
+
+**LEDs de status** (aceso = OK; pisca lento = em andamento; pisca rápido = erro; apagado = sem Wi-Fi):
+- **Wi-Fi (25):** aceso = conectado; pisca lento = tentando conectar.
+- **Firebase (26):** aceso = login OK e comandos do site chegando; pisca lento = fazendo login ou conectando; pisca rápido = erro (login recusado, "Permission denied" nas regras, etc.).
+- **Clima (27):** aceso = previsão válida; pisca lento = consultando; pisca rápido = a última consulta falhou; apagado = sem Wi-Fi ou ainda sem previsão.
+
+No `MODO_TESTE`, ao ligar a placa, o LED da bomba e os três LEDs de status acendem juntos por 1 s (teste das ligações).
 
 ⚠️ **A bomba usa uma fonte separada**, ligada pelos contatos do relé (COM e NA). Nunca alimente a bomba pelo ESP32.
 
@@ -91,7 +104,7 @@ Para testar tudo na mesa, sem bomba e sem sensor de verdade:
 
 | No lugar de | Use | Ligação |
 |---|---|---|
-| Módulo relé | LED + resistor de 220 a 330 Ω | GPIO 26 → resistor → perna comprida do LED; perna curta → GND |
+| Módulo relé | LED + resistor de 220 a 330 Ω | GPIO 33 → resistor → perna comprida do LED; perna curta → GND |
 | Sensor de umidade | Potenciômetro (10 kΩ, por exemplo) | uma ponta no **3V3**, a outra no **GND**, o pino do meio no **GPIO 34** |
 
 - No `esp32-horta.ino`, deixe `RELE_ATIVO_EM_LOW = false` (LED ligado direto no pino). Com um módulo relé de verdade, normalmente é `true`.

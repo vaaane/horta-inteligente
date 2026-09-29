@@ -22,9 +22,20 @@
 //  Se o Wi-Fi ou o Firebase caírem, a rega continua funcionando sozinha,
 //  só com o sensor (sem previsão válida, a horta rega normalmente).
 //
+//  Pinos:
+//     LED da bomba (ou relé) .... GPIO 33
+//     Potenciômetro / sensor .... GPIO 34
+//     LED Wi-Fi ................. GPIO 25
+//     LED Firebase .............. GPIO 26
+//     LED Clima ................. GPIO 27
+//     LED embutido da placa ..... GPIO 2 (acende junto com a bomba)
+//   LEDs de status: aceso = OK; pisca lento = em andamento;
+//   pisca rápido = erro; apagado = sem Wi-Fi (ou ainda nada a mostrar).
+//
 //  Montagem de teste (sem bomba e sem sensor de verdade):
-//   - LED no lugar do relé: GPIO 26 -> resistor (220 a 330 Ω) -> perna
+//   - LED no lugar do relé: GPIO 33 -> resistor (220 a 330 Ω) -> perna
 //     comprida do LED; perna curta -> GND. Use RELE_ATIVO_EM_LOW = false.
+//     Os LEDs de status (25, 26 e 27) são ligados do mesmo jeito.
 //   - Potenciômetro no lugar do sensor: uma ponta no 3V3, a outra no GND
 //     e o pino do meio no GPIO 34. Girando, a "umidade" vai de 0% a 100%.
 //     Atenção: use o 3V3, NUNCA o 5V (5 V queima a entrada do ESP32).
@@ -57,8 +68,19 @@ const bool MODO_TESTE = true;
 // como entrada analógica enquanto o Wi-Fi está ligado. Por isso usamos o 34.
 const int PINO_SENSOR = 34;
 
-// Módulo relé que liga a bomba.
-const int PINO_RELE = 26;
+// LED que representa a bomba. Com relé de verdade, pode continuar no 33.
+const int PINO_RELE = 33;
+
+// LED azul embutido da placa: acende e apaga junto com a bomba
+const int PINO_LED_PLACA = 2;
+
+// LEDs de status na protoboard (cada um com resistor em série)
+const int PINO_LED_WIFI     = 25;
+const int PINO_LED_FIREBASE = 26;
+const int PINO_LED_CLIMA    = 27;
+
+const unsigned long PISCA_LENTO_MS  = 500;  // em andamento
+const unsigned long PISCA_RAPIDO_MS = 100;  // erro
 
 // true = a bomba liga quando o pino vai para LOW (0 V).
 // LED de teste ligado direto no pino: false. Módulo relé de verdade: normalmente true.
@@ -206,6 +228,51 @@ int pendenteChance = -1;   // -1 = não tinha previsão válida
 
 
 // =====================================================================
+//  LEDS DE STATUS — mostram o estado do sistema sem Serial Monitor
+//  (o mesmo jeito de piscar do teste-acende)
+// =====================================================================
+enum EstadoLed { APAGADO, PISCA_LENTO, ACESO, PISCA_RAPIDO };
+enum LedStatus { LED_WIFI, LED_FIREBASE, LED_CLIMA, TOTAL_LEDS };
+
+const int pinosStatus[TOTAL_LEDS] = { PINO_LED_WIFI, PINO_LED_FIREBASE, PINO_LED_CLIMA };
+EstadoLed estadoStatus[TOTAL_LEDS] = { APAGADO, APAGADO, APAGADO };
+bool faseLigada[TOTAL_LEDS] = { false, false, false };  // o LED está aceso neste instante?
+unsigned long ultimaTroca[TOTAL_LEDS] = { 0, 0, 0 };
+
+// O que os LEDs usam para decidir (atualizado pelo resto do programa)
+bool erroConexaoFirebase = false;  // login, streaming ou polling falhou
+bool erroEscritaFirebase = false;  // a última gravação foi recusada (401, "Permission denied"...)
+bool pollingOk = false;            // plano B: o último polling respondeu 200
+bool climaFalhou = false;          // a última consulta do clima falhou
+
+// Muda o estado de um LED. Já acende na hora (mesmo se for piscar),
+// para o LED não ficar apagado durante uma operação que trava alguns segundos.
+void definirEstadoLed(LedStatus led, EstadoLed estado) {
+  if (estadoStatus[led] == estado) return;
+  estadoStatus[led] = estado;
+  faseLigada[led] = (estado != APAGADO);
+  ultimaTroca[led] = millis();
+  digitalWrite(pinosStatus[led], faseLigada[led] ? HIGH : LOW);
+}
+
+// Faz as piscadas com millis(), sem delay(). Chamada no loop().
+void piscarLedsStatus() {
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    unsigned long intervalo;
+    if (estadoStatus[i] == PISCA_LENTO)       intervalo = PISCA_LENTO_MS;
+    else if (estadoStatus[i] == PISCA_RAPIDO) intervalo = PISCA_RAPIDO_MS;
+    else continue;  // APAGADO e ACESO não piscam
+
+    if (millis() - ultimaTroca[i] >= intervalo) {
+      ultimaTroca[i] = millis();
+      faseLigada[i] = !faseLigada[i];
+      digitalWrite(pinosStatus[i], faseLigada[i] ? HIGH : LOW);
+    }
+  }
+}
+
+
+// =====================================================================
 //  BOMBA
 // =====================================================================
 
@@ -220,6 +287,7 @@ void acionarBomba(bool ligar, const char* motivo) {
   if (RELE_ATIVO_EM_LOW) nivel = ligar ? LOW : HIGH;
   else                   nivel = ligar ? HIGH : LOW;
   digitalWrite(PINO_RELE, nivel);
+  digitalWrite(PINO_LED_PLACA, ligar ? HIGH : LOW);  // LED azul da placa junto
 
   Serial.printf("[Bomba] %s (motivo: %s)\n", ligar ? "LIGADA" : "DESLIGADA", motivo);
 }
@@ -478,6 +546,7 @@ int requisicaoBanco(const char* metodo, const String& url, const String& corpo, 
 
 bool fazerLogin() {
   Serial.println("[Firebase] Fazendo login...");
+  definirEstadoLed(LED_FIREBASE, PISCA_LENTO);
 
   JsonDocument pedido;
   pedido["email"] = ESP_EMAIL;
@@ -491,12 +560,14 @@ bool fazerLogin() {
   int codigo = requisicao("POST", url, corpo, "application/json", resposta);
   if (codigo != 200) {
     Serial.printf("[Firebase] Falha no login (código %d): %s\n", codigo, resposta.c_str());
+    erroConexaoFirebase = true;
     return false;
   }
 
   JsonDocument r;
   if (deserializeJson(r, resposta)) {
     Serial.println("[Firebase] Resposta do login inválida.");
+    erroConexaoFirebase = true;
     return false;
   }
   idToken = r["idToken"].as<String>();
@@ -505,11 +576,13 @@ bool fazerLogin() {
   tokenObtidoEm = millis();
 
   Serial.println("[Firebase] Login OK!");
+  erroConexaoFirebase = false;
   return true;
 }
 
 bool renovarToken() {
   Serial.println("[Firebase] Renovando o login...");
+  definirEstadoLed(LED_FIREBASE, PISCA_LENTO);
 
   String url = String("https://securetoken.googleapis.com/v1/token?key=") + FIREBASE_API_KEY;
   String corpo = "grant_type=refresh_token&refresh_token=" + refreshToken;
@@ -590,6 +663,7 @@ void enviarEstado(bool avisar) {
     Serial.printf("[Firebase] Estado enviado (código %d, %lu ms)\n", codigo, duracaoPedido);
   }
   if (codigo == 401) idToken = "";  // login recusado: faz de novo no próximo envio
+  erroEscritaFirebase = (codigo != 200);  // LED do Firebase pisca rápido se foi recusado
   if (codigo == 200) {
     bombaEnviada = bombaLigada;     // agora o painel sabe
     decisaoEnviada = decisaoAtual;
@@ -610,6 +684,7 @@ void enviarEstado(bool avisar) {
     codigo = requisicaoBanco("POST", urlBanco("/horta/decisoes"), corpoDecisao, resposta);
     Serial.printf("[Firebase] Decisão salva no histórico (código %d)\n", codigo);
     if (codigo == 200) decisaoPendente = false;  // se falhou, tenta de novo depois
+    else erroEscritaFirebase = true;
   }
 }
 
@@ -650,6 +725,7 @@ void enviarLeitura() {
   String resposta;
   int codigo = requisicaoBanco("POST", urlBanco("/horta/leituras"), corpoLeitura, resposta);
   Serial.printf("[Firebase] Leitura salva no histórico (código %d)\n", codigo);
+  if (codigo != 200) erroEscritaFirebase = true;
 }
 
 // Grava "auto" em /horta/comandos (o site mostra o modo automático de novo)
@@ -731,6 +807,9 @@ bool lerComandos() {
   String resposta;
   int codigo = requisicaoBanco("GET", urlBanco("/horta/comandos"), "", resposta);
   JsonDocument comandos;
+  pollingOk = (codigo == 200);
+  if (codigo != 200) erroConexaoFirebase = true;
+  else erroConexaoFirebase = false;  // (o polling só roda no plano B, com o streaming fechado)
   if (codigo != 200 || deserializeJson(comandos, resposta)) {
     if (codigo == 401) idToken = "";
     falhasComandos++;
@@ -813,6 +892,7 @@ String lerLinhaCabecalho() {
 bool abrirStream() {
   String url = urlBanco("/horta/comandos");
   unsigned long inicio = millis();
+  definirEstadoLed(LED_FIREBASE, PISCA_LENTO);  // conectando
 
   for (int tentativa = 0; tentativa < 3; tentativa++) {
     // Separa "https://servidor/caminho?auth=..." em servidor e caminho
@@ -825,6 +905,7 @@ bool abrirStream() {
     clienteStream.setInsecure();
     if (!clienteStream.connect(servidor.c_str(), 443)) {
       Serial.println("[Stream] Não consegui conectar.");
+      erroConexaoFirebase = true;
       return false;
     }
     clienteStream.print(String("GET ") + caminho + " HTTP/1.1\r\n" +
@@ -854,6 +935,7 @@ bool abrirStream() {
     if (codigo != 200) {
       Serial.printf("[Stream] O Firebase respondeu código %d.\n", codigo);
       if (codigo == 401) idToken = "";  // login recusado: faz de novo
+      erroConexaoFirebase = true;
       clienteStream.stop();
       return false;
     }
@@ -861,6 +943,7 @@ bool abrirStream() {
     // Deu certo: prepara a leitura
     faltaNoPedaco = -1;
     linhaPedaco = linhaSse = eventoSse = dadoSse = "";
+    erroConexaoFirebase = false;
     Serial.printf("[Stream] Conectado em %lu ms (memória livre: %lu bytes).\n",
                   millis() - inicio, (unsigned long)ESP.getFreeHeap());
     return true;
@@ -879,6 +962,7 @@ void tratarEventoSse(const String& evento, const String& dado) {
     // Nos dois casos faz login de novo e reabre.
     Serial.printf("[Stream] Evento %s: renovando o login.\n", evento.c_str());
     idToken = "";
+    erroConexaoFirebase = true;
     fecharStream(evento.c_str(), evento == "cancel" ? 10000 : ESPERA_RECONEXAO_STREAM, true);
     return;
   }
@@ -1124,6 +1208,7 @@ int enviarClimaFirebase() {
   String resposta;
   int codigo = requisicaoBanco("PUT", urlBanco("/clima"), json, resposta);
   if (codigo == 401) idToken = "";  // login recusado: faz de novo no próximo envio
+  if (codigo != 200) erroEscritaFirebase = true;
   return codigo;
 }
 
@@ -1145,7 +1230,9 @@ void atualizarClima() {
     return;
   }
 
-  if (!consultarOpenMeteo()) {
+  definirEstadoLed(LED_CLIMA, PISCA_LENTO);  // consultando (já acende antes de esperar)
+  climaFalhou = !consultarOpenMeteo();
+  if (climaFalhou) {
     // Mantém os últimos valores válidos (até vencerem) e não grava nada
     Serial.println("[CLIMA] Tento de novo em 5 min.");
     esperaClima = INTERVALO_CLIMA_ERRO;
@@ -1164,6 +1251,39 @@ void atualizarClima() {
 
 
 // =====================================================================
+//  O QUE CADA LED DE STATUS MOSTRA (chamada no loop)
+// =====================================================================
+void atualizarLedsStatus() {
+  bool wifi = WiFi.status() == WL_CONNECTED;
+
+  // Wi-Fi: aceso = conectado; pisca lento = tentando conectar
+  definirEstadoLed(LED_WIFI, wifi ? ACESO : PISCA_LENTO);
+
+  // Firebase: aceso = login OK e comandos chegando (streaming conectado ou,
+  // no plano B, o último polling respondeu 200); pisca lento = login ou
+  // streaming em andamento; pisca rápido = erro; apagado = sem Wi-Fi
+  EstadoLed firebase;
+  bool comandosOk = streamAberto || (planoB && pollingOk);
+  if (!wifi) firebase = APAGADO;
+  else if (erroConexaoFirebase || erroEscritaFirebase) firebase = PISCA_RAPIDO;
+  else if (idToken != "" && comandosOk) firebase = ACESO;
+  else firebase = PISCA_LENTO;
+  definirEstadoLed(LED_FIREBASE, firebase);
+
+  // Clima: aceso = previsão válida; pisca rápido = a última consulta falhou;
+  // apagado = sem Wi-Fi ou ainda sem previsão (o "pisca lento" de consultando
+  // é ligado em atualizarClima, durante a consulta)
+  EstadoLed estadoClima;
+  bool previsaoValida = clima.valido && millis() - clima.atualizadoEmMs <= VALIDADE_CLIMA;
+  if (!wifi) estadoClima = APAGADO;
+  else if (climaFalhou) estadoClima = PISCA_RAPIDO;
+  else if (previsaoValida) estadoClima = ACESO;
+  else estadoClima = APAGADO;
+  definirEstadoLed(LED_CLIMA, estadoClima);
+}
+
+
+// =====================================================================
 //  SETUP e LOOP
 // =====================================================================
 
@@ -1175,6 +1295,24 @@ void setup() {
   // Começa com a bomba desligada
   pinMode(PINO_RELE, OUTPUT);
   digitalWrite(PINO_RELE, RELE_ATIVO_EM_LOW ? HIGH : LOW);
+  pinMode(PINO_LED_PLACA, OUTPUT);
+  digitalWrite(PINO_LED_PLACA, LOW);
+  for (int i = 0; i < TOTAL_LEDS; i++) {
+    pinMode(pinosStatus[i], OUTPUT);
+    digitalWrite(pinosStatus[i], LOW);
+  }
+
+  // Teste de ligação: bomba, Wi-Fi, Firebase e Clima acendem juntos por 1 s.
+  // Só no MODO_TESTE: com bomba de verdade, este teste ligaria a bomba por 1 s.
+  if (MODO_TESTE) {
+    digitalWrite(PINO_RELE, RELE_ATIVO_EM_LOW ? LOW : HIGH);
+    digitalWrite(PINO_LED_PLACA, HIGH);
+    for (int i = 0; i < TOTAL_LEDS; i++) digitalWrite(pinosStatus[i], HIGH);
+    delay(1000);  // só no boot; no loop() nada de delay()
+    digitalWrite(PINO_RELE, RELE_ATIVO_EM_LOW ? HIGH : LOW);
+    digitalWrite(PINO_LED_PLACA, LOW);
+    for (int i = 0; i < TOTAL_LEDS; i++) digitalWrite(pinosStatus[i], LOW);
+  }
 
   analogReadResolution(12);  // leituras de 0 a 4095
 
@@ -1237,4 +1375,8 @@ void loop() {
   }
 
   atualizarClima();
+
+  // LEDs de status: decide o que mostrar e faz as piscadas (sem delay)
+  atualizarLedsStatus();
+  piscarLedsStatus();
 }
