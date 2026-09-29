@@ -135,6 +135,47 @@ main {
   color: #fff;
 }
 
+/* Controle da bomba (controle.js): botões de no mínimo 44px, bons para o dedo */
+.controle { margin-top: 16px; }
+/* Lado a lado; se a coluna for estreita (projetor), um embaixo do outro */
+.controle-modos { display: flex; flex-wrap: wrap; gap: 8px; }
+.controle-modo, .controle-bomba {
+  min-height: 44px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.controle-modo {
+  flex: 1 1 7em;
+  padding: 8px 6px;
+  background: var(--cartao);
+  color: var(--verde);
+  border: 2px solid var(--verde);
+}
+/* Modo atual: botão preenchido */
+.controle-modo.ativo { background: var(--verde); color: #fff; }
+.controle-bomba {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  min-height: 56px;
+  padding: 12px;
+  font-size: 1.25rem;
+  background: var(--verde);
+  color: #fff;
+  border: none;
+}
+.controle-bomba.desligar { background: #37474f; }
+.controle-modo:disabled, .controle-bomba:disabled { opacity: 0.45; cursor: not-allowed; }
+.controle-contagem, .controle-status, .controle-bloqueio {
+  margin: 10px 0 0;
+  font-size: 0.95rem;
+  color: var(--texto-suave);
+}
+.controle-contagem { font-weight: 600; }
+.controle-status.aviso-controle { color: var(--aviso-texto); font-weight: 600; }
+
 /* Cartões antes do primeiro dado do ESP32 */
 .espera-esp32 {
   margin: 12px 0 0;

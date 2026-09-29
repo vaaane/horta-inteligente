@@ -6,6 +6,7 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 import { iniciarClima } from "./clima.js";
 import { iniciarDecisao } from "./decisao.js";
+import { iniciarControle } from "./controle.js";
 import { desenharQR } from "./qr.js";
 
 const app = initializeApp(firebaseConfig);
@@ -20,6 +21,9 @@ const elBarra = document.getElementById("barra");
 const elBomba = document.getElementById("bomba");
 const elAtualizacao = document.getElementById("atualizacao");
 const elOffline = document.getElementById("offline");
+
+// ---------- Controle da bomba no cartão "Bomba d'água" (código em controle.js) ----------
+const controle = iniciarControle(db, document.getElementById("controle"));
 
 let ultimoTs = null;     // horário (do servidor) do último dado recebido
 let diferencaRelogio = 0; // diferença entre o relógio do servidor e o do computador
@@ -65,7 +69,9 @@ function atualizarTempo() {
   else texto = `há ${Math.floor(segundos / 3600)} h`;
   elAtualizacao.textContent = `Última atualização: ${texto}`;
 
-  elOffline.hidden = agora - ultimoTs < LIMITE_OFFLINE_MS;
+  const online = agora - ultimoTs < LIMITE_OFFLINE_MS;
+  elOffline.hidden = online;
+  controle.definirOffline(!online);  // sem ESP32, os botões ficam desativados
 }
 setInterval(atualizarTempo, 1000);
 
