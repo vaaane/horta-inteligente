@@ -46,7 +46,7 @@ Resumo das regras:
 - Só o ESP32 pode **escrever** em `/horta/estado`, `/horta/leituras` e `/horta/decisoes`.
 - `/horta/estado` pode trazer também a **decisão** da rega (`decisao`, um código da lista abaixo) e o **motivo** em português (`motivo`, até 160 letras). Os dois são opcionais: o firmware antigo continua funcionando.
 - `/horta/decisoes` é o histórico das decisões: cada item tem `decisao`, `motivo`, `umidade`, `chanceChuva` (opcional) e `ts`. Códigos aceitos: `regando`, `solo_ok`, `adiada_chuva`, `solo_critico`, `sem_previsao`, `pausa_seguranca`, `manual_ligada`, `manual_desligada`.
-- Só usuários logados podem escrever em `/horta/comandos` (o site ainda não tem login, então por enquanto os comandos são alterados pelo console — veja a dica no final).
+- `/horta/comandos` é **aberto**: qualquer pessoa com o site pode mudar o modo e ligar/desligar a bomba (decisão da professora, sem login). As regras só aceitam `modo` (`auto` ou `manual`), `bombaManual` (verdadeiro/falso) e, opcionais, `manualDesde` e `atualizadoEm` (horários que não podem estar no futuro). A proteção de verdade fica no firmware: no modo manual a bomba continua limitada a **60 s por acionamento** com pausa de **5 min**, e depois de **10 min** no manual o ESP32 volta sozinho para o automático. Se o Firebase não responder, ele também volta para o automático.
 - A umidade precisa ser um número entre 0 e 100.
 
 ### 3. Configurar o site
@@ -155,15 +155,6 @@ Em setembro e outubro quase não chove no DF, então dá para **fingir** a previ
 3. Abaixo de 20% a horta rega mesmo assim (`solo_critico`).
 
 ⚠️ **Antes da feira**, volte para `SIMULAR_CHANCE_CHUVA = -1` e grave o ESP32 de novo. Se o Serial Monitor ainda mostrar `[Teste] SIMULAR_CHANCE_CHUVA ativo` ou o painel mostrar "(simulado)", a simulação continua ligada.
-## Dica: testar o modo manual
-Pelo console do Firebase (Realtime Database → Dados), crie:
-
-```
-horta/comandos/modo: "manual"
-horta/comandos/bombaManual: true
-```
-
-Em até 30 s o ESP32 obedece. Para voltar ao normal, mude `modo` para `"auto"`.
 
 ## Controle pelo site
 No cartão **"Bomba d'água"** do painel tem dois botões: **Automático** | **Manual**. Não precisa de login.

@@ -111,12 +111,19 @@
       },
 
       "comandos": {
-        ".write": "auth != null",
+        ".write": true,
+        ".validate": "newData.hasChildren(['modo', 'bombaManual'])",
         "modo": {
           ".validate": "newData.isString() && (newData.val() === 'auto' || newData.val() === 'manual')"
         },
         "bombaManual": {
           ".validate": "newData.isBoolean()"
+        },
+        "manualDesde": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "atualizadoEm": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
         },
         "$outro": {
           ".validate": false
