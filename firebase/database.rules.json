@@ -39,7 +39,7 @@
       ".read": true,
 
       "estado": {
-        ".write": "auth != null && auth.uid === 'UID_DO_ESP32'",
+        ".write": "auth != null && auth.uid === 'gj7r2D4JvTYr9GTnkmEc40ZqWRU2'",
         ".validate": "newData.hasChildren(['umidade', 'umidadeBruta', 'bomba', 'ts'])",
         "umidade": {
           ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
@@ -65,7 +65,7 @@
       },
 
       "leituras": {
-        ".write": "auth != null && auth.uid === 'UID_DO_ESP32'",
+        ".write": "auth != null && auth.uid === 'gj7r2D4JvTYr9GTnkmEc40ZqWRU2'",
         ".indexOn": ["ts"],
         "$leituraId": {
           ".validate": "newData.hasChildren(['umidade', 'bomba', 'ts'])",
@@ -85,7 +85,7 @@
       },
 
       "decisoes": {
-        ".write": "auth != null && auth.uid === 'UID_DO_ESP32'",
+        ".write": "auth != null && auth.uid === 'gj7r2D4JvTYr9GTnkmEc40ZqWRU2'",
         ".indexOn": ["ts"],
         "$decisaoId": {
           ".validate": "newData.hasChildren(['decisao', 'motivo', 'umidade', 'ts'])",
