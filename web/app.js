@@ -7,6 +7,7 @@ import { firebaseConfig } from "./firebase-config.js";
 import { iniciarClima } from "./clima.js";
 import { iniciarDecisao } from "./decisao.js";
 import { iniciarControle } from "./controle.js";
+import { iniciarDemo } from "./demo.js";
 import { desenharQR } from "./qr.js";
 
 const app = initializeApp(firebaseConfig);
@@ -27,6 +28,9 @@ const elOffline = document.getElementById("offline");
 
 // ---------- Controle da bomba no cartão "Bomba d'água" (código em controle.js) ----------
 const controle = iniciarControle(db, document.getElementById("controle"));
+
+// ---------- Cartão "Modo demonstração" (código em demo.js) ----------
+const demo = iniciarDemo(db, document.getElementById("demo"), document.getElementById("clima"));
 
 let ultimoTs = null;     // horário (do servidor) do último dado recebido
 let modoTeste = false;   // o ESP32 está com MODO_TESTE ligado?
@@ -79,6 +83,7 @@ function atualizarTempo() {
   elOffline.textContent = `⚠️ ESP32 offline — nenhum dado novo há mais de ${modoTeste ? "20 segundos" : "2 minutos"}.`;
   elOffline.hidden = online;
   controle.definirOffline(!online);  // sem ESP32, os botões ficam desativados
+  demo.definirOffline(!online);
 }
 setInterval(atualizarTempo, 1000);
 
