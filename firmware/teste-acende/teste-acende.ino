@@ -57,7 +57,7 @@ const char* URL_OPEN_METEO =
   "&timezone=America/Sao_Paulo&forecast_days=2";
 
 // Tempos (em milissegundos)
-const unsigned long INTERVALO_WIFI       = 10000;           // tenta reconectar a cada 10 s
+const unsigned long INTERVALO_WIFI       = 30000;           // só força uma nova conexão depois de 30 s sem Wi-Fi
 const unsigned long INTERVALO_CLIMA      = 30UL * 60 * 1000; // consulta o clima a cada 30 min
 const unsigned long INTERVALO_CLIMA_ERRO = 5UL * 60 * 1000;  // se falhar, tenta de novo em 5 min
 const unsigned long TIMEOUT_HTTP         = 10000;           // espera no máximo 10 s por resposta
@@ -199,15 +199,35 @@ void conectarWifi() {
   if (!conectado && estavaConectado) {
     Serial.println("[Wi-Fi] Conexão perdida.");
     definirEstadoLed(LED_WIFI, PISCA_RAPIDO);  // caiu: pisca rápido até voltar
+    ultimaTentativaWiFi = millis();  // dá 30 s para a reconexão automática
   }
   estavaConectado = conectado;
 
+  // A reconexão automática (setAutoReconnect) costuma resolver sozinha.
+  // No roteador do celular a entrega do IP pode demorar mais de 10 s, então
+  // só recomeçamos do zero depois de 30 s sem conectar.
   if (!conectado && millis() - ultimaTentativaWiFi >= INTERVALO_WIFI) {
     ultimaTentativaWiFi = millis();
     Serial.printf("[Wi-Fi] Tentando conectar em \"%s\"...\n", WIFI_SSID);
     WiFi.disconnect();
     WiFi.begin(WIFI_SSID, WIFI_PASS);
   }
+}
+
+// Chamada pelo sistema do Wi-Fi sempre que a conexão cai (ou uma tentativa
+// falha). Mostra o código do motivo e uma explicação para os mais comuns.
+void aoDesconectarWiFi(arduino_event_id_t evento, arduino_event_info_t info) {
+  int motivo = info.wifi_sta_disconnected.reason;
+  const char* explicacao = "";
+  switch (motivo) {
+    case 2:
+    case 15:  explicacao = "senha errada ou rede com segurança WPA3; use WPA2"; break;
+    case 201: explicacao = "rede não encontrada (nome errado ou rede em 5 GHz)"; break;
+    case 8:   explicacao = "o roteador desconectou o ESP32"; break;
+    case 200:
+    case 202: explicacao = "sinal fraco ou falha de autenticação"; break;
+  }
+  Serial.printf("[Wi-Fi] Desconectado (motivo %d) %s\n", motivo, explicacao);
 }
 
 
@@ -456,7 +476,12 @@ void setup() {
   Serial.println("===== Teste acende/apaga + clima =====");
   Serial.printf("[Wi-Fi] Conectando em \"%s\"...\n", WIFI_SSID);
   definirEstadoLed(LED_WIFI, PISCA_LENTO);  // tentando conectar
+  // Wi-Fi mais estável (principalmente no roteador do celular):
+  WiFi.persistent(false);       // não grava a rede na memória flash a cada conexão
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);  // se cair, o próprio Wi-Fi tenta voltar
+  WiFi.setSleep(false);         // sem economia de energia: responde mais rápido
+  WiFi.onEvent(aoDesconectarWiFi, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);  // mostra o motivo das quedas
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   ultimaTentativaWiFi = millis();
 

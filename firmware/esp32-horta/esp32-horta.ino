@@ -12,10 +12,22 @@
 //   4. Cada decisão tem um código e um motivo em português, que aparecem
 //      no Serial Monitor e no painel ("Por que regou (ou não)").
 //   5. A cada 30 segundos, envia os dados e a decisão para o Firebase.
-//   6. Lê do Firebase se alguém mandou ligar/desligar a bomba na mão.
+//      Quando a bomba liga/desliga ou a decisão muda, envia na hora.
+//   6. A cada 3 s lê do Firebase se alguém mudou o modo ou ligou/desligou
+//      a bomba pelo site. O modo manual volta sozinho para o automático
+//      depois de 10 min (o controle pelo site é aberto, sem login).
 //
 //  Se o Wi-Fi ou o Firebase caírem, a rega continua funcionando sozinha,
 //  só com o sensor (sem previsão válida, a horta rega normalmente).
+//
+//  Montagem de teste (sem bomba e sem sensor de verdade):
+//   - LED no lugar do relé: GPIO 26 -> resistor (220 a 330 Ω) -> perna
+//     comprida do LED; perna curta -> GND. Use RELE_ATIVO_EM_LOW = false.
+//   - Potenciômetro no lugar do sensor: uma ponta no 3V3, a outra no GND
+//     e o pino do meio no GPIO 34. Girando, a "umidade" vai de 0% a 100%.
+//     Atenção: use o 3V3, NUNCA o 5V (5 V queima a entrada do ESP32).
+//     O GPIO 34 é um pino próprio, marcado "34" ou "D34" na placa:
+//     não é o VP (GPIO 36) nem o VN (GPIO 39).
 //
 //  Placa: ESP32 DevKit (core "esp32" da Espressif na Arduino IDE)
 //  Biblioteca extra: ArduinoJson (versão 7), pelo Gerenciador de Bibliotecas
@@ -39,9 +51,9 @@ const int PINO_SENSOR = 34;
 // Módulo relé que liga a bomba.
 const int PINO_RELE = 26;
 
-// Muitos módulos relé ligam quando o pino vai para LOW (0 V).
-// Se o seu relé funcionar ao contrário, troque para false.
-const bool RELE_ATIVO_EM_LOW = true;
+// true = a bomba liga quando o pino vai para LOW (0 V).
+// LED de teste ligado direto no pino: false. Módulo relé de verdade: normalmente true.
+const bool RELE_ATIVO_EM_LOW = false;
 
 // ---------------------------------------------------------------------
 //  CALIBRAÇÃO DO SENSOR
@@ -71,12 +83,18 @@ const int SIMULAR_CHANCE_CHUVA = -1;
 const unsigned long TEMPO_MAX_BOMBA   = 60UL * 1000;
 const unsigned long TEMPO_PAUSA_BOMBA = 5UL * 60 * 1000;
 
+// Segurança do site (que é aberto): o modo manual dura no máximo 10 min.
+// Depois disso o próprio ESP32 grava "auto" em /horta/comandos.
+const unsigned long TEMPO_MAX_MANUAL = 10UL * 60 * 1000;
+
 // ---------------------------------------------------------------------
 //  TEMPOS (em milissegundos)
 // ---------------------------------------------------------------------
-const unsigned long INTERVALO_SENSOR = 2000;   // lê o sensor a cada 2 s
-const unsigned long INTERVALO_ENVIO  = 30000;  // envia ao Firebase a cada 30 s
-const unsigned long INTERVALO_WIFI   = 10000;  // tenta reconectar a cada 10 s
+const unsigned long INTERVALO_SENSOR   = 2000;   // lê o sensor a cada 2 s
+const unsigned long INTERVALO_COMANDOS = 3000;   // lê os comandos do site a cada 3 s
+const unsigned long INTERVALO_ENVIO    = 30000;  // envia o histórico ao Firebase a cada 30 s
+const unsigned long INTERVALO_WIFI     = 30000;  // só força uma nova conexão depois de 30 s sem Wi-Fi
+const int FALHAS_PARA_AUTOMATICO = 3;  // leituras seguidas dos comandos que falharam -> volta ao automático
 const unsigned long MARGEM_TOKEN     = 5UL * 60 * 1000; // renova o login 5 min antes de vencer
 const unsigned long INTERVALO_CLIMA      = 30UL * 60 * 1000; // consulta o clima a cada 30 min
 const unsigned long INTERVALO_CLIMA_ERRO = 5UL * 60 * 1000;  // se falhar, tenta de novo em 5 min
@@ -117,6 +135,14 @@ unsigned long pausaDesde = 0;
 // Comandos que vêm do site
 bool modoManual = false;
 bool bombaManual = false;
+unsigned long manualDesdeMs = 0;   // millis() de quando entrou no modo manual
+double sessaoManual = -1;          // "manualDesde" que o site gravou (identifica o pedido)
+int falhasComandos = 0;            // leituras seguidas que falharam
+
+// O que o painel já sabe (último estado enviado com sucesso).
+// Quando for diferente do atual, o estado é enviado na hora.
+bool bombaEnviada = false;
+String decisaoEnviada = "";
 
 // Login no Firebase
 String idToken = "";
@@ -127,6 +153,8 @@ unsigned long tokenValidade = 0;
 // Relógios do millis()
 unsigned long ultimaLeitura = 0;
 unsigned long ultimoEnvio = 0;
+unsigned long ultimaLeituraComandos = 0;
+unsigned long ultimaTentativaEstado = 0;
 unsigned long ultimaTentativaWiFi = 0;
 unsigned long ultimaConsultaClima = 0;
 unsigned long esperaClima = 0;  // quanto esperar até a próxima consulta do clima
@@ -326,16 +354,35 @@ void cuidarDoWiFi() {
   }
   if (!conectado && estavaConectado) {
     Serial.println("[Wi-Fi] Conexão perdida.");
+    ultimaTentativaWiFi = millis();  // dá 30 s para a reconexão automática
   }
   estavaConectado = conectado;
 
-  // Se caiu, tenta de novo a cada 10 s (sem travar o resto do programa)
+  // A reconexão automática (setAutoReconnect) costuma resolver sozinha.
+  // No roteador do celular a entrega do IP pode demorar mais de 10 s, então
+  // só recomeçamos do zero depois de 30 s sem conectar.
   if (!conectado && millis() - ultimaTentativaWiFi >= INTERVALO_WIFI) {
     ultimaTentativaWiFi = millis();
     Serial.printf("[Wi-Fi] Tentando conectar em \"%s\"...\n", WIFI_SSID);
     WiFi.disconnect();
     WiFi.begin(WIFI_SSID, WIFI_PASS);
   }
+}
+
+// Chamada pelo sistema do Wi-Fi sempre que a conexão cai (ou uma tentativa
+// falha). Mostra o código do motivo e uma explicação para os mais comuns.
+void aoDesconectarWiFi(arduino_event_id_t evento, arduino_event_info_t info) {
+  int motivo = info.wifi_sta_disconnected.reason;
+  const char* explicacao = "";
+  switch (motivo) {
+    case 2:
+    case 15:  explicacao = "senha errada ou rede com segurança WPA3; use WPA2"; break;
+    case 201: explicacao = "rede não encontrada (nome errado ou rede em 5 GHz)"; break;
+    case 8:   explicacao = "o roteador desconectou o ESP32"; break;
+    case 200:
+    case 202: explicacao = "sinal fraco ou falha de autenticação"; break;
+  }
+  Serial.printf("[Wi-Fi] Desconectado (motivo %d) %s\n", motivo, explicacao);
 }
 
 
@@ -359,6 +406,42 @@ int requisicao(const char* metodo, const String& url, const String& corpo,
   int codigo = http.sendRequest(metodo, corpo);
   resposta = (codigo > 0) ? http.getString() : "";
   http.end();
+  return codigo;
+}
+
+// ---------------------------------------------------------------------
+//  Conexão com o banco (Realtime Database) que fica ABERTA entre um
+//  pedido e outro. Os comandos são lidos a cada 3 s: abrir uma conexão
+//  HTTPS nova toda vez demora (a "apresentação" segura leva ~1 s) e gasta
+//  memória. Com setReuse(true) o http.end() não fecha a conexão e o
+//  próximo pedido usa a mesma. Se ela cair, o HTTPClient abre outra.
+//  (O login e o Open-Meteo são outros endereços: usam requisicao().)
+// ---------------------------------------------------------------------
+WiFiClientSecure clienteBanco;
+HTTPClient httpBanco;
+unsigned long duracaoPedido = 0;  // quanto tempo levou o último pedido (ms)
+
+int pedidoBanco(const char* metodo, const String& url, const String& corpo, String& resposta) {
+  if (!httpBanco.begin(clienteBanco, url)) return -1;
+  if (corpo.length() > 0) httpBanco.addHeader("Content-Type", "application/json");
+  int codigo = httpBanco.sendRequest(metodo, corpo);
+  resposta = (codigo > 0) ? httpBanco.getString() : "";
+  httpBanco.end();                     // com setReuse(true), a conexão continua aberta
+  if (codigo < 0) clienteBanco.stop(); // deu erro: fecha, a próxima abre uma nova
+  return codigo;
+}
+
+int requisicaoBanco(const char* metodo, const String& url, const String& corpo, String& resposta) {
+  unsigned long inicio = millis();
+  bool reaproveitando = clienteBanco.connected();
+  int codigo = pedidoBanco(metodo, url, corpo, resposta);
+
+  // O servidor pode ter fechado a conexão velha sem avisar: o primeiro
+  // pedido falha. Nesse caso tenta mais uma vez, já com uma conexão nova.
+  if (codigo < 0 && reaproveitando) {
+    codigo = pedidoBanco(metodo, url, corpo, resposta);
+  }
+  duracaoPedido = millis() - inicio;
   return codigo;
 }
 
@@ -451,20 +534,18 @@ void voltarParaAutomatico() {
   modoManual = false;
 }
 
-void enviarDados() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[Firebase] Sem Wi-Fi, envio adiado. A rega continua pelo sensor.");
-    voltarParaAutomatico();
-    return;
-  }
-  if (!garantirLogin()) {
-    voltarParaAutomatico();
-    return;
-  }
+// Tem Wi-Fi e login? (sem isso não dá para falar com o banco)
+bool prontoParaFirebase() {
+  return WiFi.status() == WL_CONNECTED && garantirLogin();
+}
 
+// Estado atual (/horta/estado) e, se houver, a mudança de decisão para o
+// histórico (/horta/decisoes). Chamada a cada 30 s e também na hora em que
+// a bomba liga/desliga ou a decisão muda.
+void enviarEstado() {
   String resposta;
 
-  // 1) Estado atual: PUT substitui o valor anterior
+  // PUT substitui o valor anterior
   JsonDocument estado;
   estado["umidade"] = umidade;
   estado["umidadeBruta"] = umidadeBruta;
@@ -477,11 +558,15 @@ void enviarDados() {
   String corpoEstado;
   serializeJson(estado, corpoEstado);
 
-  int codigo = requisicao("PUT", urlBanco("/horta/estado"), corpoEstado, "application/json", resposta);
-  Serial.printf("[Firebase] Estado enviado (código %d)\n", codigo);
+  int codigo = requisicaoBanco("PUT", urlBanco("/horta/estado"), corpoEstado, resposta);
+  Serial.printf("[Firebase] Estado enviado (código %d, %lu ms)\n", codigo, duracaoPedido);
   if (codigo == 401) idToken = "";  // login recusado: faz de novo no próximo ciclo
+  if (codigo == 200) {
+    bombaEnviada = bombaLigada;     // agora o painel sabe
+    decisaoEnviada = decisaoAtual;
+  }
 
-  // 1b) Histórico das decisões: só quando o código mudou (fila de um item)
+  // Histórico das decisões: só quando o código mudou (fila de um item)
   if (decisaoPendente) {
     JsonDocument decisao;
     decisao["decisao"] = pendenteDecisao;
@@ -492,12 +577,27 @@ void enviarDados() {
     String corpoDecisao;
     serializeJson(decisao, corpoDecisao);
 
-    codigo = requisicao("POST", urlBanco("/horta/decisoes"), corpoDecisao, "application/json", resposta);
+    codigo = requisicaoBanco("POST", urlBanco("/horta/decisoes"), corpoDecisao, resposta);
     Serial.printf("[Firebase] Decisão salva no histórico (código %d)\n", codigo);
-    if (codigo == 200) decisaoPendente = false;  // se falhou, tenta no próximo ciclo
+    if (codigo == 200) decisaoPendente = false;  // se falhou, tenta de novo depois
+  }
+}
+
+// A cada 30 s: estado + uma leitura nova no histórico (gráfico do painel)
+void enviarDados() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[Firebase] Sem Wi-Fi, envio adiado. A rega continua pelo sensor.");
+    voltarParaAutomatico();
+    return;
+  }
+  if (!garantirLogin()) {
+    voltarParaAutomatico();
+    return;
   }
 
-  // 2) Histórico: POST cria uma entrada nova na lista
+  enviarEstado();
+
+  // Histórico: POST cria uma entrada nova na lista
   JsonDocument leitura;
   leitura["umidade"] = umidade;
   leitura["bomba"] = bombaLigada;
@@ -505,28 +605,95 @@ void enviarDados() {
   String corpoLeitura;
   serializeJson(leitura, corpoLeitura);
 
-  codigo = requisicao("POST", urlBanco("/horta/leituras"), corpoLeitura, "application/json", resposta);
+  String resposta;
+  int codigo = requisicaoBanco("POST", urlBanco("/horta/leituras"), corpoLeitura, resposta);
   Serial.printf("[Firebase] Leitura salva no histórico (código %d)\n", codigo);
+}
 
-  // 3) Comandos do site
-  codigo = requisicao("GET", urlBanco("/horta/comandos"), "", "", resposta);
+// A bomba ligou/desligou ou a decisão mudou? Envia o estado na hora, sem
+// esperar os 30 s, para o painel mostrar o estado real em poucos segundos.
+// Se o envio falhar, tenta de novo a cada 3 s.
+void enviarMudancas() {
+  if (bombaLigada == bombaEnviada && decisaoAtual == decisaoEnviada) return;
+  if (millis() - ultimaTentativaEstado < INTERVALO_COMANDOS) return;
+  ultimaTentativaEstado = millis();
+  if (!prontoParaFirebase()) return;
+
+  Serial.println("[Firebase] A bomba ou a decisão mudou: enviando o estado agora.");
+  enviarEstado();
+}
+
+// Grava "auto" em /horta/comandos (o site mostra o modo automático de novo)
+bool gravarModoAutomatico() {
+  String resposta;
+  int codigo = requisicaoBanco("PUT", urlBanco("/horta/comandos"),
+                               "{\"modo\":\"auto\",\"bombaManual\":false}", resposta);
+  if (codigo != 200) Serial.printf("[Comandos] Não consegui gravar o modo automático (código %d).\n", codigo);
+  return codigo == 200;
+}
+
+// A cada 3 s: lê o que o site pediu em /horta/comandos.
+// Devolve true se o modo ou a bomba manual mudaram.
+bool lerComandos() {
+  if (!prontoParaFirebase()) {
+    voltarParaAutomatico();
+    return false;
+  }
+
+  String resposta;
+  int codigo = requisicaoBanco("GET", urlBanco("/horta/comandos"), "", resposta);
   JsonDocument comandos;
   if (codigo != 200 || deserializeJson(comandos, resposta)) {
-    Serial.printf("[Comandos] Não consegui ler (código %d).\n", codigo);
-    voltarParaAutomatico();
-    return;
+    if (codigo == 401) idToken = "";
+    falhasComandos++;
+    Serial.printf("[Comandos] Não consegui ler (código %d, falha %d de %d).\n",
+                  codigo, falhasComandos, FALHAS_PARA_AUTOMATICO);
+    // Uma falha solta não desliga o manual; várias seguidas, sim
+    if (falhasComandos >= FALHAS_PARA_AUTOMATICO) voltarParaAutomatico();
+    return false;
   }
+  falhasComandos = 0;
+
+  // Medição: o tempo de cada leitura aparece no Serial quando o comando
+  // muda. Com a conexão reaproveitada ela é bem mais rápida do que abrindo
+  // uma conexão HTTPS nova. Aqui só avisa se ficar lenta.
+  if (duracaoPedido > 2000) Serial.printf("[Comandos] Leitura lenta: %lu ms\n", duracaoPedido);
 
   // Se ainda não existir nada em /comandos, fica no automático
   const char* modo = comandos["modo"] | "auto";
-  modoManual = strcmp(modo, "manual") == 0;
-  bombaManual = comandos["bombaManual"] | false;
+  bool novoManual = strcmp(modo, "manual") == 0;
+  bool novaBomba = comandos["bombaManual"] | false;
+  double desde = comandos["manualDesde"] | 0.0;  // hora do servidor em que o site pediu o manual
 
-  if (modoManual) {
-    Serial.printf("[Comandos] Modo MANUAL, bomba %s\n", bombaManual ? "ligada" : "desligada");
-  } else {
-    Serial.println("[Comandos] Modo AUTOMÁTICO");
+  // Entrou no modo manual agora? Marca a hora no millis().
+  // Se for o mesmo pedido de antes (mesmo "manualDesde"), mantém a hora
+  // antiga: assim uma queda de conexão não "zera" os 10 min.
+  if (novoManual && !modoManual && (desde == 0 || desde != sessaoManual)) {
+    manualDesdeMs = millis();
+    sessaoManual = desde;
   }
+
+  // Passou do tempo máximo do manual? Volta para o automático.
+  if (novoManual && millis() - manualDesdeMs >= TEMPO_MAX_MANUAL) {
+    Serial.println("[Comandos] Modo manual expirou: voltando para o automático.");
+    gravarModoAutomatico();  // se falhar, na próxima leitura ele expira de novo e tenta outra vez
+    novoManual = false;
+    novaBomba = false;
+  }
+
+  bool mudou = (novoManual != modoManual) || (novoManual && novaBomba != bombaManual);
+  modoManual = novoManual;
+  bombaManual = novaBomba;
+
+  if (mudou) {
+    if (modoManual) {
+      Serial.printf("[Comandos] Modo MANUAL, bomba %s (leitura em %lu ms)\n",
+                    bombaManual ? "ligada" : "desligada", duracaoPedido);
+    } else {
+      Serial.printf("[Comandos] Modo AUTOMÁTICO (leitura em %lu ms)\n", duracaoPedido);
+    }
+  }
+  return mudou;
 }
 
 
@@ -637,7 +804,7 @@ int enviarClimaFirebase() {
   serializeJson(doc, json);
 
   String resposta;
-  int codigo = requisicao("PUT", urlBanco("/clima"), json, "application/json", resposta);
+  int codigo = requisicaoBanco("PUT", urlBanco("/clima"), json, resposta);
   if (codigo == 401) idToken = "";  // login recusado: faz de novo no próximo envio
   return codigo;
 }
@@ -691,10 +858,21 @@ void setup() {
 
   analogReadResolution(12);  // leituras de 0 a 4095
 
+  // Wi-Fi mais estável (principalmente no roteador do celular):
+  WiFi.persistent(false);       // não grava a rede na memória flash a cada conexão
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);  // se cair, o próprio Wi-Fi tenta voltar
+  WiFi.setSleep(false);         // sem economia de energia: responde mais rápido
+  WiFi.onEvent(aoDesconectarWiFi, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);  // mostra o motivo das quedas
   Serial.printf("[Wi-Fi] Conectando em \"%s\"...\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   ultimaTentativaWiFi = millis();
+
+  // Conexão com o banco que fica aberta entre os pedidos (ver requisicaoBanco)
+  clienteBanco.setInsecure();
+  httpBanco.setReuse(true);
+  httpBanco.setConnectTimeout(TIMEOUT_HTTP);
+  httpBanco.setTimeout(TIMEOUT_HTTP);
 
   // Primeiro envio 5 s depois de ligar (dá tempo do Wi-Fi conectar)
   ultimoEnvio = millis() - INTERVALO_ENVIO + 5000;
@@ -716,6 +894,15 @@ void loop() {
     lerSensor();
     controlarBomba();
   }
+
+  // Comandos do site a cada 3 s. Se mudaram, decide na hora (sem esperar
+  // a próxima leitura do sensor), e enviarMudancas() avisa o painel.
+  if (millis() - ultimaLeituraComandos >= INTERVALO_COMANDOS) {
+    ultimaLeituraComandos = millis();
+    if (lerComandos()) controlarBomba();
+  }
+
+  enviarMudancas();
 
   if (millis() - ultimoEnvio >= INTERVALO_ENVIO) {
     ultimoEnvio = millis();
