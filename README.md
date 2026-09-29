@@ -22,6 +22,8 @@ Arquivos do site (`web/`):
 - `sobre.html` + `sobre.js`: a página "Sobre o projeto" para a feira (funcionalidades, materiais, evolução). Para mudar o status de uma funcionalidade, edite a lista no `sobre.js`.
 - `clima.js`: o cartão "Clima agora", usado no painel e na `teste.html` (o mesmo código nas duas páginas).
 - `controle.js`: o controle da bomba no cartão "Bomba d'água" (Automático | Manual e Ligar/Desligar). Veja "Controle pelo site" no final.
+- `demo.js`: o cartão "Modo demonstração": simular a chance de chuva pelo site. Veja "Modo demonstração" no final.
+- `agua.js`: o cartão "Água": água usada e economizada (estimativa). Veja "Água (estimativa)" no final.
 - `decisao.js`: o cartão "Por que regou (ou não)" do painel: motivo da decisão atual do ESP32 e as 5 últimas decisões (`/horta/decisoes`). Fica escondido se o firmware ainda não manda a decisão.
 - `qr.js`: desenha o QR code "Abra no seu celular" (no painel só aparece em telas largas; na `sobre.html`, sempre).
 - `teste.html`: a página do teste acende/apaga.
@@ -45,6 +47,8 @@ Resumo das regras:
 - Qualquer pessoa pode **ler** `/horta` (o site é público).
 - Só o ESP32 pode **escrever** em `/horta/estado`, `/horta/leituras` e `/horta/decisoes`.
 - `/horta/estado` pode trazer também a **decisão** da rega (`decisao`, um código da lista abaixo) e o **motivo** em português (`motivo`, até 160 letras). Os dois são opcionais: o firmware antigo continua funcionando.
+- `/horta/regas` é o histórico das regas (água usada): só o ESP32 escreve. Cada item tem `fim`, `segundos`, `litros`, `motivo` e `inicio` (opcional).
+- `/horta/config/inicioMedicao` tem escrita aberta: é o botão "Zerar contagem" do cartão "Água".
 - `/horta/decisoes` é o histórico das decisões: cada item tem `decisao`, `motivo`, `umidade`, `chanceChuva` (opcional) e `ts`. Códigos aceitos: `regando`, `solo_ok`, `adiada_chuva`, `solo_critico`, `sem_previsao`, `pausa_seguranca`, `manual_ligada`, `manual_desligada`.
 - `/horta/comandos` é **aberto**: qualquer pessoa com o site pode mudar o modo e ligar/desligar a bomba (decisão da professora, sem login). As regras só aceitam `modo` (`auto` ou `manual`), `bombaManual` (verdadeiro/falso) e, opcionais, `manualDesde` e `atualizadoEm` (horários que não podem estar no futuro). A proteção de verdade fica no firmware: no modo manual a bomba continua limitada a **60 s por acionamento** com pausa de **5 min**, e depois de **10 min** no manual o ESP32 volta sozinho para o automático. Se o Firebase não responder, ele também volta para o automático.
 - A umidade precisa ser um número entre 0 e 100.
@@ -147,6 +151,7 @@ A cada leitura do sensor (a cada 2 s) o ESP32 decide o que fazer, nesta ordem:
 1. **Pausa de segurança:** a bomba fica no máximo 60 s ligada; depois descansa 5 min. → `pausa_seguranca`
 2. **Modo manual:** obedece o site. → `manual_ligada` / `manual_desligada`
 3. **Já está regando:** continua até a umidade passar de **60%**. → `regando`
+   - Mas se a chance de chuva passar a ser **≥ 60%** (e o solo **≥ 20%**), **para** e deixa a chuva regar. → `adiada_chuva` ("Parei de regar: …")
 4. **Solo abaixo de 35%:** olha a previsão do tempo antes de gastar água.
    - Chance de chuva nas próximas 6 h **≥ 60%** e solo **≥ 20%** → **não rega**, deixa a chuva regar. → `adiada_chuva`
    - Chance alta, mas solo **abaixo de 20%** → rega mesmo assim, a planta não pode esperar. → `solo_critico`
@@ -158,10 +163,10 @@ Cada decisão tem um **código** e um **motivo** em português (ex.: "Não regue
 
 Os limites ficam no bloco **REGRAS DA REGA** do `esp32-horta.ino`: `LIMITE_LIGAR`, `LIMITE_DESLIGAR`, `LIMITE_CHUVA`, `LIMITE_CRITICO` e `VALIDADE_CLIMA`.
 
-A consulta ao clima nunca acontece com a bomba ligada: ela pode travar o programa por até 10 s e atrasaria a segurança do tempo máximo. Sem Wi-Fi ou sem Firebase, a rega continua funcionando; quando a previsão vence, a decisão passa a ser `sem_previsao`.
+Fora do `MODO_TESTE`, a consulta ao clima nunca acontece com a bomba ligada: ela pode travar o programa por até 10 s e atrasaria a segurança do tempo máximo. Sem Wi-Fi ou sem Firebase, a rega continua funcionando; quando a previsão vence, a decisão passa a ser `sem_previsao`.
 
 ### Testar a decisão da chuva em casa (`SIMULAR_CHANCE_CHUVA`)
-Em setembro e outubro quase não chove no DF, então dá para **fingir** a previsão:
+O jeito mais fácil é o cartão **"Modo demonstração"** do painel (veja no final), que tem prioridade sobre esta constante. Pelo código também dá para **fingir** a previsão:
 
 1. No bloco **REGRAS DA REGA**, troque `SIMULAR_CHANCE_CHUVA = -1` por, por exemplo, `SIMULAR_CHANCE_CHUVA = 80` e grave o ESP32. No começo do Serial Monitor aparece `[Teste] SIMULAR_CHANCE_CHUVA ativo`.
 2. Deixe o solo entre 20% e 35%: aparece `[Decisão] adiada_chuva — Não reguei: 80% de chance de chuva nas próximas 6 h. (simulado)` e o painel mostra o mesmo motivo.
@@ -174,7 +179,7 @@ No cartão **"Bomba d'água"** do painel tem dois botões: **Automático** | **M
 
 - **Automático:** o ESP32 decide sozinho (veja "Como a rega funciona").
 - **Manual:** aparece o botão **Ligar bomba** / **Desligar bomba**.
-- O ESP32 lê os comandos a cada **3 s**. Depois de um clique, o LED/bomba responde e o painel mostra o estado real em poucos segundos. O círculo da bomba sempre mostra o que o ESP32 **fez**, não o que foi pedido; enquanto não bate, aparece "Pedido enviado… aguardando o ESP32". Se passar 15 s sem resposta, o painel avisa.
+- O ESP32 recebe os comandos na hora, por streaming. Depois de um clique, o LED/bomba responde e o painel mostra o estado real em poucos segundos. O círculo da bomba sempre mostra o que o ESP32 **fez**, não o que foi pedido ("Você pediu: ligada" fica embaixo do botão); enquanto não bate, aparece "Pedido enviado… aguardando o ESP32". Se passar 5 s sem resposta, o painel avisa.
 - **Limites de segurança** (valem também no manual, porque o site é aberto):
   - cada acionamento dura no máximo **60 s**; depois a bomba descansa **5 min** (o painel mostra o motivo);
   - o modo manual dura no máximo **10 min**: depois o ESP32 grava `modo: "auto"` sozinho e volta para o automático (o painel mostra a contagem regressiva);
@@ -187,3 +192,32 @@ No topo do `esp32-horta.ino`, `MODO_TESTE = true` é para a montagem com LED: **
 ⚠️ **Com a bomba de verdade, troque para `MODO_TESTE = false`** e grave de novo: volta a valer tudo acima (60 s, 5 min de pausa, 10 min de manual).
 
 Os comandos do site chegam ao ESP32 por **streaming** (o Firebase avisa na hora). Se o streaming falhar várias vezes seguidas, o ESP32 passa a perguntar a cada 1 s (plano B) e tenta o streaming de novo a cada minuto.
+
+## Modo demonstração
+Na época da feira quase nunca chove no DF, então a previsão real marca ~0% e a decisão da chuva nunca aparece. O cartão **"Modo demonstração"** do painel resolve isso:
+
+- Ligue a chave **Simular chuva** e escolha a chance (controle de 0 a 100% ou os botões 0%, 30%, 60%, 80% e 100%). A marca em **60%** mostra a partir de onde a rega é adiada.
+- O valor vai para `/horta/comandos/simularChuva` quando você solta o controle, e o ESP32 decide de novo na hora. O motivo no cartão "Por que regou (ou não)" termina com **"(simulado)"**.
+- Enquanto a simulação estiver ativa, aparece uma faixa âmbar com o botão **Voltar à previsão real**. O cartão "Clima agora" continua mostrando a previsão **real**, com a linha "A decisão está usando uma chance simulada de X%".
+- Prioridade da chance usada na decisão: simulação do site → `SIMULAR_CHANCE_CHUVA` do código → previsão real.
+- Com `MODO_TESTE = false`, a simulação do site desliga sozinha em **15 min** (o ESP32 grava `simularChuva: -1`). Com `MODO_TESTE = true`, fica até alguém desligar.
+- No Serial Monitor: `[Demo] Simulação de chuva: 80%` e `[Demo] Simulação desligada: usando a previsão real`.
+
+## Água (estimativa)
+Ainda **não há sensor de fluxo**. Cada vez que a bomba desliga, o ESP32 grava a rega em `/horta/regas` com o tempo que ela ficou ligada e os litros **estimados**: `segundos / 60 × VAZAO_L_MIN` (1,5 L/min por padrão). Regas com menos de 1 s não contam; sem Wi-Fi, até 5 regas ficam guardadas para enviar depois.
+
+O cartão **"Água"** do painel mostra:
+- **Água usada:** soma dos litros e número de regas desde o início da medição;
+- **Um timer fixo teria usado:** 2 regas por dia × 5 min × 1,5 L/min, pelo tempo de medição (o dia de hoje conta pelas horas que já passaram);
+- **Economia:** a diferença em litros e em %, traduzida em banhos de 5 minutos (45 L) e garrafões de 20 L. Se a horta usou mais que o timer (acontece no teste, com o LED ligado no manual por muito tempo), o cartão diz isso.
+- **Zerar contagem** começa a medição de agora (grava `/horta/config/inicioMedicao`).
+
+As constantes do timer e das comparações ficam no topo do `web/agua.js`.
+
+### Como medir a vazão de verdade
+1. Coloque a mangueira da bomba dentro de uma garrafa ou balde com marcação de litros.
+2. Ligue a bomba por **1 minuto** exato (pelo modo Manual do painel, com um cronômetro).
+3. Veja quantos litros caíram: esse é o valor em L/min.
+4. Troque `VAZAO_L_MIN` no `esp32-horta.ino` **e** no `web/agua.js` pelo valor medido. Grave o ESP32 e faça `git push`.
+
+Repita 2 ou 3 vezes e use a média. Quando o sensor de fluxo YF-S201 chegar, ele vai medir o valor real.

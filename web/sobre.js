@@ -4,7 +4,8 @@ import { desenharQR } from "./qr.js";
 
 const STATUS = {
   funcionando: { texto: "Funcionando", classe: "selo-funcionando" },
-  proxima: { texto: "Próxima etapa", classe: "selo-proxima" }
+  proxima: { texto: "Próxima etapa", classe: "selo-proxima" },
+  estimativa: { texto: "Estimativa", classe: "selo-estimativa" }
 };
 
 const grupos = [
@@ -24,8 +25,8 @@ const grupos = [
   {
     titulo: "Economizar e medir",
     itens: [
-      { titulo: "Medição da água usada", frase: "Sensor de fluxo YF-S201, comparando com um timer fixo.", status: "proxima" },
-      { titulo: "Economia em impacto", frase: "Água economizada em banhos de 5 min e garrafões de 20 L.", status: "proxima" },
+      { titulo: "Medição da água usada", frase: "Por enquanto, calculado pelo tempo de bomba ligada. O sensor de fluxo YF-S201 vai medir o valor real.", status: "estimativa" },
+      { titulo: "Economia em impacto", frase: "Por enquanto, calculado pelo tempo de bomba ligada. O sensor de fluxo YF-S201 vai medir o valor real.", status: "estimativa" },
       { titulo: "Água da chuva primeiro", frase: "Usa o reservatório de chuva e avisa quando ele está baixo.", status: "proxima" },
       { titulo: "Energia solar", frase: "Placa solar e bateria para o sistema funcionar sozinho.", status: "proxima" }
     ]
@@ -37,7 +38,7 @@ const grupos = [
       { titulo: "Consulta do clima", frase: "Chance de chuva e ET₀ exibidas no painel.", status: "funcionando" },
       { titulo: "Motivo de cada decisão", frase: "\"Não reguei às 17h porque havia 80% de chance de chuva.\"", status: "funcionando" },
       { titulo: "Alertas no celular", frase: "Avisos pelo Telegram.", status: "proxima" },
-      { titulo: "Modo demonstração", frase: "Simular \"70% de chance de chuva\" ao vivo, porque no DF setembro e outubro são muito secos.", status: "proxima" },
+      { titulo: "Modo demonstração", frase: "No painel, o visitante simula \"80% de chance de chuva\" e vê a horta mudar de decisão na hora (no DF, setembro e outubro são muito secos).", status: "funcionando" },
       { titulo: "Time-lapse de crescimento", frase: "Fotos com a ESP32-CAM (a avaliar).", status: "proxima" },
       { titulo: "Espantalho eletrônico", frase: "Sensor de movimento PIR com buzzer ou LED.", status: "proxima" }
     ]
