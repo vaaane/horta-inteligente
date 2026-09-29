@@ -6,6 +6,7 @@ import {
   calcularHorasDeSol, meioDiaLocal, posicoesDoSol, direcaoNoDesenho,
   entradaNoRetangulo, entradaNoCirculo
 } from "./sol.js";
+import { CULTURAS, sugerirLugares, descreverLugar } from "./culturas.js";
 
 const URL_SUNCALC = "https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js";
 
@@ -78,6 +79,26 @@ teste("ano todo: cada ponto fica com o menor valor dos 12 meses", () => {
   const ano = calcularHorasDeSol(SunCalc, terreno, datas);
   const menor = Math.min(...datas.map((d) => posicoesDoSol(SunCalc, d, LAT, LNG).length * 0.5));
   assert.ok(ano.horas.every((h) => h === menor));
+});
+
+teste("sugestão: tomate no sol, alface na meia-sombra, sem dividir quadradinho", () => {
+  const data = meioDiaLocal(2026, 5, 21, LNG);
+  const terreno = {
+    largura: 6, comprimento: 6, norte: 0, latitude: LAT, longitude: LNG,
+    obstaculos: [{ tipo: "retangulo", nome: "Muro", x: 0, y: 2, largura: 6, profundidade: 0.2, altura: 3 }]
+  };
+  const mapa = calcularHorasDeSol(SunCalc, terreno, [data]);
+  const cultura = (id) => CULTURAS.find((c) => c.id === id);
+  const [alface, tomate] = sugerirLugares(mapa, [
+    { cultura: cultura("alface"), area: 0.5 },
+    { cultura: cultura("tomate"), area: 0.5 }
+  ]);
+  assert.ok(tomate.celulas.length > 0 && tomate.celulas.every((i) => mapa.horas[i] >= 6));
+  assert.ok(alface.celulas.length > 0 && alface.celulas.every((i) => mapa.horas[i] >= 3));
+  assert.ok(alface.horasMedia <= 6, `alface ficou com ${alface.horasMedia} h`);
+  assert.ok(!alface.celulas.some((i) => tomate.celulas.includes(i)));
+  console.log(`   tomate: ${descreverLugar(tomate.celulas, mapa, terreno)}, ~${tomate.horasMedia.toFixed(1)} h`);
+  console.log(`   alface: ${descreverLugar(alface.celulas, mapa, terreno)}, ~${alface.horasMedia.toFixed(1)} h`);
 });
 
 console.log(`\n${passou} testes passaram.`);

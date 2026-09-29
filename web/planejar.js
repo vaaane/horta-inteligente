@@ -12,6 +12,7 @@
 import {
   calcularHorasDeSol, meioDiaLocal, classificar, SOMBRA, MEIA_SOMBRA, PLENO_SOL
 } from "./sol.js";
+import { CULTURAS, NECESSIDADE, sugerirLugares, descreverLugar } from "./culturas.js";
 
 // ---------- Terreno padrão ----------
 const PADRAO = {
@@ -642,3 +643,159 @@ canvas.addEventListener("pointerdown", mostrarDica);
 canvas.addEventListener("pointerleave", (evento) => { if (evento.pointerType !== "touch") dica.hidden = true; });
 
 agendarCalculo(0);
+
+// =====================================================================
+//  PLANTAS: o que plantar e onde (a escolha do lugar fica em culturas.js)
+// =====================================================================
+const CHAVE_PLANTAS = "horta-planejar-plantas-v1";
+const AREA_PADRAO = 0.5;  // m²
+let escolhidas = carregarPlantas();  // { tomate: 0.5, alface: 1 }
+let sugestoes = [];
+
+function carregarPlantas() {
+  try { return JSON.parse(localStorage.getItem(CHAVE_PLANTAS)) || {}; } catch { return {}; }
+}
+function salvarPlantas() {
+  try { localStorage.setItem(CHAVE_PLANTAS, JSON.stringify(escolhidas)); } catch { /* sem salvar */ }
+}
+
+// Arredonda para meia hora: "~7 h", "~4,5 h"
+const horasTela = (h) => numero(Math.round(h * 2) / 2, 1);
+
+// Lista para marcar as plantas
+function montarEscolha() {
+  $("escolha-plantas").replaceChildren(...CULTURAS.map((cultura) => {
+    const linha = document.createElement("div");
+    linha.className = "planejar-planta";
+    const marcada = cultura.id in escolhidas;
+
+    const rotulo = document.createElement("label");
+    rotulo.className = "planejar-planta-nome";
+    const caixaMarcar = document.createElement("input");
+    caixaMarcar.type = "checkbox";
+    caixaMarcar.checked = marcada;
+    const cor = document.createElement("span");
+    cor.className = "planejar-cor";
+    cor.style.background = cultura.cor;
+    const texto = document.createElement("span");
+    texto.innerHTML = `<strong></strong> <small></small>`;
+    texto.querySelector("strong").textContent = cultura.nome;
+    texto.querySelector("small").textContent = NECESSIDADE[cultura.sol].texto;
+    rotulo.append(caixaMarcar, cor, texto);
+
+    const rotuloArea = document.createElement("label");
+    rotuloArea.className = "planejar-planta-area";
+    rotuloArea.textContent = "m² ";
+    const area = document.createElement("input");
+    area.type = "number";
+    area.min = "0.1";
+    area.max = "50";
+    area.step = "0.1";
+    area.value = escolhidas[cultura.id] ?? AREA_PADRAO;
+    area.disabled = !marcada;
+    area.setAttribute("aria-label", `Área de ${cultura.nome} em metros quadrados`);
+    rotuloArea.prepend(area);
+
+    caixaMarcar.addEventListener("change", () => {
+      if (caixaMarcar.checked) escolhidas[cultura.id] = Number(area.value) || AREA_PADRAO;
+      else delete escolhidas[cultura.id];
+      area.disabled = !caixaMarcar.checked;
+      salvarPlantas();
+      calcularSugestoes();
+    });
+    area.addEventListener("input", () => {
+      const valor = parseFloat(area.value);
+      if (Number.isNaN(valor) || !(cultura.id in escolhidas)) return;
+      escolhidas[cultura.id] = Math.min(Math.max(valor, 0.1), 50);
+      salvarPlantas();
+      calcularSugestoes();
+    });
+
+    linha.append(rotulo, rotuloArea);
+    return linha;
+  }));
+}
+
+// Escolhe os lugares e explica
+function calcularSugestoes() {
+  const pedidos = CULTURAS.filter((c) => c.id in escolhidas).map((cultura) => ({ cultura, area: escolhidas[cultura.id] }));
+  sugestoes = mapa && pedidos.length ? sugerirLugares(mapa, pedidos) : [];
+  const quando = anoTodo ? " no pior mês" : "";
+
+  $("sugestoes-vazio").hidden = pedidos.length > 0;
+  $("sugestoes").replaceChildren(...sugestoes.map((s) => {
+    const li = document.createElement("li");
+    const cor = document.createElement("span");
+    cor.className = "planejar-cor";
+    cor.style.background = s.cultura.cor;
+    const texto = document.createElement("span");
+    const precisa = NECESSIDADE[s.cultura.sol];
+    const nome = s.cultura.nome;
+    if (s.celulas.length > 0) {
+      let frase = `${nome}: ${descreverLugar(s.celulas, mapa, terreno)}, ~${horasTela(s.horasMedia)} h de sol${quando}.`;
+      if (s.areaConseguida < s.area - 1e-6) {
+        frase += ` Só coube ${numero(s.areaConseguida, 2)} m² dos ${numero(s.area, 2)} m² pedidos.`;
+      }
+      texto.textContent = frase;
+    } else if (s.melhorHoras < precisa.minimo) {
+      texto.textContent = `Não há sol suficiente para ${nome.toLowerCase()} neste terreno: o melhor ponto tem ` +
+        `${horasTela(s.melhorHoras)} h${quando}. Tente tirar ou baixar um obstáculo.`;
+      li.className = "sem-lugar";
+    } else {
+      texto.textContent = `Não sobrou lugar com ${precisa.texto} para ${nome.toLowerCase()}: ` +
+        "os melhores pontos já ficaram com outras plantas. Diminua as áreas.";
+      li.className = "sem-lugar";
+    }
+    li.append(cor, texto);
+    return li;
+  }));
+  desenhar();
+}
+
+// Camada das plantas: pinta a região de cada uma e escreve o nome
+adicionarCamada((ctx2, { paraPxX: px, paraPxY: py, escala: esc }) => {
+  if (!mapa) return;
+  for (const s of sugestoes) {
+    if (!s.celulas.length) continue;
+    ctx2.fillStyle = s.cultura.cor;
+    ctx2.globalAlpha = 0.85;
+    let sx = 0;
+    let sy = 0;
+    for (const i of s.celulas) {
+      const x0 = (i % mapa.colunas) * mapa.passo;
+      const y0 = Math.floor(i / mapa.colunas) * mapa.passo;
+      ctx2.fillRect(px(x0), py(y0), mapa.passo * esc + 0.5, mapa.passo * esc + 0.5);
+      sx += x0 + mapa.passo / 2;
+      sy += y0 + mapa.passo / 2;
+    }
+    ctx2.globalAlpha = 1;
+    // Nome no meio da região
+    const cx = px(sx / s.celulas.length);
+    const cy = py(sy / s.celulas.length);
+    ctx2.font = "bold 13px system-ui, sans-serif";
+    ctx2.textAlign = "center";
+    ctx2.textBaseline = "middle";
+    const largura = ctx2.measureText(s.cultura.nome).width + 10;
+    ctx2.fillStyle = "rgba(255, 255, 255, 0.92)";
+    ctx2.fillRect(cx - largura / 2, cy - 10, largura, 20);
+    ctx2.strokeStyle = s.cultura.cor;
+    ctx2.lineWidth = 2;
+    ctx2.strokeRect(cx - largura / 2, cy - 10, largura, 20);
+    ctx2.fillStyle = "#1b2a1c";
+    ctx2.fillText(s.cultura.nome, cx, cy);
+  }
+});
+
+// Tabela "Umidade e sol por cultura"
+$("tabela-culturas").replaceChildren(...CULTURAS.map((cultura) => {
+  const tr = document.createElement("tr");
+  for (const texto of [cultura.nome, NECESSIDADE[cultura.sol].texto, `${cultura.umidade[0]}–${cultura.umidade[1]}%`]) {
+    const td = document.createElement("td");
+    td.textContent = texto;
+    tr.append(td);
+  }
+  return tr;
+}));
+
+montarEscolha();
+quandoMapaPronto(() => calcularSugestoes());

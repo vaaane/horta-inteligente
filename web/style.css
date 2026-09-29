@@ -719,7 +719,8 @@ main {
 /* ================= Página "Planeje sua horta" ================= */
 .planejar main { max-width: 1280px; }
 .planejar .abertura { margin-bottom: 16px; }
-.planejar-area { display: grid; gap: 16px; grid-template-columns: 1fr; align-items: start; }
+.planejar-area { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.planejar-area > * { min-width: 0; }  /* a tabela larga rola dentro do cartão, sem alargar a página */
 @media (min-width: 900px) {
   .planejar-area { grid-template-columns: minmax(0, 1fr) 320px; }
 }
@@ -812,3 +813,30 @@ main {
 .cor-sombra { background: var(--sol-sombra); }
 .cor-meia { background: var(--sol-meia); }
 .cor-pleno { background: var(--sol-pleno); }
+/* Plantas: escolha, sugestões e tabela */
+.planejar-area-plantas { margin-top: 16px; }
+@media (min-width: 900px) {
+  .planejar-area-plantas { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+.planejar-escolha { display: grid; gap: 6px; margin-bottom: 16px; }
+.planejar-planta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+}
+.planejar-planta-nome { display: flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; }
+.planejar-planta-nome input { width: 22px; height: 22px; accent-color: var(--verde); }
+.planejar-planta-nome small { color: var(--texto-suave); }
+.planejar-planta-area { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; color: var(--texto-suave); }
+.planejar-planta-area input { width: 5.5em; min-height: 40px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
+.planejar-sugestoes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.planejar-sugestoes li { display: flex; align-items: baseline; gap: 8px; line-height: 1.4; font-size: 1.02rem; }
+.planejar-sugestoes li .planejar-cor { flex: none; transform: translateY(2px); }
+.planejar-sugestoes li.sem-lugar { color: var(--aviso-texto); font-weight: 600; }
+.planejar-explica { margin: 0 0 12px; padding-left: 20px; line-height: 1.6; }
+.tabela-culturas { min-width: 420px; }
