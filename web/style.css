@@ -332,6 +332,15 @@ main {
   border: 2px solid var(--borda);
 }
 .agua-botao-forte { background: var(--aviso-texto); color: #fff; border-color: var(--aviso-texto); }
+/* Barra "Cota de hoje pela ET₀" */
+.agua-cota { margin: 4px 0 12px; }
+.agua-cota-topo { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+.agua-cota-titulo { font-weight: 600; }
+.agua-cota-valor { font-size: 1.3rem; font-weight: 700; color: var(--verde); font-variant-numeric: tabular-nums; }
+.agua-cota .trilho { margin-top: 6px; }
+/* Botão "Recomeçar a cota (demo)" no cartão Modo demonstração */
+.demo-cota { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--borda); }
+
 /* "Água por dia": seletor de período, gráfico de altura fixa e tabela com rolagem própria */
 .agua-dias { margin: 16px 0; padding-top: 16px; border-top: 1px solid var(--borda); }
 .agua-periodos { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }

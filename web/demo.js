@@ -87,6 +87,10 @@ export function iniciarDemo(db, raiz, cartaoClima) {
           </div>
         </div>
       </div>`).join("")}
+    <div class="demo-cota">
+      <button type="button" data-demo="zerar-cota" class="demo-voltar">🎯 Recomeçar a cota (demo)</button>
+      <span class="agua-sub">A horta volta a contar a água do dia a partir de agora (cartão "Água").</span>
+    </div>
     <p data-demo="erro" class="controle-status aviso-controle" hidden></p>
     <p data-demo="bloqueio" class="controle-bloqueio"></p>
   `);
@@ -171,6 +175,9 @@ export function iniciarDemo(db, raiz, cartaoClima) {
 
     sim.faixaEl.querySelector('[data-parte="voltar"]').addEventListener("click", () => gravar(sim.campo, -1));
   }
+
+  // "Recomeçar a cota": o ESP32 passa a contar a cota do dia a partir de agora
+  $("zerar-cota").addEventListener("click", () => gravar("zerarCotaEm", serverTimestamp()));
 
   function mostrar() {
     const bloqueado = offline || comandos === undefined || gravando;

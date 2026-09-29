@@ -21,6 +21,7 @@ const LITROS_GARRAFAO = 20;
 // Água recomendada pela ET₀: 1 mm de água em 1 m² = 1 litro.
 // Então a planta "pede" et0 (mm) × área (m²) litros por dia.
 const AREA_M2 = 0.25;               // área do canteiro da maquete (0,5 m × 0,5 m)
+const KC = 1.0;                     // coeficiente da cultura (igual ao firmware)
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 
@@ -63,6 +64,16 @@ export function iniciarAgua(db, raiz) {
       <div><dt>Economia</dt><dd data-agua="economia">--</dd><p data-agua="economia-sub" class="agua-sub"></p></div>
     </dl>
     <p data-agua="traducao" class="agua-traducao" hidden></p>
+
+    <!-- Cota de hoje: quanto a planta perdeu pela ET₀ (o ESP32 para de regar quando enche) -->
+    <div data-agua="cota" class="agua-cota" hidden>
+      <div class="agua-cota-topo">
+        <span class="agua-cota-titulo">Cota de hoje pela ET₀</span>
+        <span data-agua="cota-valor" class="agua-cota-valor"></span>
+      </div>
+      <div class="trilho"><div data-agua="cota-barra" class="barra"></div></div>
+      <p data-agua="cota-conta" class="agua-sub"></p>
+    </div>
     <p class="agua-nota">Calculado pelo tempo de bomba ligada × vazão de ${numero(VAZAO_L_MIN)} L/min. Sem sensor de fluxo.
       Timer de comparação: ${TIMER_REGAS_POR_DIA} regas por dia de ${TIMER_MINUTOS_POR_REGA} min.</p>
 
@@ -182,6 +193,10 @@ export function iniciarAgua(db, raiz) {
   }
 
   let estadoAtual = {};
+  let et0Clima = null;        // ET₀ do dia no nó /clima (só para mostrar a conta da cota)
+  onValue(ref(db, "clima/et0"), (snap) => {
+    et0Clima = typeof snap.val() === "number" ? snap.val() : null;
+  });
   onValue(ref(db, "horta/estado"), (snap) => {
     const estado = snap.val();
     const desdeAntes = inicioRegaAtual();
@@ -277,7 +292,36 @@ export function iniciarAgua(db, raiz) {
         : `💧 Regando agora… ${duracao((agora() - inicioAtual) / 1000)}`;
     }
 
+    mostrarCota();
     mostrarDias(vivo);
+  }
+
+  // Barra "Cota de hoje pela ET₀": litros usados contra a cota (vêm do ESP32).
+  // Entre um envio e outro, se a bomba está ligada, a barra continua subindo.
+  function mostrarCota() {
+    const cota = estadoAtual.cotaHoje;
+    $("cota").hidden = typeof cota !== "number";
+    if (typeof cota !== "number") return;
+
+    let litros = Number(estadoAtual.litrosCota) || 0;
+    if (bombaLigada && typeof estadoAtual.ts === "number") {
+      litros += Math.max(0, agora() - estadoAtual.ts) / 1000 / 60 * VAZAO_L_MIN;
+    }
+    const cheia = litros >= cota;
+    // Enchendo: passos de 0,5 L. Cheia: com uma casa, para não parecer "1,5 de 1,8" quando já encheu
+    $("cota-valor").textContent = cheia
+      ? `🎯 ${numero(litros, 1)} L de ${numero(cota, 1)} L`
+      : `${litrosTela(litros)} de ${numero(cota, 1)} L`;
+    $("cota-barra").style.width = cota > 0 ? `${Math.min(100, (litros / cota) * 100)}%` : "100%";
+
+    // A conta em linguagem simples (1 mm em 1 m² = 1 L)
+    const umaCasa = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    if (et0Clima !== null && Math.abs(et0Clima * AREA_M2 * KC - cota) < 0.05) {
+      $("cota-conta").textContent =
+        `ET₀ ${umaCasa(et0Clima)} mm × ${numero(AREA_M2, 2)} m² × Kc ${umaCasa(KC)} = ${numero(cota, 1)} L`;
+    } else {
+      $("cota-conta").textContent = `Sem previsão do tempo: cota fixa de ${numero(cota, 1)} L por dia.`;
+    }
   }
 
   // ================= Água por dia (gráfico e tabela) =================

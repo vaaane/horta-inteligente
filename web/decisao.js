@@ -15,6 +15,7 @@ const ICONES = {
   solo_ok: "✅",
   adiada_chuva: "🌧️",
   horario_quente: "☀️",
+  cota_atingida: "🎯",
   solo_critico: "⚠️",
   sem_previsao: "📡",
   pausa_seguranca: "⏸️",

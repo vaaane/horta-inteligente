@@ -16,7 +16,7 @@ const grupos = [
       { titulo: "Adiar a rega se vai chover", frase: "Usa a previsão do Open-Meteo: com 60% ou mais de chance de chuva, espera.", status: "funcionando" },
       { titulo: "Confirmar se a chuva caiu", frase: "Sensor de chuva e pluviômetro: se não choveu, rega mesmo assim.", status: "proxima" },
       { titulo: "Horário inteligente", frase: "Por enquanto usa o relógio da internet. O DHT22 e o LDR vão confirmar o calor e o sol no local.", status: "funcionando" },
-      { titulo: "Quanto regar pela ET₀", frase: "Calcula a água a repor pela evapotranspiração do dia.", status: "proxima" },
+      { titulo: "Quanto regar pela ET₀", frase: "Calcula a água a repor pela evapotranspiração do dia (ET₀ × área) e para de regar quando a cota do dia é atingida.", status: "funcionando" },
       { titulo: "Prever quando o solo vai secar", frase: "Mostra algo como \"próxima rega em ~14 h\".", status: "proxima" },
       { titulo: "Limites por tipo de planta", frase: "Zonas separadas para alface, cebolinha e tomate.", status: "proxima" },
       { titulo: "Detecção de falhas", frase: "Bomba ligada e umidade sem subir = reservatório vazio, mangueira solta ou bomba com defeito.", status: "proxima" }
