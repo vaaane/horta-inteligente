@@ -48,6 +48,7 @@ const arredondar = (valor, passo = 0.05) => Number((Math.round(valor / passo) * 
 const numero = (valor, casas = 2) => Number(valor).toLocaleString("pt-BR", { maximumFractionDigits: casas });
 
 // ---------- Estado ----------
+let modo = "livre";       // "mapa" (sobre o satélite, mapa.js) ou "livre" (este canvas)
 let terreno = carregar() || copia(PADRAO);
 let selecionado = -1;     // índice do obstáculo selecionado (-1 = nenhum)
 let arrastando = null;    // { tipo: "obstaculo" | "norte", dx, dy }
@@ -110,7 +111,13 @@ function medir() {
 const camadas = [];
 export function adicionarCamada(funcao) { camadas.push(funcao); }
 
+// Desenha no modo atual: por cima do mapa, ou no canvas do Desenho livre
 function desenhar() {
+  if (modo === "mapa") { modoMapa.redesenhar(); return; }
+  desenharLivre();
+}
+
+function desenharLivre() {
   if (escala <= 0 || caixa.clientWidth === 0) return;  // escondido (modo mapa)
   ctx.clearRect(0, 0, larguraTela, alturaTela);
   const L = terreno.largura;
@@ -501,6 +508,7 @@ const hojeTexto = () => {
 let dataEscolhida = hojeTexto();  // "AAAA-MM-DD"
 let anoTodo = false;              // true = pior caso dos 12 meses
 let mapa = null;                  // resultado de calcularHorasDeSol
+let terrenoCalculado = null;      // o terreno (no formato do sol.js) usado nesse cálculo
 let ultimaDuracao = 0;            // quanto tempo levou o último cálculo (ms)
 let temporizador = null;
 const aoCalcularMapa = [];        // quem quer saber quando o mapa fica pronto (sugestões)
@@ -508,10 +516,15 @@ export function quandoMapaPronto(funcao) { aoCalcularMapa.push(funcao); }
 export const mapaAtual = () => mapa;
 
 // Dias usados no cálculo: o escolhido, ou o dia 21 de cada mês (ano todo)
-function diasDoCalculo() {
+function diasDoCalculo(longitude) {
   const [ano, mes, dia] = dataEscolhida.split("-").map(Number);
-  if (anoTodo) return Array.from({ length: 12 }, (_, m) => meioDiaLocal(ano, m, 21, terreno.longitude));
-  return [meioDiaLocal(ano, mes - 1, dia, terreno.longitude)];
+  if (anoTodo) return Array.from({ length: 12 }, (_, m) => meioDiaLocal(ano, m, 21, longitude));
+  return [meioDiaLocal(ano, mes - 1, dia, longitude)];
+}
+
+// O terreno do modo atual, no formato do sol.js (null = nada desenhado no mapa)
+function terrenoDoCalculo() {
+  return modo === "mapa" ? modoMapa.terrenoParaCalculo() : terreno;
 }
 
 // Espera um pouquinho antes de calcular (enquanto arrasta, não recalcula a cada pixel)
@@ -533,8 +546,20 @@ function calcularMapa() {
     $("mapa-status").textContent = "Não consegui carregar a biblioteca do sol (SunCalc). Confira a internet e recarregue a página.";
     return;
   }
+  terrenoCalculado = terrenoDoCalculo();
+  if (!terrenoCalculado) {
+    mapa = null;
+    $("mapa-status").textContent = "Desenhe o terreno no mapa (botão \"Desenhar terreno\") para ver as horas de sol.";
+    desenhar();
+    for (const funcao of aoCalcularMapa) funcao(mapa);
+    return;
+  }
+  if (modo === "mapa") {
+    $("centro-terreno").textContent = `O cálculo usa o centro do terreno: latitude ${numero(terrenoCalculado.latitude, 5)}, ` +
+      `longitude ${numero(terrenoCalculado.longitude, 5)}.`;
+  }
   const inicio = performance.now();
-  mapa = calcularHorasDeSol(SunCalc, terreno, diasDoCalculo());
+  mapa = calcularHorasDeSol(SunCalc, terrenoCalculado, diasDoCalculo(terrenoCalculado.longitude));
   ultimaDuracao = performance.now() - inicio;
   mostrarStatusDoMapa();
   desenhar();
@@ -620,22 +645,29 @@ $("data").addEventListener("change", () => {
 quandoTerrenoMudar((opcoes) => agendarCalculo(opcoes.arrastando ? 300 : 150));
 
 // ---------- Dica: "5,5 h de sol" ao passar o mouse ou tocar ----------
+// Texto da dica para um ponto (x, y em metros no terreno do cálculo)
+function textoDaDica(x, y) {
+  if (!mapa || !terrenoCalculado) return null;
+  if (x < 0 || y < 0 || x >= terrenoCalculado.largura || y >= terrenoCalculado.comprimento) return null;
+  const col = Math.min(Math.floor(x / mapa.passo), mapa.colunas - 1);
+  const lin = Math.min(Math.floor(y / mapa.passo), mapa.linhas - 1);
+  const i = lin * mapa.colunas + col;
+  if (mapa.ocupado[i]) {
+    const ob = terrenoCalculado.obstaculos[mapa.ocupado[i] - 1];
+    return `${ob ? ob.nome : "Obstáculo"}: ocupado`;
+  }
+  const h = mapa.horas[i];
+  return `${numero(h, 1)} h de sol · ${classificar(h)}${anoTodo ? " (pior mês)" : ""}`;
+}
+
 const dica = $("dica-ponto");
 let esconderDica = null;
 function mostrarDica(evento) {
   if (!mapa || estaArrastando()) { dica.hidden = true; return; }
   const { x, y } = metrosDoEvento(evento);
-  if (x < 0 || y < 0 || x >= terreno.largura || y >= terreno.comprimento) { dica.hidden = true; return; }
-  const col = Math.min(Math.floor(x / mapa.passo), mapa.colunas - 1);
-  const lin = Math.min(Math.floor(y / mapa.passo), mapa.linhas - 1);
-  const i = lin * mapa.colunas + col;
-  if (mapa.ocupado[i]) {
-    const ob = terreno.obstaculos[mapa.ocupado[i] - 1];
-    dica.textContent = `${ob ? ob.nome : "Obstáculo"}: ocupado`;
-  } else {
-    const h = mapa.horas[i];
-    dica.textContent = `${numero(h, 1)} h de sol · ${classificar(h)}${anoTodo ? " (pior mês)" : ""}`;
-  }
+  const texto = textoDaDica(x, y);
+  if (!texto) { dica.hidden = true; return; }
+  dica.textContent = texto;
   const rCaixa = caixa.getBoundingClientRect();
   dica.style.left = `${evento.clientX - rCaixa.left}px`;
   dica.style.top = `${evento.clientY - rCaixa.top}px`;
@@ -738,7 +770,7 @@ function calcularSugestoes() {
     const precisa = NECESSIDADE[s.cultura.sol];
     const nome = s.cultura.nome;
     if (s.celulas.length > 0) {
-      let frase = `${nome}: ${descreverLugar(s.celulas, mapa, terreno)}, ~${horasTela(s.horasMedia)} h de sol${quando}.`;
+      let frase = `${nome}: ${descreverLugar(s.celulas, mapa, terrenoCalculado)}, ~${horasTela(s.horasMedia)} h de sol${quando}.`;
       if (s.areaConseguida < s.area - 1e-6) {
         frase += ` Só coube ${numero(s.areaConseguida, 2)} m² dos ${numero(s.area, 2)} m² pedidos.`;
       }
@@ -809,7 +841,6 @@ quandoMapaPronto(() => calcularSugestoes());
 // =====================================================================
 //  MODO: "Sobre o mapa" (satélite, em mapa.js) ou "Desenho livre" (canvas)
 // =====================================================================
-let modo = "livre";
 const modoMapa = iniciarModoMapa({
   elemento: $("mapa-satelite"),
   busca: $("busca"),
@@ -820,7 +851,8 @@ const modoMapa = iniciarModoMapa({
   lista: $("lista-obstaculos"),
   editor: $("editor"),
   ferramentaStatus: $("ferramenta-status"),
-  aoMudar: () => {}
+  aoMudar: (opcoes) => agendarCalculo(opcoes.arrastando ? 300 : 150),
+  textoDoPonto: textoDaDica
 });
 for (const botao of document.querySelectorAll("[data-ferramenta]")) {
   botao.addEventListener("click", () => modoMapa.usarFerramenta(botao.dataset.ferramenta));
@@ -833,6 +865,9 @@ function trocarModo(novo) {
   for (const botao of document.querySelectorAll(".planejar-modo")) {
     botao.setAttribute("aria-pressed", String(botao.dataset.modo === modo));
   }
+  mapa = null;  // o mapa de sol era do outro modo: calcula de novo
+  sugestoes = [];
+  agendarCalculo(0);
   if (modo === "mapa") {
     modoMapa.mostrar();
   } else {
@@ -846,3 +881,80 @@ function trocarModo(novo) {
 for (const botao of document.querySelectorAll(".planejar-modo")) {
   botao.addEventListener("click", () => trocarModo(botao.dataset.modo));
 }
+
+// ---------- Mapa de sol e plantas por cima da imagem de satélite ----------
+// A grade do cálculo segue o terreno (mesmo girado): cada quadradinho vira
+// um quadrilátero na tela.
+let opacidadeMapa = Number($("opacidade").value) / 100;
+$("opacidade").addEventListener("input", () => {
+  opacidadeMapa = Number($("opacidade").value) / 100;
+  $("opacidade-valor").textContent = `${$("opacidade").value}%`;
+  desenhar();
+});
+
+modoMapa.adicionarCamada((ctx2, { terreno: noMapa, pixelDaForma }) => {
+  if (!mapa || !terrenoCalculado || !noMapa) return;
+  const L = terrenoCalculado.largura;
+  const C = terrenoCalculado.comprimento;
+  // Metros no terreno (x para a direita, y para baixo) -> pixel na tela
+  const pixel = (x, y) => pixelDaForma(noMapa, Math.min(x, L) - L / 2, C / 2 - Math.min(y, C));
+  // Cantos de todos os quadradinhos (calculados uma vez por desenho)
+  const cantos = [];
+  for (let lin = 0; lin <= mapa.linhas; lin++) {
+    for (let col = 0; col <= mapa.colunas; col++) cantos.push(pixel(col * mapa.passo, lin * mapa.passo));
+  }
+  const canto = (lin, col) => cantos[lin * (mapa.colunas + 1) + col];
+  const pintar = (i) => {
+    const lin = Math.floor(i / mapa.colunas);
+    const col = i % mapa.colunas;
+    const a = canto(lin, col);
+    const b = canto(lin, col + 1);
+    const c = canto(lin + 1, col + 1);
+    const d = canto(lin + 1, col);
+    ctx2.beginPath();
+    ctx2.moveTo(a.x, a.y);
+    ctx2.lineTo(b.x, b.y);
+    ctx2.lineTo(c.x, c.y);
+    ctx2.lineTo(d.x, d.y);
+    ctx2.closePath();
+    ctx2.fill();
+    ctx2.stroke();  // um contorno da mesma cor esconde os riscos entre os quadradinhos
+  };
+
+  ctx2.save();
+  ctx2.lineWidth = 1;
+  ctx2.globalAlpha = opacidadeMapa;
+  for (let i = 0; i < mapa.horas.length; i++) {
+    if (mapa.ocupado[i]) continue;
+    ctx2.fillStyle = ctx2.strokeStyle = CORES_SOL[classificar(mapa.horas[i])];
+    pintar(i);
+  }
+  // Regiões das plantas, com o nome no meio
+  for (const s of sugestoes) {
+    if (!s.celulas.length) continue;
+    ctx2.globalAlpha = 0.85;
+    ctx2.fillStyle = ctx2.strokeStyle = s.cultura.cor;
+    let sx = 0;
+    let sy = 0;
+    for (const i of s.celulas) {
+      pintar(i);
+      sx += ((i % mapa.colunas) + 0.5) * mapa.passo;
+      sy += (Math.floor(i / mapa.colunas) + 0.5) * mapa.passo;
+    }
+    ctx2.globalAlpha = 1;
+    const meio = pixel(sx / s.celulas.length, sy / s.celulas.length);
+    ctx2.font = "bold 13px system-ui, sans-serif";
+    ctx2.textAlign = "center";
+    ctx2.textBaseline = "middle";
+    const largura = ctx2.measureText(s.cultura.nome).width + 10;
+    ctx2.fillStyle = "rgba(255, 255, 255, 0.92)";
+    ctx2.fillRect(meio.x - largura / 2, meio.y - 10, largura, 20);
+    ctx2.lineWidth = 2;
+    ctx2.strokeStyle = s.cultura.cor;
+    ctx2.strokeRect(meio.x - largura / 2, meio.y - 10, largura, 20);
+    ctx2.fillStyle = "#1b2a1c";
+    ctx2.fillText(s.cultura.nome, meio.x, meio.y);
+    ctx2.lineWidth = 1;
+  }
+  ctx2.restore();
+});

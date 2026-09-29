@@ -63,7 +63,7 @@ export function metrosParaForma(e, n, angulo) {
 export function iniciarModoMapa(opcoes) {
   const {
     elemento, busca, buscaTexto, buscaStatus, botaoLocalizacao, camadaNomes,
-    lista, editor, ferramentaStatus, aoMudar
+    lista, editor, ferramentaStatus, aoMudar, textoDoPonto
   } = opcoes;
 
   let mapa = null;          // o mapa do Leaflet (criado na primeira vez que aparece)
@@ -111,6 +111,68 @@ export function iniciarModoMapa(opcoes) {
 
     // Gestos: "capture" = recebemos antes do Leaflet e decidimos quem fica com o toque
     elemento.addEventListener("pointerdown", aoApertar, true);
+
+    // Dica "5,5 h de sol": passando o mouse, ou tocando (some sozinha)
+    dica = document.createElement("p");
+    dica.className = "planejar-dica planejar-dica-mapa";
+    dica.hidden = true;
+    elemento.append(dica);
+    elemento.addEventListener("pointermove", (evento) => {
+      if (evento.pointerType === "mouse" && evento.buttons === 0) mostrarDica(evento);
+    });
+    elemento.addEventListener("pointerleave", (evento) => { if (evento.pointerType === "mouse") dica.hidden = true; });
+  }
+
+  // ---------- Dica: horas de sol do ponto tocado ----------
+  let dica = null;
+  let esconderDica = null;
+  // Ponto do mapa -> metros no terreno (x para a direita, y para baixo, a partir do canto de cima à esquerda)
+  function noTerreno(latlng) {
+    const m = paraMetros(latlng, terreno.centro);
+    const { a, b } = metrosParaForma(m.e, m.n, terreno.angulo || 0);
+    return { x: a + terreno.largura / 2, y: terreno.comprimento / 2 - b };
+  }
+  function mostrarDica(evento) {
+    if (!terreno || gesto || ferramenta) { dica.hidden = true; return; }
+    const p = pontoDoEvento(evento);
+    const latlng = mapa.containerPointToLatLng(p);
+    const { x, y } = noTerreno([latlng.lat, latlng.lng]);
+    const texto = x >= 0 && y >= 0 && x < terreno.largura && y < terreno.comprimento ? textoDoPonto(x, y) : null;
+    if (!texto) { dica.hidden = true; return; }
+    dica.textContent = texto;
+    dica.style.left = `${p.x}px`;
+    dica.style.top = `${p.y}px`;
+    dica.hidden = false;
+    clearTimeout(esconderDica);
+    if (evento.pointerType !== "mouse") esconderDica = setTimeout(() => { dica.hidden = true; }, 2500);
+  }
+
+  // ---------- O desenho no formato do cálculo (sol.js) ----------
+  // O cálculo trabalha num plano em metros alinhado aos lados do terreno
+  // (a grade segue o terreno, mesmo girado). O giro do terreno vira o
+  // "ângulo do norte" desse plano, e cada obstáculo leva o giro dele
+  // em relação ao terreno.
+  function terrenoParaCalculo() {
+    if (!terreno) return null;
+    const giro = terreno.angulo || 0;
+    const obs = obstaculos.map((ob) => {
+      const c = noTerreno(ob.centro);
+      if (ob.tipo === "circulo") return { tipo: "circulo", nome: ob.nome, x: c.x, y: c.y, raio: ob.raio, altura: ob.altura };
+      return {
+        tipo: "retangulo", nome: ob.nome, altura: ob.altura,
+        x: c.x - ob.largura / 2, y: c.y - ob.profundidade / 2,
+        largura: ob.largura, profundidade: ob.profundidade,
+        angulo: (((ob.angulo || 0) - giro) % 360 + 360) % 360
+      };
+    });
+    return {
+      largura: terreno.largura,
+      comprimento: terreno.comprimento,
+      norte: (360 - giro) % 360,          // no plano do terreno, o norte fica girado ao contrário
+      latitude: terreno.centro[0],        // o cálculo usa o centro do terreno
+      longitude: terreno.centro[1],
+      obstaculos: obs
+    };
   }
 
   function medirCanvas() {
@@ -355,7 +417,11 @@ export function iniciarModoMapa(opcoes) {
         }
       }
     }
-    if (!gesto) return;  // deixa o Leaflet mover o mapa
+    if (!gesto) {
+      mostrarDica(evento);  // no toque, mostra as horas de sol do ponto
+      return;               // e deixa o Leaflet mover o mapa
+    }
+    if (dica) dica.hidden = true;
 
     // Fica com o gesto: o mapa não anda enquanto desenha
     evento.stopPropagation();
@@ -665,6 +731,7 @@ export function iniciarModoMapa(opcoes) {
     usarFerramenta,
     adicionarCamada: (funcao) => camadas.push(funcao),
     obterTerreno: () => terreno,
+    terrenoParaCalculo,
     obterObstaculos: () => obstaculos,
     obterMapa: () => mapa,
     // Troca o desenho inteiro (exemplo, "Começar do zero", link compartilhado)

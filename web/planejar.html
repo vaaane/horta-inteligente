@@ -90,6 +90,10 @@
             </div>
           </div>
           <p id="mapa-status" class="planejar-status" aria-live="polite"></p>
+          <label class="so-mapa planejar-opacidade">Transparência do mapa de sol
+            <input type="range" id="opacidade" min="30" max="90" step="5" value="65">
+            <output id="opacidade-valor">65%</output>
+          </label>
           <ul class="planejar-legenda" aria-label="Legenda do mapa">
             <li><span class="planejar-cor cor-sombra"></span> Sombra: menos de 3 h</li>
             <li><span class="planejar-cor cor-meia"></span> Meia-sombra: 3 a 6 h</li>

@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import {
   calcularHorasDeSol, meioDiaLocal, posicoesDoSol, direcaoNoDesenho,
-  entradaNoRetangulo, entradaNoCirculo
+  entradaNoRetangulo, entradaNoCirculo, entradaNoObstaculo, dentroDoObstaculo
 } from "./sol.js";
 import { CULTURAS, sugerirLugares, descreverLugar } from "./culturas.js";
 
@@ -32,6 +32,17 @@ teste("interseção com retângulo e círculo", () => {
   const arvore = { x: 5, y: 2, raio: 1 };
   assert.ok(Math.abs(entradaNoCirculo(0, 2, 1, 0, arvore) - 4) < 1e-9);  // entra em x = 4
   assert.equal(entradaNoCirculo(5, 2, 1, 0, arvore), 0);    // já está dentro
+});
+
+teste("retângulo girado (campo opcional angulo)", () => {
+  // Muro de 4 × 0,2 m com centro em (5, 5). Girado 90°, fica "em pé" (0,2 × 4)
+  const muro = { tipo: "retangulo", x: 3, y: 4.9, largura: 4, profundidade: 0.2, altura: 2, angulo: 90 };
+  assert.ok(dentroDoObstaculo(5, 6.5, muro));     // girado, passa por y = 6,5
+  assert.ok(!dentroDoObstaculo(6.5, 5, muro));    // e não passa mais por x = 6,5
+  const d = entradaNoObstaculo(0, 5, 1, 0, muro); // vindo da esquerda, bate na face em x = 4,9
+  assert.ok(Math.abs(d - 4.9) < 1e-9, `d = ${d}`);
+  const reto = { ...muro, angulo: 0 };
+  assert.equal(entradaNoObstaculo(0, 5, 1, 0, reto), entradaNoRetangulo(0, 5, 1, 0, reto));
 });
 
 teste("direção do sol no desenho (norte para cima)", () => {

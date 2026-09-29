@@ -103,12 +103,33 @@ export function entradaNoCirculo(px, py, dx, dy, c) {
   return t >= 0 ? t : -1;             // (se for negativo, o círculo está "atrás")
 }
 
+// Retângulo GIRADO (campo opcional "angulo", em graus, no sentido do relógio,
+// em volta do centro dele): em vez de girar o retângulo, giramos o ponto e a
+// direção ao contrário. Aí ele fica "reto" de novo e a conta é a mesma.
+function desgirar(px, py, dx, dy, r) {
+  const cx = r.x + r.largura / 2;
+  const cy = r.y + r.profundidade / 2;
+  const a = (-(r.angulo || 0) * Math.PI) / 180;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const ox = px - cx;
+  const oy = py - cy;
+  return {
+    px: cx + ox * c - oy * s, py: cy + ox * s + oy * c,
+    dx: dx * c - dy * s, dy: dx * s + dy * c
+  };
+}
+
 export function entradaNoObstaculo(px, py, dx, dy, ob) {
-  return ob.tipo === "retangulo" ? entradaNoRetangulo(px, py, dx, dy, ob) : entradaNoCirculo(px, py, dx, dy, ob);
+  if (ob.tipo !== "retangulo") return entradaNoCirculo(px, py, dx, dy, ob);
+  if (!ob.angulo) return entradaNoRetangulo(px, py, dx, dy, ob);
+  const p = desgirar(px, py, dx, dy, ob);
+  return entradaNoRetangulo(p.px, p.py, p.dx, p.dy, ob);
 }
 
 export function dentroDoObstaculo(x, y, ob) {
   if (ob.tipo === "retangulo") {
+    if (ob.angulo) ({ px: x, py: y } = desgirar(x, y, 0, 0, ob));
     return x >= ob.x && x <= ob.x + ob.largura && y >= ob.y && y <= ob.y + ob.profundidade;
   }
   return Math.hypot(x - ob.x, y - ob.y) <= ob.raio;
