@@ -71,8 +71,11 @@
         "litrosCota": {
           ".validate": "newData.isNumber() && newData.val() >= 0"
         },
+        "emFalha": {
+          ".validate": "newData.isBoolean()"
+        },
         "decisao": {
-          ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|horario_quente|cota_atingida|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
+          ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|horario_quente|cota_atingida|cota_extra|falha_agua|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
         },
         "motivo": {
           ".validate": "newData.isString() && newData.val().length <= 160"
@@ -108,7 +111,7 @@
         "$decisaoId": {
           ".validate": "newData.hasChildren(['decisao', 'motivo', 'umidade', 'ts'])",
           "decisao": {
-            ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|horario_quente|cota_atingida|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
+            ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|horario_quente|cota_atingida|cota_extra|falha_agua|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
           },
           "motivo": {
             ".validate": "newData.isString() && newData.val().length <= 160"
@@ -146,7 +149,7 @@
             ".validate": "newData.isNumber() && newData.val() >= 0"
           },
           "motivo": {
-            ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|horario_quente|cota_atingida|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
+            ".validate": "newData.isString() && newData.val().matches(/^(regando|solo_ok|adiada_chuva|horario_quente|cota_atingida|cota_extra|falha_agua|solo_critico|sem_previsao|pausa_seguranca|manual_ligada|manual_desligada)$/)"
           },
           "$outro": {
             ".validate": false
@@ -171,12 +174,42 @@
             "et0": {
               ".validate": "newData.isNumber() && newData.val() >= 0"
             },
+            "kc": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "cota": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "chuvaMm": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "litrosExtra": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
             "atualizadoEm": {
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= now"
             },
             "$outro": {
               ".validate": false
             }
+          }
+        },
+        "ajuste": {
+          ".write": "auth != null && auth.uid === 'gj7r2D4JvTYr9GTnkmEc40ZqWRU2'",
+          "kc": {
+            ".validate": "newData.isNumber() && newData.val() >= 0.6 && newData.val() <= 1.5"
+          },
+          "emFalha": {
+            ".validate": "newData.isBoolean()"
+          },
+          "atualizadoEm": {
+            ".validate": "newData.isNumber() && newData.val() <= now"
+          },
+          "motivo": {
+            ".validate": "newData.isString() && newData.val().length <= 160"
+          },
+          "$outro": {
+            ".validate": false
           }
         },
         "$outro": {
@@ -211,6 +244,15 @@
         },
         "zerarCotaEm": {
           ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "resetFalhaEm": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "simularFimDiaEm": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "detectarFalha": {
+          ".validate": "newData.isBoolean()"
         },
         "simularHora": {
           ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= -1 && newData.val() <= 23"
