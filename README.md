@@ -101,7 +101,7 @@ O Serial Monitor mostra o código HTTP de cada envio: **200 = deu certo**.
 
 ### Clima (Open-Meteo)
 
-O `teste-acende` também consulta a previsão do tempo no [Open-Meteo](https://open-meteo.com) logo que o Wi-Fi conecta e depois a cada 30 min (se falhar, tenta de novo em 5 min). O resumo vai para `/clima` no Firebase e aparece no cartão **"Clima agora"** do painel e da `/teste.html`:
+O `teste-acende` e o firmware da horta (`esp32-horta`) consultam a previsão do tempo no [Open-Meteo](https://open-meteo.com) logo que o Wi-Fi conecta e depois a cada 30 min (se falhar, tenta de novo em 5 min). O resumo vai para `/clima` no Firebase e aparece no cartão **"Clima agora"** do painel e da `/teste.html`:
 
 - temperatura e umidade do ar;
 - maior chance de chuva nas próximas 6 horas;
@@ -109,15 +109,37 @@ O `teste-acende` também consulta a previsão do tempo no [Open-Meteo](https://o
 
 No Serial Monitor aparece um bloco de linhas começando com `[CLIMA]`.
 
-⚠️ **Temporário:** os nós `/teste` e `/clima` têm leitura **e escrita** abertas para qualquer pessoa, porque esse teste do ESP32 não faz login. Depois que tudo funcionar, apague esses blocos das regras e publique de novo.
+⚠️ **Temporário:** os nós `/teste` e `/clima` têm leitura **e escrita** abertas para qualquer pessoa, porque esse teste do ESP32 não faz login. Depois que tudo funcionar, apague o bloco `/teste` das regras e, no bloco `/clima`, troque `".write": true` por `".write": "auth != null && auth.uid === 'UID_DO_ESP32'"` (o site continua lendo; só o firmware da horta, que faz login, grava). Publique de novo.
 
 ---
 
 ## Como a rega funciona
-- Abaixo de **35%** de umidade → liga a bomba.
-- Acima de **60%** → desliga.
-- **Segurança:** a bomba fica no máximo 60 s ligada; depois descansa 5 min.
-- Sem Wi-Fi ou sem Firebase, a rega continua funcionando só pelo sensor.
+A cada leitura do sensor (a cada 2 s) o ESP32 decide o que fazer, nesta ordem:
+
+1. **Pausa de segurança:** a bomba fica no máximo 60 s ligada; depois descansa 5 min. → `pausa_seguranca`
+2. **Modo manual:** obedece o site. → `manual_ligada` / `manual_desligada`
+3. **Já está regando:** continua até a umidade passar de **60%**. → `regando`
+4. **Solo abaixo de 35%:** olha a previsão do tempo antes de gastar água.
+   - Chance de chuva nas próximas 6 h **≥ 60%** e solo **≥ 20%** → **não rega**, deixa a chuva regar. → `adiada_chuva`
+   - Chance alta, mas solo **abaixo de 20%** → rega mesmo assim, a planta não pode esperar. → `solo_critico`
+   - **Sem previsão** (nunca consultou, a consulta falhou ou a previsão tem mais de 90 min) → rega só pelo sensor, que é o comportamento seguro. → `sem_previsao`
+   - Chance baixa → rega. → `regando`
+5. **Solo úmido:** não faz nada. → `solo_ok`
+
+Cada decisão tem um **código** e um **motivo** em português (ex.: "Não reguei: 80% de chance de chuva nas próximas 6 h."). O motivo vai junto com o estado para o Firebase e aparece no painel, no cartão **"Por que regou (ou não)"**. Quando o código muda, o ESP32 escreve `[Decisão] <código> — <motivo>` no Serial Monitor e guarda a mudança no histórico `/horta/decisoes` (se estiver sem Wi-Fi, envia a última mudança quando a conexão voltar).
+
+Os limites ficam no bloco **REGRAS DA REGA** do `esp32-horta.ino`: `LIMITE_LIGAR`, `LIMITE_DESLIGAR`, `LIMITE_CHUVA`, `LIMITE_CRITICO` e `VALIDADE_CLIMA`.
+
+A consulta ao clima nunca acontece com a bomba ligada: ela pode travar o programa por até 10 s e atrasaria a segurança do tempo máximo. Sem Wi-Fi ou sem Firebase, a rega continua funcionando; quando a previsão vence, a decisão passa a ser `sem_previsao`.
+
+### Testar a decisão da chuva em casa (`SIMULAR_CHANCE_CHUVA`)
+Em setembro e outubro quase não chove no DF, então dá para **fingir** a previsão:
+
+1. No bloco **REGRAS DA REGA**, troque `SIMULAR_CHANCE_CHUVA = -1` por, por exemplo, `SIMULAR_CHANCE_CHUVA = 80` e grave o ESP32. No começo do Serial Monitor aparece `[Teste] SIMULAR_CHANCE_CHUVA ativo`.
+2. Deixe o solo entre 20% e 35%: aparece `[Decisão] adiada_chuva — Não reguei: 80% de chance de chuva nas próximas 6 h. (simulado)` e o painel mostra o mesmo motivo.
+3. Abaixo de 20% a horta rega mesmo assim (`solo_critico`).
+
+⚠️ **Antes da feira**, volte para `SIMULAR_CHANCE_CHUVA = -1` e grave o ESP32 de novo. Se o Serial Monitor ainda mostrar `[Teste] SIMULAR_CHANCE_CHUVA ativo` ou o painel mostrar "(simulado)", a simulação continua ligada.
 
 ## Dica: testar o modo manual
 Pelo console do Firebase (Realtime Database → Dados), crie:
