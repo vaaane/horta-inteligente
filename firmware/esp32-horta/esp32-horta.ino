@@ -261,6 +261,7 @@ int falhasComandos = 0;            // leituras seguidas que falharam
 bool bombaEnviada = false;
 String decisaoEnviada = "";
 int umidadeEnviada = -100;         // -100 = ainda não enviou
+String bloqueioEnviado = "#";      // "#" = ainda não enviou (o bloqueio pode ser "")
 
 // O manual venceu e falta gravar "auto" no Firebase
 bool gravarAutoPendente = false;
@@ -706,6 +707,22 @@ float litrosCota() {
 // Litros usados acima da cota hoje (antes e depois de "Recomeçar a cota")
 float litrosExtraHoje() {
   return extraAntesZeragem + extraDesdeZeragem;
+}
+
+// O que IMPEDIRIA a rega agora, se o solo precisasse de água (vai para o
+// painel, na faixa "Pode regar agora?"). Mesma ordem de controlarBomba():
+// falha → chuva → horário → cota. Não considera o solo crítico (que passa
+// por cima de chuva, horário e cota) nem o manual/pausa.
+// "" = nada impede; "chuva_caiu" = choveu mais do que a planta perdeu hoje.
+const char* bloqueioAgora() {
+  if (emFalha) return "falha";
+  if (chanceDeChuva() >= LIMITE_CHUVA) return "chuva";
+  int hora = horaDaDecisao();
+  if (hora >= 0 && horaQuente(hora)) return "horario";
+  float cota = cotaHoje();
+  if (et0Valido() && cota <= 0) return "chuva_caiu";
+  if (litrosCota() >= cota * (1 + MARGEM_EXTRA)) return "cota";
+  return "";
 }
 
 // "1,8" (vírgula, como se escreve no Brasil) para os motivos
@@ -1333,6 +1350,15 @@ void enviarEstado(bool avisar) {
   estado["cotaHoje"] = serialized(String(cotaHoje(), 2));      // barra "Cota de hoje pela ET0"
   estado["litrosCota"] = serialized(String(litrosCota(), 2));
   estado["emFalha"] = emFalha;  // o painel mostra a faixa vermelha e o botão "Já resolvi"
+  // "Semáforos" da faixa "Pode regar agora?": o que a decisão considerou
+  // (o site não recalcula nada, só mostra)
+  estado["emCritico"] = emCritico;
+  estado["chanceUsada"] = chanceDeChuva();  // -1 = sem previsão válida
+  estado["chuvaSimulada"] = chuvaSimulada();
+  estado["horaSimulada"] = simularHoraSite >= 0;
+  estado["cotaLimite"] = serialized(String(cotaHoje() * (1 + MARGEM_EXTRA), 2));
+  estado["detectarFalha"] = detectarFalha;
+  estado["bloqueio"] = bloqueioAgora();
   // Com a bomba ligada: quando ela ligou, no relógio do Firebase. O cartão
   // "Água" soma essa rega ao vivo, mesmo para quem abre o painel no meio dela.
   // (Com a bomba desligada o campo não vai, e o PUT apaga o anterior.)
@@ -1365,6 +1391,7 @@ void enviarEstado(bool avisar) {
     estadoUrgente = false;
     decisaoEnviada = decisaoAtual;
     umidadeEnviada = umidade;
+    bloqueioEnviado = estado["bloqueio"].as<String>();
   }
 
   // Histórico das decisões: só quando o código mudou (fila de um item)
@@ -1386,7 +1413,7 @@ void enviarEstado(bool avisar) {
 }
 
 // Quando enviar o estado:
-//  - na hora, se a bomba mudou, o código da decisão mudou ou (no MODO_TESTE)
+//  - na hora, se a bomba mudou, o código da decisão ou o bloqueio mudou ou (no MODO_TESTE)
 //    a umidade mudou 2 pontos ou mais desde o último envio;
 //  - no máximo um envio por segundo (vale sempre o valor mais novo);
 //  - sem mudanças, a cada 5 s (MODO_TESTE) ou 30 s, para o site saber que o
@@ -1394,6 +1421,7 @@ void enviarEstado(bool avisar) {
 void cuidarDoEstado() {
   unsigned long desdeUltimo = millis() - ultimaTentativaEstado;
   bool mudou = estadoUrgente || bombaLigada != bombaEnviada || decisaoAtual != decisaoEnviada ||
+               bloqueioEnviado != bloqueioAgora() ||
                (MODO_TESTE && abs(umidade - umidadeEnviada) >= 2);
   if (!mudou && desdeUltimo < INTERVALO_ESTADO) return;
   if (desdeUltimo < INTERVALO_MIN_ESTADO) return;

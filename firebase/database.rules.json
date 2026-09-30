@@ -80,6 +80,27 @@
         "motivo": {
           ".validate": "newData.isString() && newData.val().length <= 160"
         },
+        "emCritico": {
+          ".validate": "newData.isBoolean()"
+        },
+        "chanceUsada": {
+          ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= -1 && newData.val() <= 100"
+        },
+        "chuvaSimulada": {
+          ".validate": "newData.isBoolean()"
+        },
+        "horaSimulada": {
+          ".validate": "newData.isBoolean()"
+        },
+        "cotaLimite": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "detectarFalha": {
+          ".validate": "newData.isBoolean()"
+        },
+        "bloqueio": {
+          ".validate": "newData.isString() && (newData.val() === '' || newData.val().matches(/^(falha|chuva|horario|cota|chuva_caiu)$/))"
+        },
         "$outro": {
           ".validate": false
         }
