@@ -197,6 +197,25 @@ No topo do `esp32-horta.ino`, `MODO_TESTE = true` é para a montagem com LED: **
 
 Os comandos do site chegam ao ESP32 por **streaming** (o Firebase avisa na hora). Se o streaming falhar várias vezes seguidas, o ESP32 passa a perguntar a cada 1 s (plano B) e tenta o streaming de novo a cada minuto.
 
+## Alertas no Telegram
+O ESP32 manda avisos para o celular por um bot do Telegram.
+
+⚠️ **O token do bot é uma senha.** Ele fica **só** no `secrets.h` (que não vai para o GitHub), **nunca** no site, que é público.
+
+### Criar o bot
+1. No Telegram, fale com **@BotFather** → `/newbot` → escolha o nome e o usuário do bot → copie o **token**.
+2. Abra o bot novo e toque em **Iniciar** (ou mande qualquer mensagem). Para um grupo ou canal, adicione o bot (no canal, como **administrador**) e mande uma mensagem lá.
+3. Abra `https://api.telegram.org/bot<TOKEN>/getUpdates` no navegador e copie o `chat.id`: positivo para conversa pessoal, negativo para grupo ou canal. Se o canal não aparecer, encaminhe uma mensagem do canal para o bot.
+
+### Configurar
+No `secrets.h`:
+```cpp
+#define TELEGRAM_TOKEN "123456:ABC..."
+// Até 3 conversas, separadas por vírgula
+#define TELEGRAM_CHAT_IDS "123456789,-1001234567890"
+```
+No `.ino`: `TELEGRAM_ATIVO = false` desliga os alertas. Com o token ou os chat ids vazios, o Telegram desliga sozinho (o Serial avisa uma vez).
+
 ## Modo demonstração
 Na época da feira quase nunca chove no DF, então a previsão real marca ~0% e a decisão da chuva nunca aparece. O cartão **"Modo demonstração"** do painel resolve isso:
 

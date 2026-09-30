@@ -59,12 +59,26 @@
 #include <time.h>                // hora certa pela internet (NTP), para o resumo por dia
 #include "secrets.h"  // copie secrets.example.h -> secrets.h e preencha
 
+// secrets.h antigo, sem os campos do Telegram: o Telegram fica desligado
+#ifndef TELEGRAM_TOKEN
+#define TELEGRAM_TOKEN ""
+#endif
+#ifndef TELEGRAM_CHAT_IDS
+#define TELEGRAM_CHAT_IDS ""
+#endif
+
 // =====================================================================
 // MODO_TESTE = true: LED no lugar da bomba. Tudo o mais rápido possível,
 // sem pausa de segurança, sem tempo máximo e sem limite do modo manual.
 // Quando tiver a bomba de verdade: false.
 const bool MODO_TESTE = true;
 // =====================================================================
+
+// Alertas no celular pelo Telegram (token e conversas ficam no secrets.h).
+// Com o token ou os chat ids vazios, o Telegram desliga sozinho.
+const bool TELEGRAM_ATIVO = true;
+// No modo teste o potenciômetro muda toda hora: só avisos importantes.
+const bool TELEGRAM_TUDO_NO_MODO_TESTE = false;
 
 // ---------------------------------------------------------------------
 //  PINOS
@@ -2206,6 +2220,38 @@ void atualizarLedsStatus() {
 
 
 // =====================================================================
+//  TELEGRAM — alertas no celular
+// =====================================================================
+const int MAX_CHATS_TELEGRAM = 3;
+String chatsTelegram[MAX_CHATS_TELEGRAM];
+int totalChatsTelegram = 0;
+bool telegramLigado = false;  // false = sem token/chat id, ou desligado por erro
+
+// Lê o token e a lista de conversas do secrets.h. Sem eles, desliga e avisa uma vez.
+void iniciarTelegram() {
+  if (!TELEGRAM_ATIVO) {
+    Serial.println("[Telegram] Desligado (TELEGRAM_ATIVO = false).");
+    return;
+  }
+  String lista = TELEGRAM_CHAT_IDS;
+  while (lista.length() > 0 && totalChatsTelegram < MAX_CHATS_TELEGRAM) {
+    int virgula = lista.indexOf(',');
+    String id = virgula < 0 ? lista : lista.substring(0, virgula);
+    lista = virgula < 0 ? "" : lista.substring(virgula + 1);
+    id.trim();
+    if (id.length() > 0) chatsTelegram[totalChatsTelegram++] = id;
+  }
+  if (strlen(TELEGRAM_TOKEN) == 0 || totalChatsTelegram == 0) {
+    Serial.println("[Telegram] Sem TELEGRAM_TOKEN ou TELEGRAM_CHAT_IDS no secrets.h: alertas desligados.");
+    return;
+  }
+  telegramLigado = true;
+  Serial.printf("[Telegram] Alertas ligados para %d conversa(s)%s.\n", totalChatsTelegram,
+                MODO_TESTE && !TELEGRAM_TUDO_NO_MODO_TESTE ? " (modo teste: só os importantes)" : "");
+}
+
+
+// =====================================================================
 //  SETUP e LOOP
 // =====================================================================
 
@@ -2273,6 +2319,8 @@ void setup() {
   if (SIMULAR_CHANCE_CHUVA >= 0) {
     Serial.printf("[Teste] SIMULAR_CHANCE_CHUVA ativo: fingindo %d%% de chance de chuva.\n", SIMULAR_CHANCE_CHUVA);
   }
+
+  iniciarTelegram();
 }
 
 void loop() {

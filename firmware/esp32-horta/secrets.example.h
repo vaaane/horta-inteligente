@@ -23,3 +23,9 @@
 // Usuário do ESP32 criado em Authentication > Usuários
 #define ESP_EMAIL "esp32@horta.com"
 #define ESP_SENHA "senha-do-esp32"
+
+// Telegram (alertas no celular). Deixe vazio para desligar.
+// Token: @BotFather -> /newbot. É uma senha: nunca coloque no site.
+#define TELEGRAM_TOKEN ""
+// Até 3 conversas, separadas por vírgula. Ex.: "123456789,-1001234567890"
+#define TELEGRAM_CHAT_IDS ""
