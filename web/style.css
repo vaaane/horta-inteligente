@@ -477,6 +477,18 @@ main {
 .pode-acao { min-height: 44px; }
 .pode-explica { margin: 12px 0 0; color: var(--texto-suave); line-height: 1.4; }
 
+/* Celular: dois chips por linha, o texto quebra em vez de ser cortado */
+@media (max-width: 600px) {
+  .pode-regar { padding: 14px 14px 14px 16px; }
+  .pode-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pode-chip { border-radius: 14px; font-size: 0.95rem; padding: 6px 10px; }
+  .pode-acao { grid-column: 1 / -1; }
+}
+/* Projetor: letras ainda maiores */
+@media (min-width: 1400px) {
+  .pode-resposta { font-size: 2.1rem; }
+  .pode-chip { font-size: 1.15rem; padding: 8px 18px; }
+}
 
 /* Cartões antes do primeiro dado do ESP32 */
 .espera-esp32 {
