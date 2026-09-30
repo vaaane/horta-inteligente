@@ -1003,6 +1003,94 @@ main {
 .planejar-projeto-pergunta { color: #c62828; font-weight: 700; }
 .planejar-botao-pequeno { min-height: 38px; padding: 4px 10px; font-size: 0.9rem; }
 
+/* Hortas na nuvem */
+.planejar-nuvem-status {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--verde-claro);
+  color: var(--verde);
+  font-weight: 700;
+}
+#nuvem-acoes { margin-top: 10px; }
+.planejar-codigo { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--borda); }
+.planejar-codigo label { display: block; font-weight: 700; margin-bottom: 6px; }
+.planejar-codigo input {
+  font: inherit;
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  min-height: 44px;
+  width: 11em;
+  padding: 8px 10px;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+}
+.planejar-historico { margin-top: 12px; }
+.planejar-versoes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.planejar-versoes li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+}
+/* Faixas presas no topo: horta arquivada e edição em outro aparelho */
+.planejar-faixa {
+  position: sticky;
+  top: 0;
+  z-index: 1200;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+}
+.planejar-faixa-conflito { background: #fff4e5; border: 2px solid #f9a825; color: #5d3a00; }
+.planejar-faixa-arquivada { background: #eceff1; border: 2px solid #607d8b; color: #263238; }
+.planejar-travado { opacity: 0.6; }
+/* Quadro do código */
+.planejar-sobreposicao {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  overflow: auto;
+  padding: 16px;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 30, 20, 0.6);
+}
+.quadro-codigo {
+  width: min(420px, 100%);
+  padding: 20px;
+  background: var(--cartao);
+  border-radius: 16px;
+  text-align: center;
+}
+.quadro-codigo h2 { margin: 0 0 8px; }
+.quadro-codigo p { margin: 6px 0; }
+.quadro-codigo-grande {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--verde);
+}
+.quadro-link { display: grid; gap: 4px; text-align: left; font-weight: 700; margin: 8px 0; }
+.quadro-link input { font: inherit; font-weight: 400; font-size: 0.9rem; padding: 8px; border: 1px solid var(--borda); border-radius: 8px; }
+.quadro-qr { width: 180px; margin: 8px auto; }
+.quadro-qr svg { width: 100%; height: auto; display: block; }
+.quadro-qr .qr-endereco { display: none; }
+.quadro-codigo .planejar-botoes { justify-content: center; }
+.quadro-aviso { font-weight: 700; color: #8a4b00; background: var(--aviso); padding: 8px; border-radius: 8px; }
+
 /* Folha A4 na tela (por cima da página) */
 .impressao {
   position: fixed;

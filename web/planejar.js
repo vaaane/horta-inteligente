@@ -16,6 +16,11 @@ import { CULTURAS, NECESSIDADE, NIVEIS } from "./culturas.js";
 import { iniciarModoMapa } from "./mapa.js";
 import { iniciarPlantas } from "./plantas.js";
 import { desenharPlanta, avaliarPlantas, textoNecessidade, textoUmidade } from "./planta.js";
+import {
+  EDITOR, formatarCodigo, normalizarCodigo, criarHorta, lerHorta, salvarHorta, marcarArquivada,
+  lerVersoes, salvarVersao, ouvirHorta, ouvirConexao
+} from "./nuvem.js";
+import { desenharQR } from "./qr.js";
 
 // ---------- Terreno padrão ----------
 const PADRAO = {
@@ -51,6 +56,8 @@ const numero = (valor, casas = 2) => Number(valor).toLocaleString("pt-BR", { max
 
 // ---------- Estado ----------
 let modo = "livre";       // "mapa" (sobre o satélite, mapa.js) ou "livre" (este canvas)
+let aoMudarProjeto = null; // avisado a cada mudança salva (a nuvem usa para o salvamento automático)
+const projetoMudou = () => { if (aoMudarProjeto) aoMudarProjeto(); };
 let terreno = carregar() || copia(PADRAO);
 let selecionado = -1;     // índice do obstáculo selecionado (-1 = nenhum)
 let arrastando = null;    // { tipo: "obstaculo" | "norte", dx, dy }
@@ -66,6 +73,7 @@ let alturaTela = 0;
 // Se o navegador bloquear (aba anônima, por exemplo), a página continua funcionando.
 function salvar() {
   try { localStorage.setItem(CHAVE_SALVAR, JSON.stringify(terreno)); } catch { /* sem salvar */ }
+  projetoMudou();
 }
 function carregar() {
   try {
@@ -723,6 +731,7 @@ function carregarPlantas() {
 }
 function salvarPlantas() {
   try { localStorage.setItem(CHAVE_PLANTAS, JSON.stringify(escolhidas)); } catch { /* sem salvar */ }
+  projetoMudou();
 }
 
 
@@ -792,6 +801,7 @@ function salvarCanteiros() {
   if (modoDosCanteiros !== modo) return;
   canteirosPorModo[modo] = plantas.obterPosicoes();
   try { localStorage.setItem(CHAVE_CANTEIROS, JSON.stringify(canteirosPorModo)); } catch { /* sem salvar */ }
+  projetoMudou();
 }
 
 const plantas = iniciarPlantas({
@@ -966,6 +976,7 @@ const CHAVE_MAPA = "horta-planejar-mapa-v1";
 // Salva o desenho do mapa (centro, zoom, terreno e obstáculos) no navegador
 function salvarMapa() {
   try { localStorage.setItem(CHAVE_MAPA, JSON.stringify(modoMapa.obterEstado())); } catch { /* sem salvar */ }
+  projetoMudou();
 }
 function lerSalvo(chave) {
   try { return JSON.parse(localStorage.getItem(chave)); } catch { return null; }
@@ -1091,6 +1102,7 @@ function definirNome(nome) {
 try { $("nome-projeto").value = localStorage.getItem(CHAVE_NOME) || NOME_PADRAO; } catch { $("nome-projeto").value = NOME_PADRAO; }
 $("nome-projeto").addEventListener("input", () => {
   try { localStorage.setItem(CHAVE_NOME, $("nome-projeto").value); } catch { /* sem salvar */ }
+  projetoMudou();
 });
 
 // Dados para o desenho da planta (planta.js). null = ainda não dá para desenhar.
@@ -1402,3 +1414,448 @@ function iniciarModo() {
   if (modoInicial === "mapa" || !modoInicial) salvarMapa();
 }
 iniciarModo();
+
+// =====================================================================
+//  HORTAS NA NUVEM, SEM LOGIN (o banco fica em nuvem.js)
+// =====================================================================
+// A horta salva ganha um código. Quem tem o código abre e altera.
+// Depois de salvar uma vez, cada mudança é enviada sozinha 3 s depois
+// que a pessoa para de mexer.
+const CHAVE_NUVEM = "horta-planejar-nuvem-v1";  // { codigo, pendente }: a horta aberta nesta tela
+const ESPERA_AUTOMATICO = 3000;                  // ms parado antes de enviar
+const INTERVALO_VERSAO = 5 * 60 * 1000;          // uma cópia no histórico a cada 5 min de edição
+
+let horta = null;             // { codigo, arquivada } da horta aberta (null = só neste aparelho)
+let pararDeOuvir = null;
+let conectado = null;         // null = ainda não sei; true / false
+let pendente = false;         // tem mudança que não chegou à nuvem (sem conexão)
+let ultimoEnviado = null;     // dados (texto) que a nuvem tem
+let ultimoNome = null;
+let ultimoVisto = null;       // atualizadoEm que esta tela já conhece
+let ultimaVersaoEm = 0;
+let conflito = null;          // { atualizadoEm } quando outro aparelho salvou por cima
+let temporizadorNuvem = null;
+
+const dadosAtuais = () => JSON.stringify(compactar(true));
+// Mesmo desenho? (ignora só o centro e o zoom da vista do mapa)
+function mesmoProjeto(a, b) {
+  try {
+    const [x, y] = [JSON.parse(a), JSON.parse(b)];
+    for (const d of [x, y]) { delete d.c; delete d.z; }
+    return JSON.stringify(x) === JSON.stringify(y);
+  } catch {
+    return a === b;
+  }
+}
+const statusNuvem = (texto) => {
+  $("nuvem-status").textContent = texto;
+  $("nuvem-status").hidden = !texto;
+};
+const textoSalvo = () => `Salvo na nuvem ✓ · código ${formatarCodigo(horta.codigo)}`;
+const SEM_CONEXAO = "Sem conexão: salvo neste aparelho, envio quando voltar";
+
+function guardarNuvemLocal() {
+  try {
+    if (horta) localStorage.setItem(CHAVE_NUVEM, JSON.stringify({ codigo: horta.codigo, pendente }));
+    else localStorage.removeItem(CHAVE_NUVEM);
+  } catch { /* sem salvar */ }
+}
+
+// Mensagem de erro que a pessoa entende
+function textoDoErro(erro) {
+  if (String(erro && (erro.code || erro.message)).toLowerCase().includes("permission")) {
+    return "o banco recusou (as regras do Firebase estão publicadas?)";
+  }
+  return "sem conexão com o banco";
+}
+
+// Conexão: quando a internet volta, envia o que ficou pendente
+let ouvindoConexao = false;
+function iniciarConexao() {
+  if (ouvindoConexao) return;
+  ouvindoConexao = true;
+  const inicio = Date.now();
+  ouvirConexao((ligado) => {
+    // No começo o Firebase diz "desligado" até conectar: só acredita depois de uns segundos
+    if (!ligado && conectado === null && Date.now() - inicio < 4000) return;
+    conectado = ligado;
+    if (!horta) return;
+    if (!ligado) statusNuvem(SEM_CONEXAO);
+    else if (pendente) salvarNaNuvem({ forcar: true });
+    else if (!conflito) statusNuvem(textoSalvo());
+  });
+}
+
+// Mostra na tela os botões e a faixa conforme a horta aberta
+function mostrarHortaAberta() {
+  $("nuvem-acoes").hidden = !horta;
+  $("salvar-nuvem").textContent = horta ? "☁ Salvar na nuvem" : "☁ Salvar na nuvem (criar código)";
+  if (!horta) {
+    $("historico").hidden = true;
+    statusNuvem("");
+  }
+  aplicarArquivada();
+}
+
+// Horta arquivada: faixa no topo e nada de editar (até desarquivar)
+function aplicarArquivada() {
+  const arquivada = !!(horta && horta.arquivada);
+  $("faixa-arquivada").hidden = !arquivada;
+  $("arquivar").textContent = arquivada ? "📂 Desarquivar" : "🗄 Arquivar";
+  for (const parte of document.querySelectorAll(".planejar-modos, .planejar-area:not(.planejar-area-plantas), .planejar-plantas")) {
+    parte.inert = arquivada;
+    parte.classList.toggle("planejar-travado", arquivada);
+  }
+}
+
+// ---------- Ouvir a horta aberta: outra aba ou aparelho salvou? ----------
+async function ouvir(codigo) {
+  if (pararDeOuvir) pararDeOuvir();
+  pararDeOuvir = null;
+  iniciarConexao();
+  try {
+    const parar = await ouvirHorta(codigo, (info) => {
+      if (!horta || horta.codigo !== codigo) return;
+      if (info.editor === EDITOR) {  // fui eu que salvei
+        ultimoVisto = info.atualizadoEm;
+        return;
+      }
+      if (info.atualizadoEm !== null && info.atualizadoEm !== ultimoVisto) mostrarConflito(info.atualizadoEm);
+    });
+    if (horta && horta.codigo === codigo) pararDeOuvir = parar;
+    else parar();
+  } catch {
+    statusNuvem(SEM_CONEXAO);
+  }
+}
+
+function mostrarConflito(atualizadoEm) {
+  clearTimeout(temporizadorNuvem);  // não salva por cima enquanto a pessoa decide
+  conflito = { atualizadoEm };
+  $("aviso-conflito").hidden = false;
+}
+function esconderConflito() {
+  conflito = null;
+  $("aviso-conflito").hidden = true;
+}
+$("conflito-recarregar").addEventListener("click", async () => {
+  const codigo = horta && horta.codigo;
+  esconderConflito();
+  if (!codigo) return;
+  try {
+    const valor = await lerHorta(codigo);
+    if (valor) mostrarHortaNaTela(codigo, valor);
+  } catch (erro) {
+    statusNuvem(`Não consegui recarregar: ${textoDoErro(erro)}.`);
+  }
+});
+$("conflito-continuar").addEventListener("click", () => {
+  if (conflito) ultimoVisto = conflito.atualizadoEm;
+  esconderConflito();
+  salvarNaNuvem({ forcar: true });  // a minha versão vai por cima
+});
+
+// ---------- Abrir uma horta da nuvem nesta tela ----------
+function mostrarHortaNaTela(codigo, valor) {
+  let dados;
+  try { dados = JSON.parse(valor.dados); } catch { dados = null; }
+  if (!dados || !abrirProjeto(dados)) {
+    $("codigo-status").textContent = "Essa horta está com os dados estragados; não consegui abrir.";
+    return false;
+  }
+  clearTimeout(temporizadorNuvem);  // abrir não é "mexer": não precisa enviar de volta
+  definirNome(valor.nome);
+  horta = { codigo, arquivada: valor.arquivada === true };
+  pendente = false;
+  ultimoEnviado = valor.dados;
+  ultimoNome = valor.nome;
+  ultimoVisto = valor.atualizadoEm;
+  ultimaVersaoEm = Date.now();
+  esconderConflito();
+  guardarNuvemLocal();
+  mostrarHortaAberta();
+  statusNuvem(textoSalvo());
+  registrarHorta(codigo, valor.nome);
+  ouvir(codigo);
+  return true;
+}
+
+async function abrirPorCodigo(codigo) {
+  $("codigo-status").textContent = "Procurando…";
+  await enviarPendencias();  // o que estava na tela antes vai para a nuvem
+  try {
+    const valor = await lerHorta(codigo);
+    if (!valor) {
+      $("codigo-status").textContent = "Não encontrei uma horta com esse código.";
+      return;
+    }
+    if (mostrarHortaNaTela(codigo, valor)) {
+      $("codigo-status").textContent = `Horta "${valor.nome}" aberta.`;
+      $("codigo-digitado").value = "";
+    }
+  } catch (erro) {
+    $("codigo-status").textContent = `Não consegui abrir: ${textoDoErro(erro)}.`;
+  }
+}
+
+$("form-codigo").addEventListener("submit", (evento) => {
+  evento.preventDefault();
+  const codigo = normalizarCodigo($("codigo-digitado").value);
+  if (!codigo) {
+    $("codigo-status").textContent = "Código inválido: são 8 letras e números (ex.: HX7K-2Q9M).";
+    return;
+  }
+  abrirPorCodigo(codigo);
+});
+
+// ---------- Salvar ----------
+// manual: botão "Salvar na nuvem" (também grava uma versão no histórico)
+// forcar: envia mesmo sem mudança (depois de voltar a conexão, ou "Continuar com a minha")
+async function salvarNaNuvem({ manual = false, forcar = false } = {}) {
+  clearTimeout(temporizadorNuvem);
+  temporizadorNuvem = null;
+  if (!horta || horta.arquivada || conflito) return;
+  const codigo = horta.codigo;
+  const dados = dadosAtuais();
+  const nome = nomeDoProjeto();
+  if (!manual && !forcar && dados === ultimoEnviado && nome === ultimoNome) return;
+  if (conectado === false) {
+    pendente = true;
+    guardarNuvemLocal();
+    statusNuvem(SEM_CONEXAO);
+    return;
+  }
+  statusNuvem("Salvando…");
+  try {
+    await salvarHorta(codigo, { nome, dados });
+    if (manual || Date.now() - ultimaVersaoEm >= INTERVALO_VERSAO) {
+      await salvarVersao(codigo, { nome, dados });
+      ultimaVersaoEm = Date.now();
+    }
+    if (!horta || horta.codigo !== codigo) return;
+    ultimoEnviado = dados;
+    ultimoNome = nome;
+    pendente = false;
+    guardarNuvemLocal();
+    statusNuvem(textoSalvo());
+    registrarHorta(codigo, nome);
+  } catch (erro) {
+    pendente = true;
+    guardarNuvemLocal();
+    statusNuvem(`Não consegui salvar na nuvem: ${textoDoErro(erro)}. Continua salvo neste aparelho.`);
+  }
+}
+
+// Envia já o que estava esperando os 3 s (antes de trocar de horta)
+async function enviarPendencias() {
+  if (horta && (temporizadorNuvem || pendente)) await salvarNaNuvem({ forcar: pendente });
+}
+
+// Salvamento automático: 3 s depois da última mudança
+aoMudarProjeto = () => {
+  if (!horta || horta.arquivada || conflito) return;
+  clearTimeout(temporizadorNuvem);
+  temporizadorNuvem = setTimeout(() => salvarNaNuvem(), ESPERA_AUTOMATICO);
+};
+
+// Cria uma horta nova na nuvem com o que está na tela e mostra o código
+async function criarNaNuvem(nome) {
+  if (conectado === false) {
+    statusNuvem("Sem conexão: para criar o código é preciso internet. O desenho continua salvo neste aparelho.");
+    return false;
+  }
+  statusNuvem("Criando o código…");
+  try {
+    const dados = dadosAtuais();
+    const codigo = await criarHorta({ nome, dados });
+    await salvarVersao(codigo, { nome, dados });
+    if (pararDeOuvir) pararDeOuvir();
+    pararDeOuvir = null;
+    horta = { codigo, arquivada: false };
+    pendente = false;
+    ultimoEnviado = dados;
+    ultimoNome = nome;
+    ultimoVisto = null;
+    ultimaVersaoEm = Date.now();
+    esconderConflito();
+    definirNome(nome);
+    guardarNuvemLocal();
+    mostrarHortaAberta();
+    statusNuvem(textoSalvo());
+    registrarHorta(codigo, nome);
+    ouvir(codigo);
+    mostrarQuadroCodigo();
+    return true;
+  } catch (erro) {
+    statusNuvem(`Não consegui criar o código: ${textoDoErro(erro)}.`);
+    return false;
+  }
+}
+
+$("salvar-nuvem").addEventListener("click", async () => {
+  if (!horta) { await criarNaNuvem(nomeDoProjeto()); return; }
+  if (horta.arquivada) { statusNuvem("Horta arquivada: desarquive para salvar."); return; }
+  if (conflito) { statusNuvem("Escolha antes: recarregar a versão nova ou continuar com a sua."); return; }
+  await salvarNaNuvem({ manual: true });
+});
+
+// ---------- Quadro com o código, o link e o QR code ----------
+const linkDaHorta = (codigo) => `${location.origin}${location.pathname}?h=${codigo}`;
+function mostrarQuadroCodigo() {
+  if (!horta) return;
+  const link = linkDaHorta(horta.codigo);
+  $("quadro-codigo-texto").textContent = formatarCodigo(horta.codigo);
+  $("quadro-link").value = link;
+  $("quadro-copiar-status").textContent = "";
+  desenharQR($("quadro-qr"), link);
+  $("quadro-codigo").hidden = false;
+  $("quadro-copiar").focus();
+}
+const fecharQuadroCodigo = () => { $("quadro-codigo").hidden = true; };
+$("mostrar-codigo").addEventListener("click", mostrarQuadroCodigo);
+$("quadro-fechar").addEventListener("click", fecharQuadroCodigo);
+$("quadro-codigo").addEventListener("click", (evento) => { if (evento.target === $("quadro-codigo")) fecharQuadroCodigo(); });
+document.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape" && !$("quadro-codigo").hidden) fecharQuadroCodigo();
+});
+$("quadro-copiar").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("quadro-link").value);
+    $("quadro-copiar-status").textContent = "Link copiado!";
+  } catch {
+    $("quadro-link").select();
+    $("quadro-copiar-status").textContent = "Selecionei o link: copie com Ctrl+C (ou segure o dedo e escolha Copiar).";
+  }
+});
+
+// ---------- Fazer uma cópia (código novo, a original não muda) ----------
+$("fazer-copia").addEventListener("click", async () => {
+  if (!horta) return;
+  await enviarPendencias();
+  const nome = `${nomeDoProjeto()} (cópia)`.slice(0, 60);
+  if (await criarNaNuvem(nome)) $("codigo-status").textContent = "Cópia criada: este é o código novo. A horta original não mudou.";
+});
+
+// ---------- Arquivar / desarquivar ----------
+async function trocarArquivada() {
+  if (!horta) return;
+  const arquivar = !horta.arquivada;
+  if (arquivar) await enviarPendencias();
+  try {
+    await marcarArquivada(horta.codigo, arquivar);
+    horta.arquivada = arquivar;
+    aplicarArquivada();
+    statusNuvem(arquivar ? `Horta arquivada · código ${formatarCodigo(horta.codigo)}` : textoSalvo());
+  } catch (erro) {
+    statusNuvem(`Não consegui ${arquivar ? "arquivar" : "desarquivar"}: ${textoDoErro(erro)}.`);
+  }
+}
+$("arquivar").addEventListener("click", trocarArquivada);
+$("desarquivar-faixa").addEventListener("click", trocarArquivada);
+
+// ---------- Histórico (as 10 últimas versões) ----------
+async function mostrarHistorico() {
+  if (!horta) return;
+  const codigo = horta.codigo;
+  $("lista-versoes").replaceChildren();
+  $("historico-status").textContent = "Carregando…";
+  try {
+    const versoes = await lerVersoes(codigo);
+    $("historico-status").textContent = versoes.length ? "" : "Ainda não há versões salvas.";
+    $("lista-versoes").replaceChildren(...versoes.map((v) => {
+      const li = document.createElement("li");
+      const texto = document.createElement("span");
+      texto.textContent = `${dataHora(v.em)} · ${v.nome}`;
+      const botao = document.createElement("button");
+      botao.type = "button";
+      botao.className = "planejar-botao planejar-botao-pequeno";
+      botao.textContent = "Restaurar esta versão";
+      botao.addEventListener("click", () => restaurarVersao(v));
+      li.append(texto, botao);
+      return li;
+    }));
+  } catch (erro) {
+    $("historico-status").textContent = `Não consegui ler o histórico: ${textoDoErro(erro)}.`;
+  }
+}
+async function restaurarVersao(versao) {
+  if (!horta) return;
+  if (horta.arquivada) { $("historico-status").textContent = "Horta arquivada: desarquive para restaurar."; return; }
+  const codigo = horta.codigo;
+  try {
+    // Antes, guarda a atual como versão (para poder desfazer)
+    await salvarVersao(codigo, { nome: nomeDoProjeto(), dados: dadosAtuais() });
+    abrirProjeto(JSON.parse(versao.dados));
+    definirNome(versao.nome);
+    await salvarNaNuvem({ forcar: true });
+    $("historico-status").textContent = `Versão de ${dataHora(versao.em)} restaurada. A que estava antes ficou no histórico.`;
+    mostrarHistorico().then(() => {
+      $("historico-status").textContent = `Versão de ${dataHora(versao.em)} restaurada. A que estava antes ficou no histórico.`;
+    });
+  } catch (erro) {
+    $("historico-status").textContent = `Não consegui restaurar: ${textoDoErro(erro)}.`;
+  }
+}
+$("ver-historico").addEventListener("click", () => {
+  const abrir = $("historico").hidden;
+  $("historico").hidden = !abrir;
+  $("ver-historico").setAttribute("aria-expanded", String(abrir));
+  if (abrir) mostrarHistorico();
+});
+
+// ---------- Sair desta horta (o que fizer depois fica só neste aparelho) ----------
+$("sair-horta").addEventListener("click", async () => {
+  if (!horta) return;
+  await enviarPendencias();
+  const codigo = horta.codigo;
+  if (pararDeOuvir) pararDeOuvir();
+  pararDeOuvir = null;
+  horta = null;
+  esconderConflito();
+  guardarNuvemLocal();
+  mostrarHortaAberta();
+  $("codigo-status").textContent = `Você saiu da horta ${formatarCodigo(codigo)} (ela continua na nuvem). O que mudar agora fica só neste aparelho.`;
+});
+
+// Minhas hortas (lista de códigos neste aparelho): parte de baixo
+function registrarHorta() {}
+
+// ---------- Ao abrir a página: ?h=CODIGO no link, ou a horta que estava aberta ----------
+async function iniciarNuvem() {
+  mostrarHortaAberta();
+  const pedido = new URLSearchParams(location.search).get("h");
+  if (pedido !== null) {
+    history.replaceState(null, "", location.pathname + location.hash);  // tira o ?h= do endereço
+    const codigo = normalizarCodigo(pedido);
+    if (codigo) await abrirPorCodigo(codigo);
+    else $("codigo-status").textContent = "O código do link está errado: não encontrei uma horta com esse código.";
+    return;
+  }
+  let salvo = null;
+  try { salvo = JSON.parse(localStorage.getItem(CHAVE_NUVEM)); } catch { /* nada salvo */ }
+  if (!salvo || !normalizarCodigo(salvo.codigo)) return;
+  // Continua na horta que estava aberta
+  horta = { codigo: salvo.codigo, arquivada: false };
+  pendente = salvo.pendente === true;
+  mostrarHortaAberta();
+  statusNuvem("Conectando à nuvem…");
+  try {
+    const valor = await lerHorta(salvo.codigo);
+    if (!valor) { horta = null; guardarNuvemLocal(); mostrarHortaAberta(); return; }
+    horta.arquivada = valor.arquivada === true;
+    ultimoEnviado = valor.dados;
+    ultimoNome = valor.nome;
+    ultimoVisto = valor.atualizadoEm;
+    ultimaVersaoEm = Date.now();
+    aplicarArquivada();
+    statusNuvem(textoSalvo());
+    registrarHorta(salvo.codigo, valor.nome);
+    ouvir(salvo.codigo);
+    if (pendente) salvarNaNuvem({ forcar: true });
+    else if (!mesmoProjeto(dadosAtuais(), valor.dados)) mostrarConflito(valor.atualizadoEm);
+  } catch {
+    iniciarConexao();
+    statusNuvem(SEM_CONEXAO);
+  }
+}
+iniciarNuvem();

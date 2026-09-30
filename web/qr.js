@@ -2,16 +2,21 @@
 // Usa a biblioteca qrcode-generator (carregada no HTML antes deste arquivo).
 // O desenho é feito aqui mesmo no navegador, em SVG — nenhuma imagem vem de fora.
 
-export function desenharQR(elemento) {
+// endereco: o link do QR (se não vier, é o endereço do site)
+export function desenharQR(elemento, endereco = null) {
   // No computador (localhost ou arquivo aberto direto) o endereço não
   // funcionaria no celular do visitante: mostramos um aviso no lugar do QR.
   const host = location.hostname;
-  if (host === "" || host === "localhost" || host === "127.0.0.1") {
+  if (!endereco && (host === "" || host === "localhost" || host === "127.0.0.1")) {
     elemento.innerHTML = '<p class="qr-aviso">O QR code aparece quando o site estiver publicado.</p>';
     return;
   }
+  if (typeof qrcode === "undefined") {  // biblioteca não carregou (sem internet)
+    elemento.innerHTML = "";
+    return;
+  }
 
-  const endereco = location.origin + "/";
+  endereco = endereco || location.origin + "/";
 
   const qr = qrcode(0, "M");  // 0 = tamanho automático; "M" = correção de erro média
   qr.addData(endereco);

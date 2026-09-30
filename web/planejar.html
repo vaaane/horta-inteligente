@@ -30,6 +30,19 @@
         A imagem de satélite serve para desenhar no lugar certo; a altura você informa.</p>
     </section>
 
+    <!-- Avisos da horta na nuvem (ficam presos no topo da tela) -->
+    <div id="aviso-conflito" class="planejar-faixa planejar-faixa-conflito" role="alert" hidden>
+      <strong>Esta horta foi alterada em outro aparelho agora. Recarregar a versão nova?</strong>
+      <div class="planejar-botoes">
+        <button type="button" id="conflito-recarregar" class="planejar-botao planejar-botao-forte">Recarregar</button>
+        <button type="button" id="conflito-continuar" class="planejar-botao">Continuar com a minha</button>
+      </div>
+    </div>
+    <div id="faixa-arquivada" class="planejar-faixa planejar-faixa-arquivada" hidden>
+      <strong>🗄 Horta arquivada.</strong> Dá para ver, imprimir e copiar; para mudar, desarquive.
+      <button type="button" id="desarquivar-faixa" class="planejar-botao">Desarquivar</button>
+    </div>
+
     <!-- Como desenhar: sobre a imagem de satélite ou à mão -->
     <div class="planejar-modos" role="group" aria-label="Como desenhar o terreno">
       <button type="button" class="planejar-modo" data-modo="mapa" aria-pressed="true">🛰️ Sobre o mapa</button>
@@ -176,14 +189,16 @@
 
       <!-- Salvar a planta: imagem, impressão e arquivo (planta.js) -->
       <section class="cartao planejar-salvar">
-        <h2>Salvar e imprimir</h2>
+        <h2>Salvar e compartilhar</h2>
         <label class="planejar-nome-projeto">Nome do projeto
           <input type="text" id="nome-projeto" maxlength="60" autocomplete="off" value="Minha horta">
         </label>
         <p class="planejar-nota">"Salvar planta" faz um desenho limpo da horta (sem a foto de satélite),
           com o norte para cima, as horas de sol e as plantas, para imprimir ou mostrar na feira.</p>
+        <p id="nuvem-status" class="planejar-nuvem-status" aria-live="polite" hidden></p>
         <div class="planejar-botoes">
-          <button type="button" id="salvar-projeto" class="planejar-botao planejar-botao-forte">💾 Salvar projeto</button>
+          <button type="button" id="salvar-nuvem" class="planejar-botao planejar-botao-forte">☁ Salvar na nuvem</button>
+          <button type="button" id="salvar-projeto" class="planejar-botao">💾 Salvar projeto</button>
           <details id="menu-salvar" class="planejar-menu">
             <summary class="planejar-botao">🖨 Salvar planta</summary>
             <div class="planejar-menu-opcoes">
@@ -196,6 +211,31 @@
           <input type="file" id="arquivo-projeto" accept=".json,application/json" hidden>
         </div>
         <p id="salvar-status" class="planejar-nota" aria-live="polite"></p>
+
+        <!-- Só aparece com uma horta da nuvem aberta -->
+        <div id="nuvem-acoes" class="planejar-botoes" hidden>
+          <button type="button" id="mostrar-codigo" class="planejar-botao">🔑 Ver código e link</button>
+          <button type="button" id="fazer-copia" class="planejar-botao">📑 Fazer uma cópia</button>
+          <button type="button" id="ver-historico" class="planejar-botao" aria-expanded="false" aria-controls="historico">🕘 Histórico</button>
+          <button type="button" id="arquivar" class="planejar-botao">🗄 Arquivar</button>
+          <button type="button" id="sair-horta" class="planejar-botao">Sair desta horta</button>
+        </div>
+        <div id="historico" class="planejar-historico" hidden>
+          <h3 class="decisao-subtitulo">Histórico</h3>
+          <p class="planejar-nota">As 10 últimas versões: uma a cada "Salvar na nuvem" e uma a cada 5 minutos de edição.</p>
+          <p id="historico-status" class="planejar-nota" aria-live="polite"></p>
+          <ul id="lista-versoes" class="planejar-versoes"></ul>
+        </div>
+
+        <form id="form-codigo" class="planejar-codigo">
+          <label for="codigo-digitado">Tenho um código</label>
+          <div class="planejar-botoes">
+            <input type="text" id="codigo-digitado" placeholder="HX7K-2Q9M" maxlength="12" autocomplete="off"
+              autocapitalize="characters" spellcheck="false">
+            <button type="submit" class="planejar-botao">Abrir horta</button>
+          </div>
+          <p id="codigo-status" class="planejar-nota" aria-live="polite"></p>
+        </form>
 
         <h3 class="decisao-subtitulo">Minhas hortas</h3>
         <p class="planejar-nota">Os projetos ficam salvos só neste navegador. Para levar para outro aparelho,
@@ -226,6 +266,25 @@
   <footer class="rodape">
     <a href="teste.html">Página de teste</a>
   </footer>
+
+  <!-- Quadro com o código da horta na nuvem -->
+  <section id="quadro-codigo" class="planejar-sobreposicao" role="dialog" aria-modal="true" aria-labelledby="quadro-titulo" hidden>
+    <div class="quadro-codigo">
+      <h2 id="quadro-titulo">Horta salva na nuvem ✓</h2>
+      <p>Código da horta:</p>
+      <p id="quadro-codigo-texto" class="quadro-codigo-grande"></p>
+      <label class="quadro-link">Link
+        <input type="text" id="quadro-link" readonly>
+      </label>
+      <div id="quadro-qr" class="quadro-qr"></div>
+      <div class="planejar-botoes">
+        <button type="button" id="quadro-copiar" class="planejar-botao planejar-botao-forte">📋 Copiar link</button>
+        <button type="button" id="quadro-fechar" class="planejar-botao">Fechar</button>
+      </div>
+      <p id="quadro-copiar-status" class="planejar-nota" aria-live="polite"></p>
+      <p class="quadro-aviso">Anote este código. Quem tiver o código pode ver e alterar esta horta.</p>
+    </div>
+  </section>
 
   <!-- Folha A4 para imprimir (ou "Salvar como PDF"); na impressão só ela aparece -->
   <section id="impressao" class="impressao" hidden aria-label="Folha para imprimir">
@@ -267,6 +326,8 @@
     </div>
   </section>
 
+  <!-- qrcode-generator: biblioteca que desenha o QR code do link da horta -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
   <!-- SunCalc: biblioteca que calcula a posição do sol (versão fixa) -->
   <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
   <!-- Leaflet: mapa de satélite -->
