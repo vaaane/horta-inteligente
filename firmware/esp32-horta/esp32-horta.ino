@@ -576,6 +576,7 @@ void acionarBomba(bool ligar, const char* motivo) {
     umidadeInicialRega = umidade;
   } else {
     registrarRega(millis() - bombaLigadaDesde);
+    telegramRegaTerminou(millis() - bombaLigadaDesde);
   }
 
   // Descobre se o pino precisa ir para HIGH ou LOW
@@ -796,8 +797,11 @@ void registrarDecisao(const char* codigo, const char* motivo, int chance) {
     pendenteMotivo = candidataMotivo;
     pendenteUmidade = candidataUmidade;
     pendenteChance = candidataChance;
+    String anterior = decisaoEstavel;
     decisaoEstavel = candidataDecisao;
     candidataDecisao = "";
+    // Alerta no celular: só põe na fila (o envio é no loop)
+    telegramDecisaoEstavel(anterior, pendenteDecisao, pendenteMotivo, pendenteUmidade, pendenteChance);
   }
 
   if (decisaoAtual == codigo) return;
@@ -840,6 +844,7 @@ void sairDaFalha(const char* porque) {
   estadoUrgente = true;
   falhaResolvidaAte = millis() + 15000;  // o painel mostra "Falha resolvida" por 15 s
   Serial.printf("[Falha] Falha resolvida (%s): voltando ao automático.\n", porque);
+  telegramFalhaResolvida();
 }
 
 // Depois de 45 s de rega automática, confere se a umidade subiu.
@@ -1113,6 +1118,12 @@ void cuidarDoWiFi() {
     }
     // Ainda sem clima? Consulta logo que o Wi-Fi conectar.
     if (!clima.valido) esperaClima = 0;
+    // Primeira conexão desde que a placa ligou: avisa no celular
+    static bool avisouLigada = false;
+    if (!avisouLigada) {
+      telegramHortaLigada();
+      avisouLigada = true;
+    }
   }
   if (!conectado && estavaConectado) {
     Serial.println("[Wi-Fi] Conexão perdida.");
@@ -1491,7 +1502,9 @@ void cuidarDoResumoDiario() {
     // /horta/agua/dias/{ontem}). Simplificação: se a placa estava desligada
     // à meia-noite, não ajusta (não sabe se teve solo crítico ou falha).
     if (alvo == hoje && diaCarregado != "") {
+      float kcAntes = kc;
       ajustarKc(diaLitros, litrosExtraHoje(), cotaDoDia, diaTeveCritico, diaTeveFalha, "Ontem");
+      telegramResumoDoDia(diaCarregado, diaRegas, diaLitros, cotaDoDia, kcAntes, kc);
     }
     if (carregarDia(alvo) && alvo == hoje) {
       resumoPendente = true;  // dia novo: grava a ET0, o Kc e a cota também
@@ -2313,6 +2326,7 @@ int enviarTelegram(const String& chatId, const String& texto, String& resposta) 
 
 // Chamada no loop(): manda a próxima mensagem da fila, se já for a hora
 void cuidarDoTelegram() {
+  cuidarDosAvisosDeRega();
   if (!telegramLigado || mensagensNaFila == 0) return;
   if (millis() - ultimoEnvioTelegram < esperaTelegram) return;
 
@@ -2371,6 +2385,173 @@ void cuidarDoTelegram() {
   Serial.printf("[Telegram] Erro ao enviar para %s (código %d, %lu ms): tento de novo em 30 s.\n",
                 chatId.c_str(), codigo, duracao);
   esperaTelegram = ESPERA_ERRO_TELEGRAM;
+}
+
+// ---------------------------------------------------------------------
+//  QUAIS MENSAGENS
+//  Vêm da decisão ESTÁVEL (a que vai para /horta/decisoes, depois de 10 s),
+//  nunca da decisão instantânea. Importantes (solo crítico, falha, placa
+//  ligada, resumo do dia) vão sempre; as outras, no MODO_TESTE, só com
+//  TELEGRAM_TUDO_NO_MODO_TESTE.
+// ---------------------------------------------------------------------
+const char* LINK_PAINEL = "horta-inteligente.vaane-lucena.workers.dev";
+const unsigned long ANTI_SPAM_TELEGRAM = 60000;  // a mesma mensagem não se repete antes de 60 s
+const unsigned long REGA_CURTA_TELEGRAM = 20000; // rega de menos de 20 s: uma mensagem só
+// Timer fixo de comparação (o mesmo do cartão "Água" do site)
+const int TIMER_REGAS_POR_DIA = 2;
+const int TIMER_MINUTOS_POR_REGA = 5;
+
+// Anti-spam: quando cada mensagem (evento + código) foi mandada pela última vez
+const int TOTAL_CHAVES_TELEGRAM = 12;
+String chavesTelegram[TOTAL_CHAVES_TELEGRAM];
+unsigned long chaveEnviadaEm[TOTAL_CHAVES_TELEGRAM];
+int proximaChaveTelegram = 0;
+
+// Rega em andamento: o aviso de início espera a bomba completar 20 s
+bool regaInicioPendente = false;
+String regaInicioTexto = "";
+String regaInicioChave = "";
+bool regaAnunciada = false;   // esta rega teve aviso de início (então avisa o fim)
+bool falhaAvisada = false;    // a falha foi avisada (então avisa quando resolver)
+String resumoAvisadoDe = "";  // dia cujo resumo já foi para a fila
+
+// true = esta chave já foi mandada nos últimos 60 s. Senão, anota agora.
+bool repetidaTelegram(const String& chave) {
+  for (int i = 0; i < TOTAL_CHAVES_TELEGRAM; i++) {
+    if (chavesTelegram[i] == chave) {
+      if (millis() - chaveEnviadaEm[i] < ANTI_SPAM_TELEGRAM) return true;
+      chaveEnviadaEm[i] = millis();
+      return false;
+    }
+  }
+  chavesTelegram[proximaChaveTelegram] = chave;
+  chaveEnviadaEm[proximaChaveTelegram] = millis();
+  proximaChaveTelegram = (proximaChaveTelegram + 1) % TOTAL_CHAVES_TELEGRAM;
+  return false;
+}
+
+// Os motivos vão em HTML: &, < e > precisam ser trocados
+String escaparHtml(String texto) {
+  texto.replace("&", "&amp;");
+  texto.replace("<", "&lt;");
+  texto.replace(">", "&gt;");
+  return texto;
+}
+
+// Põe o aviso na fila, com o link do painel no fim. Devolve true se entrou na fila.
+bool avisarTelegram(const String& chave, const String& texto, bool importante) {
+  if (!telegramLigado) return false;
+  if (!importante && MODO_TESTE && !TELEGRAM_TUDO_NO_MODO_TESTE) return false;
+  if (repetidaTelegram(chave)) {
+    Serial.printf("[Telegram] \"%s\" repetida em menos de 60 s: não enviei.\n", chave.c_str());
+    return false;
+  }
+  enfileirarTelegram(texto + "\n\n" + LINK_PAINEL);
+  return true;
+}
+
+// "15 s", "1 min 12 s", "2 min"
+String duracaoTexto(unsigned long segundos) {
+  if (segundos < 60) return String(segundos) + " s";
+  String texto = String(segundos / 60) + " min";
+  if (segundos % 60) texto += " " + String(segundos % 60) + " s";
+  return texto;
+}
+
+// Kc com 1 casa quando dá ("1,0", "1,1") e 2 quando precisa ("1,05")
+String kcTexto(float valor) {
+  int centesimos = (int)roundf(valor * 100);
+  return decimal(valor, centesimos % 10 == 0 ? 1 : 2);
+}
+
+bool codigoDeRega(const String& codigo) {
+  return codigo == "regando" || codigo == "sem_previsao" || codigo == "solo_critico" || codigo == "cota_extra";
+}
+
+// A placa ligou e o Wi-Fi conectou pela primeira vez
+void telegramHortaLigada() {
+  avisarTelegram("ligada", String("🌱 <b>Horta ligada</b> e conectada. Umidade ") + umidade + "%." +
+                 (MODO_TESTE ? " (modo teste)" : ""), true);
+}
+
+// Uma decisão ficou estável (10 s): chamada por registrarDecisao().
+// Só põe na fila: o envio é no loop().
+void telegramDecisaoEstavel(const String& anterior, const String& nova, const String& motivo,
+                            int umidadeDecisao, int chance) {
+  String texto = escaparHtml(motivo);
+  bool eraManual = anterior.startsWith("manual_");
+  bool ehManual = nova.startsWith("manual_");
+  if (ehManual && !eraManual) avisarTelegram("manual", "🖐️ Modo manual ativado pelo painel.", false);
+  if (!ehManual && eraManual) avisarTelegram("auto", "🔄 De volta ao automático.", false);
+
+  if (nova == "solo_critico") {
+    avisarTelegram("decisao|solo_critico", "🚨 " + texto, true);
+    if (bombaLigada && regaAutomatica) regaAnunciada = true;  // avisa quando a rega terminar
+
+  } else if (codigoDeRega(nova) && !codigoDeRega(anterior) && bombaLigada && regaAutomatica) {
+    // Rega começou: o aviso espera 20 s de bomba (rega curta = uma mensagem só)
+    String chuva = chance >= 0 ? String("chance de chuva ") + chance + "%" : String("sem previsão do tempo");
+    regaInicioTexto = String("💧 <b>Regando</b>: solo com ") + umidadeDecisao + "%, " + chuva +
+                      (chuvaSimulada() ? " (simulado)." : ".");
+    if (nova != "regando") regaInicioTexto += "\n" + texto;
+    regaInicioChave = "decisao|" + nova;
+    regaInicioPendente = true;
+
+  } else if (nova == "adiada_chuva") {
+    avisarTelegram("decisao|adiada_chuva", "🌧️ " + texto, false);
+  } else if (nova == "horario_quente") {
+    avisarTelegram("decisao|horario_quente", "☀️ " + texto, false);
+  } else if (nova == "cota_atingida") {
+    avisarTelegram("decisao|cota_atingida", "🎯 " + texto, false);
+
+  } else if (nova == "falha_agua") {
+    avisarTelegram("decisao|falha_agua", "⚠️ <b>Falha</b>: " + texto +
+                   "\nToque em <b>Já resolvi</b> no painel depois de conferir.", true);
+    falhaAvisada = true;
+  }
+}
+
+// A bomba desligou: chamada por acionarBomba()
+void telegramRegaTerminou(unsigned long duracaoMs) {
+  unsigned long segundos = (duracaoMs + 500) / 1000;
+  String litros = decimal(segundos / 60.0 * VAZAO_L_MIN, 1);
+  if (regaInicioPendente) {
+    // Começou e terminou em menos de 20 s
+    avisarTelegram("rega_curta", "💧 Regou " + duracaoTexto(segundos) + " (~" + litros + " L).", false);
+  } else if (regaAnunciada) {
+    avisarTelegram("rega_fim", "✅ Rega encerrada: " + duracaoTexto(segundos) + ", ~" + litros + " L.", false);
+  }
+  regaInicioPendente = false;
+  regaAnunciada = false;
+}
+
+// A falha acabou ("Já resolvi" ou a umidade subiu): chamada por sairDaFalha()
+void telegramFalhaResolvida() {
+  if (!falhaAvisada) return;  // a falha nem chegou a ser avisada
+  falhaAvisada = false;
+  avisarTelegram("falha_resolvida", "✅ Falha resolvida: voltando ao automático.", true);
+}
+
+// Virada do dia: chamada por cuidarDoResumoDiario() com os números do dia que terminou
+void telegramResumoDoDia(const String& dia, int regas, float litros, float cota, float kcAntes, float kcDepois) {
+  if (dia == resumoAvisadoDe) return;  // o resumo desse dia já foi
+  resumoAvisadoDe = dia;
+  float timer = TIMER_REGAS_POR_DIA * TIMER_MINUTOS_POR_REGA * VAZAO_L_MIN;
+  String kcFrase = "Kc " + kcTexto(kcAntes);
+  if (fabsf(kcDepois - kcAntes) > 0.001) kcFrase += " → " + kcTexto(kcDepois);
+  avisarTelegram("resumo|" + dia,
+                 String("📊 <b>Resumo de ontem</b>: ") + regas + (regas == 1 ? " rega" : " regas") +
+                 ", ~" + decimal(litros, 1) + " L (cota " + decimal(cota, 1) + " L; " + kcFrase +
+                 "). Timer fixo usaria " + decimal(timer, 0) + " L.", true);
+}
+
+// Chamada no loop(): o aviso de rega que já passou de 20 s entra na fila
+void cuidarDosAvisosDeRega() {
+  if (!regaInicioPendente) return;
+  if (!bombaLigada) { regaInicioPendente = false; return; }
+  if (millis() - bombaLigadaDesde < REGA_CURTA_TELEGRAM) return;
+  regaInicioPendente = false;
+  regaAnunciada = avisarTelegram(regaInicioChave, regaInicioTexto, false);
 }
 
 

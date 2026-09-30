@@ -216,6 +216,33 @@ No `secrets.h`:
 ```
 No `.ino`: `TELEGRAM_ATIVO = false` desliga os alertas. Com o token ou os chat ids vazios, o Telegram desliga sozinho (o Serial avisa uma vez).
 
+### Quais mensagens
+Os avisos seguem a **decisão estável** (a que vai para o histórico, depois de 10 s sem mudar), não cada leitura do sensor.
+
+| Evento | Exemplo | No `MODO_TESTE` |
+|---|---|---|
+| Placa ligou e conectou | 🌱 **Horta ligada** e conectada. Umidade 42%. | sim |
+| Rega começou | 💧 **Regando**: solo com 28%, chance de chuva 10%. | só com `TELEGRAM_TUDO_NO_MODO_TESTE` |
+| Rega terminou | ✅ Rega encerrada: 1 min 12 s, ~1,8 L. | só com `TELEGRAM_TUDO…` |
+| Adiada ou interrompida | 🌧️ / ☀️ / 🎯 com o motivo | só com `TELEGRAM_TUDO…` |
+| **Solo crítico** | 🚨 com o motivo | **sim** |
+| **Falha** | ⚠️ **Falha**: motivo + "Toque em Já resolvi no painel depois de conferir." | **sim** |
+| Falha resolvida | ✅ Falha resolvida: voltando ao automático. | **sim** |
+| Manual / automático | 🖐️ Modo manual ativado pelo painel. / 🔄 De volta ao automático. | só com `TELEGRAM_TUDO…` |
+| Resumo do dia (na virada do dia) | 📊 **Resumo de ontem**: 3 regas, ~2,4 L (cota 1,8 L; Kc 1,0 → 1,1). Timer fixo usaria 15 L. | sim |
+
+- No modo teste o potenciômetro muda toda hora: por isso, com `TELEGRAM_TUDO_NO_MODO_TESTE = false`, só vão os avisos importantes.
+- Decisões simuladas pelo Modo demonstração levam "(simulado)". Toda mensagem termina com o link do painel.
+- **Anti-spam:** a mesma mensagem não se repete antes de 60 s. Uma rega de menos de 20 s vira uma mensagem só ("💧 Regou 15 s (~0,4 L).").
+- **Envio:** fila de até 8 mensagens, uma a cada 3 s no máximo (cada envio trava o ESP32 ~1 s). Sem Wi-Fi, a fila espera; mensagens com mais de 10 min são descartadas. Se o Telegram responder que o token ou o chat id estão errados, o Serial avisa e os alertas ficam desligados até reiniciar a placa.
+
+### Testar (com `MODO_TESTE = true`)
+1. Ligue a placa → chega "🌱 Horta ligada".
+2. Gire o potenciômetro para 15% e espere 10 s → "🚨" de solo crítico.
+3. Com "Detectar falha" ligado, no automático, deixe o potenciômetro parado → uns 55 s depois, "⚠️ Falha".
+4. Toque em "Já resolvi" no painel → "✅ Falha resolvida".
+5. Troque para `TELEGRAM_TUDO_NO_MODO_TESTE = true`, grave, e simule 80% de chuva com a rega em andamento → "🌧️ Parei de regar… (simulado)".
+
 ## Modo demonstração
 Na época da feira quase nunca chove no DF, então a previsão real marca ~0% e a decisão da chuva nunca aparece. O cartão **"Modo demonstração"** do painel resolve isso:
 
