@@ -198,7 +198,6 @@
         <p id="nuvem-status" class="planejar-nuvem-status" aria-live="polite" hidden></p>
         <div class="planejar-botoes">
           <button type="button" id="salvar-nuvem" class="planejar-botao planejar-botao-forte">☁ Salvar na nuvem</button>
-          <button type="button" id="salvar-projeto" class="planejar-botao">💾 Salvar projeto</button>
           <details id="menu-salvar" class="planejar-menu">
             <summary class="planejar-botao">🖨 Salvar planta</summary>
             <div class="planejar-menu-opcoes">
@@ -238,10 +237,14 @@
         </form>
 
         <h3 class="decisao-subtitulo">Minhas hortas</h3>
-        <p class="planejar-nota">Os projetos ficam salvos só neste navegador. Para levar para outro aparelho,
-          use Copiar link ou Arquivo do projeto.</p>
-        <p id="minhas-hortas-vazio" class="planejar-nota">Nenhum projeto salvo ainda. Dê um nome e toque em "Salvar projeto".</p>
+        <p class="planejar-nota">Esta lista fica só neste aparelho. Em outro aparelho, abra pelo código ou link.</p>
+        <p id="minhas-hortas-vazio" class="planejar-nota">Nenhuma horta ainda. Dê um nome e toque em "Salvar na nuvem".</p>
         <ul id="minhas-hortas" class="planejar-projetos"></ul>
+        <div id="hortas-antigas" hidden>
+          <h3 class="decisao-subtitulo">Salvas só neste aparelho</h3>
+          <p class="planejar-nota">Projetos de antes da nuvem. "Enviar para a nuvem" cria um código para cada um.</p>
+          <ul id="lista-antigas" class="planejar-projetos"></ul>
+        </div>
       </section>
 
       <section class="cartao planejar-tabela">

@@ -1226,10 +1226,9 @@ $("arquivo-projeto").addEventListener("change", async () => {
   }
 });
 
-// =====================================================================
-//  MINHAS HORTAS: vários projetos guardados neste navegador (localStorage)
-// =====================================================================
-// Cada projeto: { id, nome, modificadoEm (data ISO), dados (o mesmo do link), miniatura }
+// ---------- Projetos antigos, salvos só neste navegador (antes da nuvem) ----------
+// Cada um: { id, nome, modificadoEm (data ISO), dados (o mesmo do link), miniatura }.
+// Na lista "Minhas hortas" cada um tem o botão "Enviar para a nuvem".
 const CHAVE_PROJETOS = "horta-planejar-projetos-v1";
 
 function lerProjetos() {
@@ -1240,13 +1239,11 @@ function lerProjetos() {
     return [];
   }
 }
-// Devolve false se o navegador não deixou salvar (sem espaço, aba anônima...)
 function gravarProjetos(lista) {
   try {
     localStorage.setItem(CHAVE_PROJETOS, JSON.stringify(lista));
     return true;
   } catch {
-    statusSalvar("Não deu para salvar neste navegador (sem espaço ou bloqueado). Use Arquivo do projeto.");
     return false;
   }
 }
@@ -1258,25 +1255,9 @@ function miniatura() {
   return desenharPlanta(document.createElement("canvas"), projeto, { ladoMaior: 320 }).toDataURL("image/jpeg", 0.7);
 }
 
-const novoId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-const mesmoNome = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
-
-// Salvar projeto: se já existe um com o mesmo nome, atualiza; senão, cria
-$("salvar-projeto").addEventListener("click", () => {
-  const nome = nomeDoProjeto();
-  definirNome(nome);
-  const lista = lerProjetos();
-  const existente = lista.find((p) => mesmoNome(p.nome, nome));
-  const projeto = { id: existente ? existente.id : novoId(), nome, modificadoEm: new Date().toISOString(), dados: compactar(true), miniatura: miniatura() };
-  const nova = [projeto, ...lista.filter((p) => p !== existente)];
-  if (!gravarProjetos(nova)) return;
-  statusSalvar(existente ? `Projeto "${nome}" atualizado.` : `Projeto "${nome}" salvo em Minhas hortas.`);
-  mostrarProjetos();
-});
-
 // "29/09/2026 14:05"
-function dataHora(iso) {
-  const d = new Date(iso);
+function dataHora(quando) {
+  const d = new Date(quando);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
@@ -1289,105 +1270,6 @@ const botaoPequeno = (texto, aoClicar, extra = "") => {
   b.addEventListener("click", aoClicar);
   return b;
 };
-
-// Lista "Minhas hortas". Renomear e Excluir abrem uma pergunta na própria linha.
-function mostrarProjetos(editando = null) {
-  const lista = lerProjetos();
-  $("minhas-hortas-vazio").hidden = lista.length > 0;
-  $("minhas-hortas").replaceChildren(...lista.map((p) => {
-    const li = document.createElement("li");
-    li.className = "planejar-projeto";
-
-    const figura = document.createElement("div");
-    figura.className = "planejar-projeto-mini";
-    if (p.miniatura) {
-      const img = document.createElement("img");
-      img.src = p.miniatura;
-      img.alt = "";
-      figura.append(img);
-    } else {
-      figura.textContent = "🌱";
-    }
-
-    const info = document.createElement("div");
-    info.className = "planejar-projeto-info";
-    const botoes = document.createElement("div");
-    botoes.className = "planejar-botoes";
-
-    if (editando && editando.id === p.id && editando.acao === "renomear") {
-      const campo = document.createElement("input");
-      campo.type = "text";
-      campo.value = p.nome;
-      campo.maxLength = 60;
-      campo.setAttribute("aria-label", "Novo nome do projeto");
-      const confirmar = () => {
-        const nome = campo.value.trim();
-        if (!nome) return;
-        const todos = lerProjetos();
-        if (todos.some((o) => o.id !== p.id && mesmoNome(o.nome, nome))) {
-          statusSalvar(`Já existe um projeto chamado "${nome}".`);
-          return;
-        }
-        const alvo = todos.find((o) => o.id === p.id);
-        if (alvo) alvo.nome = nome;
-        if (gravarProjetos(todos)) statusSalvar(`Nome trocado para "${nome}".`);
-        mostrarProjetos();
-      };
-      campo.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") confirmar();
-        if (e.key === "Escape") mostrarProjetos();
-      });
-      info.append(campo);
-      botoes.append(botaoPequeno("OK", confirmar, "planejar-botao-forte"), botaoPequeno("Cancelar", () => mostrarProjetos()));
-      requestAnimationFrame(() => { campo.focus(); campo.select(); });
-    } else {
-      const nome = document.createElement("strong");
-      nome.textContent = p.nome;
-      const quando = document.createElement("small");
-      quando.textContent = `Salvo em ${dataHora(p.modificadoEm)}`;
-      info.append(nome, quando);
-      if (editando && editando.id === p.id && editando.acao === "excluir") {
-        const pergunta = document.createElement("span");
-        pergunta.className = "planejar-projeto-pergunta";
-        pergunta.textContent = `Excluir "${p.nome}"? Não dá para desfazer.`;
-        info.append(pergunta);
-        botoes.append(
-          botaoPequeno("Sim, excluir", () => {
-            if (gravarProjetos(lerProjetos().filter((o) => o.id !== p.id))) statusSalvar(`Projeto "${p.nome}" excluído.`);
-            mostrarProjetos();
-          }, "planejar-botao-perigo"),
-          botaoPequeno("Cancelar", () => mostrarProjetos())
-        );
-      } else {
-        botoes.append(
-          botaoPequeno("Abrir", () => {
-            const alvo = lerProjetos().find((o) => o.id === p.id);
-            if (!alvo || !abrirProjeto(alvo.dados)) { statusSalvar("Não consegui abrir esse projeto."); return; }
-            definirNome(alvo.nome);
-            statusSalvar(`Projeto "${alvo.nome}" aberto.`);
-            // Volta para o topo, onde está o desenho
-            document.querySelector(".planejar-area")?.scrollIntoView({ behavior: "smooth" });
-          }, "planejar-botao-forte"),
-          botaoPequeno("Renomear", () => mostrarProjetos({ id: p.id, acao: "renomear" })),
-          botaoPequeno("Duplicar", () => {
-            const todos = lerProjetos();
-            let nome = `${p.nome} (cópia)`;
-            for (let n = 2; todos.some((o) => mesmoNome(o.nome, nome)); n++) nome = `${p.nome} (cópia ${n})`;
-            const copia = { ...p, id: novoId(), nome, modificadoEm: new Date().toISOString() };
-            todos.splice(todos.findIndex((o) => o.id === p.id), 0, copia);
-            if (gravarProjetos(todos)) statusSalvar(`Criada a cópia "${nome}".`);
-            mostrarProjetos();
-          }),
-          botaoPequeno("Excluir", () => mostrarProjetos({ id: p.id, acao: "excluir" }), "planejar-botao-perigo")
-        );
-      }
-    }
-    info.append(botoes);
-    li.append(figura, info);
-    return li;
-  }));
-}
-mostrarProjetos();
 
 // ---------- Ao abrir a página: link compartilhado, ou o que estava salvo ----------
 function iniciarModo() {
@@ -1701,10 +1583,10 @@ $("salvar-nuvem").addEventListener("click", async () => {
 
 // ---------- Quadro com o código, o link e o QR code ----------
 const linkDaHorta = (codigo) => `${location.origin}${location.pathname}?h=${codigo}`;
-function mostrarQuadroCodigo() {
-  if (!horta) return;
-  const link = linkDaHorta(horta.codigo);
-  $("quadro-codigo-texto").textContent = formatarCodigo(horta.codigo);
+function mostrarQuadroCodigo(codigo = horta && horta.codigo) {
+  if (typeof codigo !== "string") return;  // (clique no botão passa o evento)
+  const link = linkDaHorta(codigo);
+  $("quadro-codigo-texto").textContent = formatarCodigo(codigo);
   $("quadro-link").value = link;
   $("quadro-copiar-status").textContent = "";
   desenharQR($("quadro-qr"), link);
@@ -1712,7 +1594,7 @@ function mostrarQuadroCodigo() {
   $("quadro-copiar").focus();
 }
 const fecharQuadroCodigo = () => { $("quadro-codigo").hidden = true; };
-$("mostrar-codigo").addEventListener("click", mostrarQuadroCodigo);
+$("mostrar-codigo").addEventListener("click", () => mostrarQuadroCodigo());
 $("quadro-fechar").addEventListener("click", fecharQuadroCodigo);
 $("quadro-codigo").addEventListener("click", (evento) => { if (evento.target === $("quadro-codigo")) fecharQuadroCodigo(); });
 document.addEventListener("keydown", (evento) => {
@@ -1814,11 +1696,138 @@ $("sair-horta").addEventListener("click", async () => {
   esconderConflito();
   guardarNuvemLocal();
   mostrarHortaAberta();
+  mostrarHortas();
   $("codigo-status").textContent = `Você saiu da horta ${formatarCodigo(codigo)} (ela continua na nuvem). O que mudar agora fica só neste aparelho.`;
 });
 
-// Minhas hortas (lista de códigos neste aparelho): parte de baixo
-function registrarHorta() {}
+// ---------- Minhas hortas: os códigos usados neste aparelho ----------
+// Cada uma: { codigo, nome, ultimoAcesso (ms), miniatura }. Só os códigos
+// ficam aqui; a horta mesmo está na nuvem.
+const CHAVE_HORTAS = "horta-planejar-hortas-v1";
+
+function lerHortas() {
+  try {
+    const lista = JSON.parse(localStorage.getItem(CHAVE_HORTAS));
+    return Array.isArray(lista) ? lista.filter((h) => normalizarCodigo(h.codigo)) : [];
+  } catch {
+    return [];
+  }
+}
+function gravarHortas(lista) {
+  try { localStorage.setItem(CHAVE_HORTAS, JSON.stringify(lista)); } catch { /* sem salvar */ }
+}
+
+// Põe (ou atualiza) a horta no topo da lista
+function registrarHorta(codigo, nome, desenho = undefined) {
+  const lista = lerHortas();
+  const antiga = lista.find((h) => h.codigo === codigo);
+  // A miniatura é da tela, então só vale se a horta aberta for essa
+  const mini = desenho !== undefined ? desenho : horta && horta.codigo === codigo ? miniatura() : antiga?.miniatura || null;
+  gravarHortas([{ codigo, nome, ultimoAcesso: Date.now(), miniatura: mini }, ...lista.filter((h) => h.codigo !== codigo)]);
+  mostrarHortas();
+}
+
+function itemDaLista({ mini, titulo, detalhe, botoes, destaque = false }) {
+  const li = document.createElement("li");
+  li.className = `planejar-projeto${destaque ? " planejar-projeto-aberto" : ""}`;
+  const figura = document.createElement("div");
+  figura.className = "planejar-projeto-mini";
+  if (mini) {
+    const img = document.createElement("img");
+    img.src = mini;
+    img.alt = "";
+    figura.append(img);
+  } else {
+    figura.textContent = "🌱";
+  }
+  const info = document.createElement("div");
+  info.className = "planejar-projeto-info";
+  const nome = document.createElement("strong");
+  nome.textContent = titulo;
+  const quando = document.createElement("small");
+  quando.textContent = detalhe;
+  const linha = document.createElement("div");
+  linha.className = "planejar-botoes";
+  linha.append(...botoes);
+  info.append(nome, quando, linha);
+  li.append(figura, info);
+  return li;
+}
+
+// excluindo: id do projeto antigo com a pergunta "Excluir?" aberta
+function mostrarHortas(excluindo = null) {
+  const hortas = lerHortas();
+  const antigos = lerProjetos();
+  $("minhas-hortas-vazio").hidden = hortas.length > 0 || antigos.length > 0;
+
+  $("minhas-hortas").replaceChildren(...hortas.map((h) => {
+    const aberta = !!(horta && horta.codigo === h.codigo);
+    return itemDaLista({
+      mini: h.miniatura,
+      titulo: aberta ? `${h.nome} (aberta agora)` : h.nome,
+      detalhe: `Código ${formatarCodigo(h.codigo)} · último acesso ${dataHora(h.ultimoAcesso)}`,
+      destaque: aberta,
+      botoes: [
+        botaoPequeno("Abrir", () => {
+          abrirPorCodigo(h.codigo);
+          document.querySelector(".planejar-modos")?.scrollIntoView({ behavior: "smooth" });
+        }, "planejar-botao-forte"),
+        botaoPequeno("Tirar da lista", () => {
+          gravarHortas(lerHortas().filter((o) => o.codigo !== h.codigo));
+          statusSalvar(`"${h.nome}" saiu da lista deste aparelho. Ela continua na nuvem: abra com o código ${formatarCodigo(h.codigo)}.`);
+          mostrarHortas();
+        })
+      ]
+    });
+  }));
+
+  $("hortas-antigas").hidden = antigos.length === 0;
+  $("lista-antigas").replaceChildren(...antigos.map((p) => {
+    const botoes = excluindo === p.id
+      ? [
+        botaoPequeno("Sim, excluir", () => {
+          gravarProjetos(lerProjetos().filter((o) => o.id !== p.id));
+          statusSalvar(`Projeto "${p.nome}" excluído deste aparelho.`);
+          mostrarHortas();
+        }, "planejar-botao-perigo"),
+        botaoPequeno("Cancelar", () => mostrarHortas())
+      ]
+      : [
+        botaoPequeno("☁ Enviar para a nuvem", () => enviarAntigo(p), "planejar-botao-forte"),
+        botaoPequeno("Abrir", () => {
+          if (!abrirProjeto(p.dados)) { statusSalvar("Não consegui abrir esse projeto."); return; }
+          definirNome(p.nome);
+          statusSalvar(`Projeto "${p.nome}" aberto (ainda só neste aparelho).`);
+        }),
+        botaoPequeno("Excluir", () => mostrarHortas(p.id), "planejar-botao-perigo")
+      ];
+    return itemDaLista({
+      mini: p.miniatura,
+      titulo: p.nome,
+      detalhe: excluindo === p.id ? `Excluir "${p.nome}"? Não dá para desfazer.` : `Só neste aparelho · salvo em ${dataHora(p.modificadoEm)}`,
+      botoes
+    });
+  }));
+}
+
+// Projeto antigo -> horta na nuvem com código (sem mexer no que está na tela)
+async function enviarAntigo(projeto) {
+  if (conectado === false) { statusSalvar("Sem conexão: tente de novo quando a internet voltar."); return; }
+  statusSalvar(`Enviando "${projeto.nome}"…`);
+  try {
+    const nome = String(projeto.nome || NOME_PADRAO).slice(0, 60);
+    const dados = JSON.stringify(projeto.dados);
+    const codigo = await criarHorta({ nome, dados });
+    await salvarVersao(codigo, { nome, dados });
+    gravarProjetos(lerProjetos().filter((o) => o.id !== projeto.id));
+    registrarHorta(codigo, nome, projeto.miniatura || null);
+    statusSalvar(`"${nome}" agora está na nuvem com o código ${formatarCodigo(codigo)}. Anote o código.`);
+    mostrarQuadroCodigo(codigo);
+  } catch (erro) {
+    statusSalvar(`Não consegui enviar: ${textoDoErro(erro)}.`);
+  }
+}
+mostrarHortas();
 
 // ---------- Ao abrir a página: ?h=CODIGO no link, ou a horta que estava aberta ----------
 async function iniciarNuvem() {

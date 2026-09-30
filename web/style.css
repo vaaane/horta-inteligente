@@ -1001,6 +1001,7 @@ main {
 .planejar-projeto-info strong { overflow-wrap: anywhere; }
 .planejar-projeto-info small { color: var(--texto-suave); }
 .planejar-projeto-pergunta { color: #c62828; font-weight: 700; }
+.planejar-projeto-aberto { border-color: var(--verde); background: var(--verde-claro); }
 .planejar-botao-pequeno { min-height: 38px; padding: 4px 10px; font-size: 0.9rem; }
 
 /* Hortas na nuvem */
