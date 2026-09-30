@@ -417,6 +417,67 @@ main {
 .falha-status { font-size: 0.9rem; }
 .demo-falha { margin-top: 12px; font-size: 1rem; }
 
+/* Faixa "Pode regar agora?" (podeRegar.js): a resposta grande e os semáforos.
+   A cor da faixa acompanha a resposta; os chips têm sempre ícone e texto. */
+.pode-regar {
+  margin-bottom: 16px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--cartao);
+  border: 2px solid var(--borda);
+  border-left-width: 10px;
+}
+.pode-regar[data-cor="verde"]    { border-color: #66bb6a; background: #f1f8f1; }
+.pode-regar[data-cor="azul"]     { border-color: #42a5f5; background: #eef6fd; }
+.pode-regar[data-cor="vermelho"] { border-color: #e53935; background: #fff3f3; }
+.pode-regar[data-cor="neutro"]   { border-color: #8d6e63; }
+.pode-regar[data-cor="cinza"]    { border-color: #b0bec5; background: #f3f5f6; color: #546e7a; }
+.pode-titulo {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--texto-suave);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pode-resposta {
+  margin: 0;
+  font-size: clamp(1.3rem, 3.6vw, 2rem);
+  font-weight: 800;
+  line-height: 1.25;
+}
+.pode-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.pode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 6px 14px;
+  border: 2px solid;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 1.05rem;
+  text-align: left;
+  cursor: pointer;
+}
+.pode-chip[aria-expanded="true"] { box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.15); }
+.pode-verde    { background: #e8f5e9; border-color: #66bb6a; color: #1b5e20; }
+.pode-amarelo  { background: #fff8e1; border-color: #f9a825; color: #6d4c00; }
+.pode-vermelho { background: #ffebee; border-color: #e53935; color: #b71c1c; }
+.pode-cinza    { background: #eceff1; border-color: #b0bec5; color: #455a64; }
+/* O chip que está impedindo a rega: primeiro da fila e com borda grossa */
+.pode-chip.bloqueando { border-width: 4px; font-weight: 700; }
+.pode-acao { min-height: 44px; }
+.pode-explica { margin: 12px 0 0; color: var(--texto-suave); line-height: 1.4; }
+
+
 /* Cartões antes do primeiro dado do ESP32 */
 .espera-esp32 {
   margin: 12px 0 0;

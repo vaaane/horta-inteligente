@@ -41,8 +41,21 @@ function rotuloDia(chave, hoje) {
 }
 
 // Números no jeito brasileiro: 1,5
-const numero = (valor, casas = 1) =>
+export const numero = (valor, casas = 1) =>
   Number(valor).toLocaleString("pt-BR", { maximumFractionDigits: casas });
+const umaCasa = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+// A conta da cota em linguagem simples: (ET₀ × Kc − chuva) × área. 1 mm em 1 m² = 1 L.
+// clima = /clima, ajuste = /horta/agua/ajuste. Também usada na faixa "Pode regar agora?".
+export function contaDaCota(cota, clima, ajuste) {
+  const kc = typeof ajuste?.kc === "number" ? ajuste.kc : KC;
+  const et0 = clima?.et0;
+  const chuva = typeof clima?.chuvaHojeMm === "number" ? clima.chuvaHojeMm : 0;
+  if (typeof et0 === "number" && Math.abs(Math.max(0, et0 * kc - chuva) * AREA_M2 - cota) < 0.05) {
+    return `(ET₀ ${umaCasa(et0)} mm × Kc ${umaCasa(kc)} − chuva ${numero(chuva, 1)} mm) × ${numero(AREA_M2, 2)} m² = ${numero(cota, 2)} L`;
+  }
+  return `Sem previsão do tempo: cota fixa de ${numero(cota, 2)} L por dia.`;
+}
 
 // "45 s", "2 min 5 s", "1 h 3 min"
 function duracao(segundos) {
@@ -337,19 +350,10 @@ export function iniciarAgua(db, raiz) {
     $("cota-extra").style.left = `${fracaoCota * 100}%`;
     $("cota-extra").style.width = `${(Math.max(0, Math.min(litros, limite) - cota) / escala) * 100}%`;
 
-    // A conta em linguagem simples: (ET₀ × Kc − chuva) × área. 1 mm em 1 m² = 1 L.
-    const umaCasa = (v) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    const kc = typeof ajuste.kc === "number" ? ajuste.kc : KC;
-    const et0 = climaAtual.et0;
-    const chuva = typeof climaAtual.chuvaHojeMm === "number" ? climaAtual.chuvaHojeMm : 0;
-    if (typeof et0 === "number" && Math.abs(Math.max(0, et0 * kc - chuva) * AREA_M2 - cota) < 0.05) {
-      $("cota-conta").textContent =
-        `(ET₀ ${umaCasa(et0)} mm × Kc ${umaCasa(kc)} − chuva ${numero(chuva, 1)} mm) × ${numero(AREA_M2, 2)} m² = ${numero(cota, 2)} L`;
-    } else {
-      $("cota-conta").textContent = `Sem previsão do tempo: cota fixa de ${numero(cota, 2)} L por dia.`;
-    }
+    $("cota-conta").textContent = contaDaCota(cota, climaAtual, ajuste);
 
     // O Kc que a horta aprendeu
+    const kc = typeof ajuste.kc === "number" ? ajuste.kc : KC;
     if (typeof ajuste.kc === "number" && ajuste.motivo) {
       const em = typeof ajuste.atualizadoEm === "number" ? ` ${quando(ajuste.atualizadoEm)}` : "";
       $("cota-kc").textContent = `Kc ${umaCasa(ajuste.kc)} — ajustado${em}: ${ajuste.motivo}`;

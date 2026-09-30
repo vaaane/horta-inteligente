@@ -185,7 +185,8 @@ export function iniciarDemo(db, raiz, cartaoClima) {
   }
 
   // "Recomeçar a cota": o ESP32 passa a contar a cota do dia a partir de agora
-  $("zerar-cota").addEventListener("click", () => gravar("zerarCotaEm", serverTimestamp()));
+  const zerarCota = () => gravar("zerarCotaEm", serverTimestamp());
+  $("zerar-cota").addEventListener("click", zerarCota);
 
   // "Simular fim do dia": o ESP32 ajusta o Kc com os números de hoje e recomeça a cota
   $("fim-dia").addEventListener("click", () => gravar("simularFimDiaEm", serverTimestamp()));
@@ -235,6 +236,9 @@ export function iniciarDemo(db, raiz, cartaoClima) {
       if (offline === valor) return;
       offline = valor;
       mostrar();
-    }
+    },
+    // Também usados pelos botões da faixa "Pode regar agora?" (podeRegar.js)
+    zerarCota,
+    voltarAoReal: (campo) => gravar(campo, -1)   // "simularChuva" ou "simularHora"
   };
 }

@@ -71,4 +71,7 @@ export function iniciarFalha(db, faixas) {
     }
   }
   mostrar();
+
+  // "Já resolvi" também na faixa "Pode regar agora?" (podeRegar.js)
+  return { resolver };
 }

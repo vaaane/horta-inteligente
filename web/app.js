@@ -10,6 +10,7 @@ import { iniciarControle } from "./controle.js";
 import { iniciarDemo } from "./demo.js";
 import { iniciarAgua } from "./agua.js";
 import { iniciarFalha } from "./falha.js";
+import { iniciarPodeRegar } from "./podeRegar.js";
 import { desenharQR } from "./qr.js";
 
 const app = initializeApp(firebaseConfig);
@@ -105,6 +106,7 @@ function atualizarTempo() {
   elOffline.hidden = online;
   controle.definirOffline(!online);  // sem ESP32, os botões ficam desativados
   demo.definirOffline(!online);
+  podeRegar.definirOffline(!online);
 }
 setInterval(atualizarTempo, 1000);
 
@@ -118,7 +120,15 @@ iniciarClima(db, document.getElementById("clima"), {
 iniciarDecisao(db, document.getElementById("decisao"));
 
 // ---------- Faixa vermelha de falha, no topo e no cartão da bomba (código em falha.js) ----------
-iniciarFalha(db, [document.getElementById("falha"), document.getElementById("falha-bomba")]);
+const falha = iniciarFalha(db, [document.getElementById("falha"), document.getElementById("falha-bomba")]);
+
+// ---------- Faixa "Pode regar agora?" (código em podeRegar.js) ----------
+// Os botões ao lado do bloqueio usam as mesmas funções do Modo demonstração e da falha
+const podeRegar = iniciarPodeRegar(db, document.getElementById("pode-regar"), {
+  zerarCota: demo.zerarCota,
+  voltarAoReal: demo.voltarAoReal,
+  resolverFalha: falha.resolver
+});
 
 // ---------- Cartão "Água" (código em agua.js) ----------
 iniciarAgua(db, document.getElementById("agua"));
