@@ -942,3 +942,110 @@ main {
 .planejar-filtro { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; font-weight: 600; }
 .planejar-filtro select { min-height: 44px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
 .planejar-botao:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---------- Salvar a planta ---------- */
+.planejar-menu { position: relative; }
+.planejar-menu summary { list-style: none; display: inline-flex; align-items: center; }
+.planejar-menu summary::-webkit-details-marker { display: none; }
+.planejar-menu summary::after { content: "▾"; margin-left: 8px; }
+.planejar-menu-opcoes {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  gap: 6px;
+  min-width: 250px;
+  padding: 8px;
+  background: var(--cartao);
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+.planejar-menu-opcoes .planejar-botao { text-align: left; }
+
+/* Folha A4 na tela (por cima da página) */
+.impressao {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  overflow: auto;
+  padding: 16px;
+  background: rgba(20, 30, 20, 0.6);
+}
+body.imprimindo { overflow: hidden; }
+.impressao-barra {
+  max-width: 210mm;
+  margin: 0 auto 12px;
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background: var(--cartao);
+  border-radius: 12px;
+}
+.impressao-barra .planejar-nota { flex: 1 1 260px; margin: 0; }
+.impressao-folha {
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 10mm;
+  background: #fff;
+  color: #1b2a1c;
+}
+.impressao-planta { display: block; width: 100%; height: auto; max-height: 170mm; object-fit: contain; margin: 0 auto; }
+.impressao-campos { display: grid; gap: 8px; margin: 10px 0; }
+.impressao-campos label { display: grid; gap: 4px; font-weight: 700; }
+.impressao-campos input, .impressao-campos textarea {
+  font: inherit;
+  font-weight: 400;
+  padding: 8px;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+}
+.so-impressao { display: none; }
+.impressao-rolagem { overflow-x: auto; }
+.impressao-rolagem .impressao-tabela { min-width: 560px; }
+@media (max-width: 600px) {
+  .impressao { padding: 8px; }
+  .impressao-folha { padding: 12px; }
+}
+.impressao-tabela { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 8px; }
+.impressao-tabela th, .impressao-tabela td { border: 1px solid #9aa89a; padding: 4px 6px; text-align: left; vertical-align: top; }
+.impressao-tabela th { background: #eef3ed; }
+.impressao-nivel { font-weight: 700; white-space: nowrap; }
+.impressao-nivel.nivel-recomendado { color: #2e7d32; }
+.impressao-nivel.nivel-aceitavel { color: #8a5a00; }
+.impressao-nivel.nivel-nao { color: #c62828; }
+.impressao-legenda { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 4px; font-size: 0.85rem; }
+.impressao-legenda span { display: inline-flex; align-items: center; gap: 6px; }
+.impressao-explica { font-size: 0.85rem; margin: 4px 0 0; }
+/* Amostras com padrão: continuam diferentes impressas em preto e branco */
+.amostra {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #1b2a1c;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.amostra-sombra { background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.65) 0 1.5px, transparent 1.5px 6px), var(--sol-sombra); }
+.amostra-meia { background: radial-gradient(circle, rgba(0, 0, 0, 0.5) 1.2px, transparent 1.6px) 0 0 / 6px 6px, var(--sol-meia); }
+.amostra-pleno { background: var(--sol-pleno); }
+
+@page { size: A4; margin: 12mm; }
+@media print {
+  /* Só a folha aparece; o resto da página some */
+  body.imprimindo > :not(#impressao) { display: none !important; }
+  body.imprimindo { background: #fff; overflow: visible; }
+  body.imprimindo .impressao { position: static; overflow: visible; padding: 0; background: #fff; }
+  body.imprimindo .impressao-folha { max-width: none; padding: 0; }
+  body.imprimindo .so-tela { display: none !important; }
+  body.imprimindo .so-impressao { display: block; margin: 2px 0; }
+  .impressao-linha:empty { display: inline-block; min-width: 110mm; border-bottom: 1px solid #1b2a1c; }
+  .impressao-planta { max-height: 165mm; }
+  .impressao-rolagem { overflow: visible; }
+  .impressao-rolagem .impressao-tabela { min-width: 0; }
+  .impressao-tabela tr { break-inside: avoid; }
+  .impressao-tabela, .impressao-planta, .impressao-nivel { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

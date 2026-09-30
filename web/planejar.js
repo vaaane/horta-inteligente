@@ -12,9 +12,10 @@
 import {
   calcularHorasDeSol, meioDiaLocal, classificar, SOMBRA, MEIA_SOMBRA, PLENO_SOL
 } from "./sol.js";
-import { CULTURAS, NECESSIDADE } from "./culturas.js";
+import { CULTURAS, NECESSIDADE, NIVEIS } from "./culturas.js";
 import { iniciarModoMapa } from "./mapa.js";
 import { iniciarPlantas } from "./plantas.js";
+import { desenharPlanta, avaliarPlantas, textoNecessidade, textoUmidade } from "./planta.js";
 
 // ---------- Terreno padrão ----------
 const PADRAO = {
@@ -976,7 +977,7 @@ const arred = (v, casas) => Math.round(v * 10 ** casas) / 10 ** casas;
 const ponto = (latlng) => [arred(latlng[0], 7), arred(latlng[1], 7)];
 
 function compactar() {
-  const dados = { v: 1, m: modo, p: escolhidas };
+  const dados = { v: 1, m: modo, p: escolhidas, d: dataEscolhida, a: anoTodo ? 1 : 0 };
   // Canteiros: [x, y, w, h, girada] de cada planta
   dados.k = {};
   for (const [id, r] of Object.entries(plantas.obterPosicoes())) {
@@ -1001,13 +1002,19 @@ function compactar() {
 
 function descompactar(dados) {
   if (!dados || dados.v !== 1) return false;
-  if (dados.p && typeof dados.p === "object") escolhidas = dados.p;
-  if (dados.k && typeof dados.k === "object") {
-    const canteiros = {};
-    for (const [id, k] of Object.entries(dados.k)) canteiros[id] = { x: k[0], y: k[1], w: k[2], h: k[3], girada: !!k[4] };
-    canteirosPorModo[dados.m === "mapa" ? "mapa" : "livre"] = canteiros;
-    try { localStorage.setItem(CHAVE_CANTEIROS, JSON.stringify(canteirosPorModo)); } catch { /* sem salvar */ }
+  escolhidas = dados.p && typeof dados.p === "object" ? dados.p : {};
+  // Data do cálculo (links antigos não têm: fica a de hoje)
+  if (typeof dados.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dados.d)) {
+    dataEscolhida = dados.d;
+    $("data").value = dados.d;
   }
+  anoTodo = dados.a === 1;
+  const canteiros = {};
+  if (dados.k && typeof dados.k === "object") {
+    for (const [id, k] of Object.entries(dados.k)) canteiros[id] = { x: k[0], y: k[1], w: k[2], h: k[3], girada: !!k[4] };
+  }
+  canteirosPorModo[dados.m === "mapa" ? "mapa" : "livre"] = canteiros;
+  try { localStorage.setItem(CHAVE_CANTEIROS, JSON.stringify(canteirosPorModo)); } catch { /* sem salvar */ }
   if (dados.m === "mapa") {
     const t = dados.t;
     modoMapa.aplicarEstado({
@@ -1048,6 +1055,147 @@ $("copiar-link").addEventListener("click", async () => {
     $("link-texto").value = link;
     $("link-texto").hidden = false;
     $("link-texto").select();
+  }
+});
+
+// ---------- Abrir um projeto (arquivo .json ou "Minhas hortas") ----------
+function abrirProjeto(dados) {
+  const novoModo = descompactar(dados);
+  if (!novoModo) return false;
+  selecionado = -1;
+  salvar();
+  salvarPlantas();
+  montarEscolha();
+  preencherCampos();
+  modoDosCanteiros = null;  // os canteiros do projeto não podem ser trocados pelos que estavam na tela
+  trocarModo(novoModo);
+  if (novoModo === "mapa") salvarMapa();
+  return true;
+}
+
+// =====================================================================
+//  SALVAR A PLANTA: imagem (PNG), impressão (A4 / PDF) e arquivo do projeto
+// =====================================================================
+const NOME_PADRAO = "Minha horta";
+const nomeDoProjeto = () => NOME_PADRAO;
+
+// Dados para o desenho da planta (planta.js). null = ainda não dá para desenhar.
+function projetoParaPlanta() {
+  if (!mapa && terrenoDoCalculo()) calcularMapa();  // cálculo ainda não rodou
+  if (!mapa || !terrenoCalculado) return null;
+  return {
+    titulo: nomeDoProjeto(),
+    terreno: terrenoCalculado,
+    mapa,
+    escolhidas,
+    posicoes: plantas.obterPosicoes(),
+    anoTodo,
+    data: dataEscolhida
+  };
+}
+
+// "Minha Horta 8º D" -> "horta-minha-horta-8-d.png"
+function nomeDoArquivo(extensao) {
+  const simples = nomeDoProjeto().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `horta-${simples || "minha-horta"}.${extensao}`;
+}
+
+// Baixa um arquivo (Blob) com o nome dado
+function baixar(blob, nome) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = nome;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+}
+
+const statusSalvar = (texto) => { $("salvar-status").textContent = texto; };
+const SEM_TERRENO = "Desenhe o terreno primeiro: sem ele não há planta para salvar.";
+const fecharMenuSalvar = () => { $("menu-salvar").open = false; };
+
+// 1) Imagem PNG em alta resolução (lado maior com 2400 pixels)
+$("salvar-png").addEventListener("click", () => {
+  fecharMenuSalvar();
+  const projeto = projetoParaPlanta();
+  if (!projeto) { statusSalvar(SEM_TERRENO); return; }
+  const imagem = desenharPlanta(document.createElement("canvas"), projeto, { ladoMaior: 2400 });
+  imagem.toBlob((blob) => {
+    baixar(blob, nomeDoArquivo("png"));
+    statusSalvar(`Imagem salva: ${nomeDoArquivo("png")}`);
+  }, "image/png");
+});
+
+// 2) Imprimir / PDF: mostra a folha A4 na tela; "Imprimir" chama o navegador
+function abrirImpressao() {
+  const projeto = projetoParaPlanta();
+  if (!projeto) { statusSalvar(SEM_TERRENO); return; }
+  $("impressao-planta").src = desenharPlanta(document.createElement("canvas"), projeto, { ladoMaior: 2000 }).toDataURL("image/png");
+  const linhas = avaliarPlantas(projeto);
+  const h = (v) => (v === null ? "—" : `${numero(v, 1)} h`);
+  $("impressao-plantas").replaceChildren(...linhas.map((l) => {
+    const tr = document.createElement("tr");
+    const nivel = l.av ? NIVEIS[l.av.nivel] : null;
+    const celulas = [
+      l.cultura.nome,
+      numero(l.area, 2),
+      h(l.av ? l.av.minimo : null),
+      h(l.av ? l.av.media : null),
+      textoNecessidade(l.cultura),
+      textoUmidade(l.cultura),
+      nivel ? `${nivel.icone} ${nivel.texto}` : "—",
+      l.notas.length ? l.notas.join("; ") : "—"
+    ];
+    for (const texto of celulas) {
+      const td = document.createElement("td");
+      td.textContent = texto;
+      tr.append(td);
+    }
+    if (l.av) tr.children[6].className = `impressao-nivel nivel-${l.av.nivel}`;
+    return tr;
+  }));
+  $("impressao-sem-plantas").hidden = linhas.length > 0;
+  $("impressao-tabela").hidden = linhas.length === 0;
+  $("impressao").hidden = false;
+  document.body.classList.add("imprimindo");
+  $("imprimir-agora").focus();
+}
+function fecharImpressao() {
+  $("impressao").hidden = true;
+  document.body.classList.remove("imprimindo");
+}
+$("salvar-impressao").addEventListener("click", () => { fecharMenuSalvar(); abrirImpressao(); });
+$("imprimir-agora").addEventListener("click", () => window.print());
+$("fechar-impressao").addEventListener("click", fecharImpressao);
+document.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape" && !$("impressao").hidden) fecharImpressao();
+});
+// O que a pessoa escreve nos campos aparece como texto na folha impressa
+for (const [campo, espelho] of [["impressao-turma", "impressao-turma-texto"], ["impressao-obs", "impressao-obs-texto"]]) {
+  $(campo).addEventListener("input", () => { $(espelho).textContent = $(campo).value; });
+}
+
+// 3) Arquivo do projeto (.json), para abrir depois (aqui ou em outro aparelho)
+const FORMATO_ARQUIVO = "horta-inteligente-projeto";
+$("salvar-arquivo").addEventListener("click", () => {
+  fecharMenuSalvar();
+  const arquivo = { formato: FORMATO_ARQUIVO, versao: 1, nome: nomeDoProjeto(), salvoEm: new Date().toISOString(), projeto: compactar() };
+  baixar(new Blob([JSON.stringify(arquivo, null, 2)], { type: "application/json" }), nomeDoArquivo("json"));
+  statusSalvar(`Arquivo salvo: ${nomeDoArquivo("json")}. Use "Abrir arquivo" para continuar depois.`);
+});
+$("abrir-arquivo").addEventListener("click", () => $("arquivo-projeto").click());
+$("arquivo-projeto").addEventListener("change", async () => {
+  const escolhido = $("arquivo-projeto").files[0];
+  $("arquivo-projeto").value = "";  // deixa abrir o mesmo arquivo de novo
+  if (!escolhido) return;
+  try {
+    const arquivo = JSON.parse(await escolhido.text());
+    if (arquivo.formato !== FORMATO_ARQUIVO || !abrirProjeto(arquivo.projeto)) throw new Error("formato");
+    statusSalvar(`Projeto aberto: ${arquivo.nome || escolhido.name}.`);
+  } catch {
+    statusSalvar("Não consegui abrir: esse arquivo não é um projeto da Horta Inteligente.");
   }
 });
 

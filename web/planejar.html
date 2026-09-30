@@ -174,6 +174,26 @@
         <ul id="avisos-plantas" class="planejar-avisos" aria-live="polite" hidden></ul>
       </section>
 
+      <!-- Salvar a planta: imagem, impressão e arquivo (planta.js) -->
+      <section class="cartao planejar-salvar">
+        <h2>Salvar a planta da horta</h2>
+        <p class="planejar-nota">Um desenho limpo da horta (sem a foto de satélite), com o norte para cima,
+          as horas de sol e as plantas, para imprimir ou mostrar na feira.</p>
+        <div class="planejar-botoes">
+          <details id="menu-salvar" class="planejar-menu">
+            <summary class="planejar-botao planejar-botao-forte">💾 Salvar planta</summary>
+            <div class="planejar-menu-opcoes">
+              <button type="button" id="salvar-png" class="planejar-botao">🖼 Imagem (PNG)</button>
+              <button type="button" id="salvar-impressao" class="planejar-botao">🖨 Imprimir / PDF (A4)</button>
+              <button type="button" id="salvar-arquivo" class="planejar-botao">📄 Arquivo do projeto (.json)</button>
+            </div>
+          </details>
+          <button type="button" id="abrir-arquivo" class="planejar-botao">📂 Abrir arquivo</button>
+          <input type="file" id="arquivo-projeto" accept=".json,application/json" hidden>
+        </div>
+        <p id="salvar-status" class="planejar-nota" aria-live="polite"></p>
+      </section>
+
       <section class="cartao planejar-tabela">
         <h2>Umidade e sol por cultura</h2>
         <ul class="planejar-explica">
@@ -196,6 +216,46 @@
   <footer class="rodape">
     <a href="teste.html">Página de teste</a>
   </footer>
+
+  <!-- Folha A4 para imprimir (ou "Salvar como PDF"); na impressão só ela aparece -->
+  <section id="impressao" class="impressao" hidden aria-label="Folha para imprimir">
+    <div class="impressao-barra so-tela">
+      <button type="button" id="imprimir-agora" class="planejar-botao planejar-botao-forte">🖨 Imprimir</button>
+      <button type="button" id="fechar-impressao" class="planejar-botao">Fechar</button>
+      <p class="planejar-nota">Preencha os campos (se quiser) e toque em Imprimir. Para ter um PDF,
+        escolha "Salvar como PDF" na janela de impressão.</p>
+    </div>
+    <div class="impressao-folha">
+      <img id="impressao-planta" class="impressao-planta" alt="Planta da horta">
+      <div class="impressao-campos">
+        <label class="so-tela">Turma / aluno(a)
+          <input type="text" id="impressao-turma" autocomplete="off" placeholder="ex.: 8º D · Ana e Pedro">
+        </label>
+        <label class="so-tela">Observações
+          <textarea id="impressao-obs" rows="2" placeholder="opcional"></textarea>
+        </label>
+        <p class="so-impressao"><strong>Turma / aluno(a):</strong> <span id="impressao-turma-texto" class="impressao-linha"></span></p>
+        <p class="so-impressao"><strong>Observações:</strong> <span id="impressao-obs-texto" class="impressao-linha"></span></p>
+      </div>
+      <div class="impressao-rolagem">
+      <table id="impressao-tabela" class="impressao-tabela">
+        <thead>
+          <tr><th>Planta</th><th>Área (m²)</th><th>Sol mín.</th><th>Sol média</th><th>Precisa de</th>
+            <th>Umidade ideal</th><th>Avaliação</th><th>Observações</th></tr>
+        </thead>
+        <tbody id="impressao-plantas"></tbody>
+      </table>
+      </div>
+      <p id="impressao-sem-plantas" class="planejar-nota" hidden>Nenhuma planta escolhida.</p>
+      <p class="impressao-legenda">
+        <span><i class="amostra amostra-sombra"></i> Sombra: menos de 3 h</span>
+        <span><i class="amostra amostra-meia"></i> Meia-sombra: 3 a 6 h</span>
+        <span><i class="amostra amostra-pleno"></i> Pleno sol: 6 h ou mais</span>
+        <span>✓ Recomendado · ! Aceitável · ✕ Não recomendado</span>
+      </p>
+      <p class="impressao-explica">Horas de sol calculadas pela posição do sol a cada 30 minutos, considerando a altura dos obstáculos.</p>
+    </div>
+  </section>
 
   <!-- SunCalc: biblioteca que calcula a posição do sol (versão fixa) -->
   <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
