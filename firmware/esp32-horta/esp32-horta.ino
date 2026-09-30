@@ -2250,6 +2250,129 @@ void iniciarTelegram() {
                 MODO_TESTE && !TELEGRAM_TUDO_NO_MODO_TESTE ? " (modo teste: só os importantes)" : "");
 }
 
+// Fila de mensagens: quem decide só coloca aqui (um envio trava ~1 s).
+// O loop() envia uma por vez, no máximo uma a cada 3 s. Se encher, a mais
+// antiga sai. Cada mensagem vai para todas as conversas da lista.
+struct MensagemTelegram {
+  String texto;
+  unsigned long criadaEm;  // millis()
+  int proximoChat;         // para qual conversa da lista falta mandar
+};
+const int TAMANHO_FILA_TELEGRAM = 8;
+const unsigned long INTERVALO_TELEGRAM = 3000;              // no máximo 1 envio a cada 3 s
+const unsigned long VALIDADE_MSG_TELEGRAM = 10UL * 60 * 1000; // mais velha que 10 min: descarta
+const unsigned long ESPERA_ERRO_TELEGRAM = 30000;           // falhou (rede): tenta de novo em 30 s
+const unsigned long TIMEOUT_TELEGRAM = 8000;
+MensagemTelegram filaTelegram[TAMANHO_FILA_TELEGRAM];
+int mensagensNaFila = 0;
+unsigned long ultimoEnvioTelegram = 0;
+unsigned long esperaTelegram = 0;  // quanto esperar desde o último envio
+
+void tirarPrimeiraDaFila() {
+  for (int i = 1; i < mensagensNaFila; i++) filaTelegram[i - 1] = filaTelegram[i];
+  mensagensNaFila--;
+}
+
+// Coloca uma mensagem (em HTML do Telegram) na fila
+void enfileirarTelegram(const String& texto) {
+  if (!telegramLigado) return;
+  if (mensagensNaFila == TAMANHO_FILA_TELEGRAM) {
+    Serial.println("[Telegram] Fila cheia: a mensagem mais antiga foi descartada.");
+    tirarPrimeiraDaFila();
+  }
+  MensagemTelegram& msg = filaTelegram[mensagensNaFila++];
+  msg.texto = texto;
+  msg.criadaEm = millis();
+  msg.proximoChat = 0;
+}
+
+// Manda uma mensagem para uma conversa. Conexão própria (abre, envia e
+// fecha), separada das do Firebase. Devolve o código HTTP.
+int enviarTelegram(const String& chatId, const String& texto, String& resposta) {
+  JsonDocument doc;
+  doc["chat_id"] = chatId;
+  doc["text"] = texto;
+  doc["parse_mode"] = "HTML";
+  doc["disable_web_page_preview"] = true;
+  String corpo;
+  serializeJson(doc, corpo);
+
+  WiFiClientSecure cliente;
+  cliente.setInsecure();
+  HTTPClient http;
+  http.setConnectTimeout(TIMEOUT_TELEGRAM);
+  http.setTimeout(TIMEOUT_TELEGRAM);
+  String url = String("https://api.telegram.org/bot") + TELEGRAM_TOKEN + "/sendMessage";
+  if (!http.begin(cliente, url)) return -1;
+  http.addHeader("Content-Type", "application/json");
+  int codigo = http.POST(corpo);
+  resposta = (codigo > 0) ? http.getString() : "";
+  http.end();
+  return codigo;
+}
+
+// Chamada no loop(): manda a próxima mensagem da fila, se já for a hora
+void cuidarDoTelegram() {
+  if (!telegramLigado || mensagensNaFila == 0) return;
+  if (millis() - ultimoEnvioTelegram < esperaTelegram) return;
+
+  // Mensagens velhas demais (ex.: muito tempo sem Wi-Fi) não servem mais
+  while (mensagensNaFila > 0 && millis() - filaTelegram[0].criadaEm > VALIDADE_MSG_TELEGRAM) {
+    Serial.println("[Telegram] Mensagem com mais de 10 min na fila: descartada.");
+    tirarPrimeiraDaFila();
+  }
+  if (mensagensNaFila == 0) return;
+  if (WiFi.status() != WL_CONNECTED) return;  // sem Wi-Fi, a fila espera
+
+  // Mais uma conexão segura precisa de memória: se estiver pouca, espera
+  if (ESP.getMaxAllocHeap() < 40000) {
+    Serial.printf("[Telegram] Pouca memória livre (%lu bytes): tento de novo depois.\n",
+                  (unsigned long)ESP.getMaxAllocHeap());
+    ultimoEnvioTelegram = millis();
+    esperaTelegram = ESPERA_ERRO_TELEGRAM;
+    return;
+  }
+
+  MensagemTelegram& msg = filaTelegram[0];
+  const String& chatId = chatsTelegram[msg.proximoChat];
+  unsigned long inicio = millis();
+  String resposta;
+  int codigo = enviarTelegram(chatId, msg.texto, resposta);
+  unsigned long duracao = millis() - inicio;
+  ultimoEnvioTelegram = millis();
+  esperaTelegram = INTERVALO_TELEGRAM;
+
+  if (codigo == 200) {
+    Serial.printf("[Telegram] enviado para %s (200, %lu ms)\n", chatId.c_str(), duracao);
+    if (++msg.proximoChat >= totalChatsTelegram) tirarPrimeiraDaFila();
+    return;
+  }
+
+  if (codigo == 429) {
+    // Muitas mensagens: o Telegram diz quantos segundos esperar
+    JsonDocument r;
+    int segundos = 30;
+    if (!deserializeJson(r, resposta)) segundos = r["parameters"]["retry_after"] | 30;
+    esperaTelegram = (unsigned long)max(segundos, 1) * 1000;
+    Serial.printf("[Telegram] Muitas mensagens (429): espero %d s.\n", segundos);
+    return;
+  }
+
+  if (codigo == 400 || codigo == 401 || codigo == 403) {
+    // Token ou chat id errado (ou o bot foi bloqueado): insistir não resolve
+    Serial.printf("[Telegram] Erro %d para %s: %s\n", codigo, chatId.c_str(), resposta.c_str());
+    Serial.println("[Telegram] Confira TELEGRAM_TOKEN e TELEGRAM_CHAT_IDS no secrets.h. Telegram desligado até reiniciar a placa.");
+    telegramLigado = false;
+    mensagensNaFila = 0;
+    return;
+  }
+
+  // Rede ou servidor: a mensagem fica na fila e tenta de novo em 30 s
+  Serial.printf("[Telegram] Erro ao enviar para %s (código %d, %lu ms): tento de novo em 30 s.\n",
+                chatId.c_str(), codigo, duracao);
+  esperaTelegram = ESPERA_ERRO_TELEGRAM;
+}
+
 
 // =====================================================================
 //  SETUP e LOOP
@@ -2361,6 +2484,9 @@ void loop() {
   cuidarDoResumoDiario();
 
   atualizarClima();
+
+  // Alertas no celular: uma mensagem da fila por vez (nunca dentro da decisão)
+  cuidarDoTelegram();
 
   // LEDs de status: decide o que mostrar e faz as piscadas (sem delay)
   atualizarLedsStatus();
