@@ -264,6 +264,53 @@
           ".validate": false
         }
       }
+    },
+
+    "hortasPlanejadas": {
+      ".read": false,
+      "$codigo": {
+        ".read": true,
+        ".write": "newData.exists()",
+        ".validate": "$codigo.matches(/^[A-HJKMNP-Z2-9]{8}$/) && newData.exists() && newData.hasChildren(['nome', 'dados', 'atualizadoEm'])",
+        "nome": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 60"
+        },
+        "dados": {
+          ".validate": "newData.isString() && newData.val().length <= 300000"
+        },
+        "criadoEm": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "atualizadoEm": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "editor": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "arquivada": {
+          ".validate": "newData.isBoolean()"
+        },
+        "versoes": {
+          "$slot": {
+            ".validate": "$slot.matches(/^[0-9]$/) && newData.hasChildren(['nome', 'dados', 'em'])",
+            "nome": {
+              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 60"
+            },
+            "dados": {
+              ".validate": "newData.isString() && newData.val().length <= 300000"
+            },
+            "em": {
+              ".validate": "newData.isNumber() && newData.val() <= now"
+            },
+            "$outro": {
+              ".validate": false
+            }
+          }
+        },
+        "$outro": {
+          ".validate": false
+        }
+      }
     }
   }
 }
