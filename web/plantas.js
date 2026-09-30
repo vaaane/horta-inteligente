@@ -37,6 +37,29 @@ function distancia(a, b) {
 // (70–90% e 50–70% se tocam em 70) também não dá uma faixa boa para as duas.
 const regaIncompativel = (u1, u2) => u1[1] <= u2[0] || u2[1] <= u1[0];
 
+// Convivência entre os canteiros { tomate: {x, y, w, h}, ... }:
+// pares no mesmo lugar (sobreposição) e vizinhos com rega diferente.
+// Também usada na planta para imprimir (planta.js).
+export function convivenciaEntre(atuais) {
+  const ids = Object.keys(atuais).filter((id) => atuais[id]);
+  const sobrepostas = new Set();
+  const pares = [];  // { tipo: "sobreposicao" | "rega", a: id, b: id }
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const [a, b] = [culturaDe(ids[i]), culturaDe(ids[j])];
+      const [ra, rb] = [atuais[ids[i]], atuais[ids[j]]];
+      if (sobrepoe(ra, rb)) {
+        sobrepostas.add(ids[i]);
+        sobrepostas.add(ids[j]);
+        pares.push({ tipo: "sobreposicao", a: ids[i], b: ids[j] });
+      } else if (distancia(ra, rb) < VIZINHAS_M && regaIncompativel(a.umidade, b.umidade)) {
+        pares.push({ tipo: "rega", a: ids[i], b: ids[j] });
+      }
+    }
+  }
+  return { sobrepostas, pares };
+}
+
 export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, botaoVoltar, filtro, filtroNota, aoMudar }) {
   let filtroId = "";        // "Mostrar só as áreas boas para…" (id da planta, ou "")
   let mapa = null;          // horas de sol (sol.js)
@@ -105,28 +128,17 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
 
   // ---------- Convivência: sobreposição e rega ----------
   function convivencia() {
-    const atuais = lugares();
-    const ids = Object.keys(atuais);
-    const sobrepostas = new Set();
-    const mensagens = [];
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        const [a, b] = [culturaDe(ids[i]), culturaDe(ids[j])];
-        const [ra, rb] = [atuais[ids[i]], atuais[ids[j]]];
-        if (sobrepoe(ra, rb)) {
-          sobrepostas.add(ids[i]);
-          sobrepostas.add(ids[j]);
-          mensagens.push({ tipo: "sobreposicao", texto: `${a.nome} e ${b.nome} estão no mesmo lugar.` });
-        } else if (distancia(ra, rb) < VIZINHAS_M && regaIncompativel(a.umidade, b.umidade)) {
-          // Só uma dica: não muda a cor da avaliação de sol
-          mensagens.push({
-            tipo: "rega",
-            texto: `${a.nome} (${a.umidade[0]}–${a.umidade[1]}%) ao lado de ${b.nome} (${b.umidade[0]}–${b.umidade[1]}%): ` +
-              "precisam de rega diferente. Numa zona de rega só, uma delas vai sofrer."
-          });
-        }
-      }
-    }
+    const { sobrepostas, pares } = convivenciaEntre(lugares());
+    const mensagens = pares.map(({ tipo, a: idA, b: idB }) => {
+      const [a, b] = [culturaDe(idA), culturaDe(idB)];
+      if (tipo === "sobreposicao") return { tipo, texto: `${a.nome} e ${b.nome} estão no mesmo lugar.` };
+      // Só uma dica: não muda a cor da avaliação de sol
+      return {
+        tipo,
+        texto: `${a.nome} (${a.umidade[0]}–${a.umidade[1]}%) ao lado de ${b.nome} (${b.umidade[0]}–${b.umidade[1]}%): ` +
+          "precisam de rega diferente. Numa zona de rega só, uma delas vai sofrer."
+      };
+    });
     return { sobrepostas, mensagens };
   }
 
