@@ -1090,7 +1090,7 @@ function abrirProjeto(dados) {
 }
 
 // =====================================================================
-//  SALVAR A PLANTA: imagem (PNG), impressão (A4 / PDF) e arquivo do projeto
+//  SALVAR A PLANTA: imagem (PNG), impressão (A4 / PDF) e backup (.json)
 // =====================================================================
 const NOME_PADRAO = "Minha horta";
 const CHAVE_NOME = "horta-planejar-nome-v1";  // nome do projeto que está na tela (rascunho)
@@ -1204,26 +1204,25 @@ for (const [campo, espelho] of [["impressao-turma", "impressao-turma-texto"], ["
   $(campo).addEventListener("input", () => { $(espelho).textContent = $(campo).value; });
 }
 
-// 3) Arquivo do projeto (.json), para abrir depois (aqui ou em outro aparelho)
+// 3) Backup (.json): uma cópia da horta no computador (fora da nuvem, ou para usar sem internet)
 const FORMATO_ARQUIVO = "horta-inteligente-projeto";
 $("salvar-arquivo").addEventListener("click", () => {
   fecharMenuSalvar();
   const arquivo = { formato: FORMATO_ARQUIVO, versao: 1, nome: nomeDoProjeto(), salvoEm: new Date().toISOString(), projeto: compactar(true) };
   baixar(new Blob([JSON.stringify(arquivo, null, 2)], { type: "application/json" }), nomeDoArquivo("json"));
-  statusSalvar(`Arquivo salvo: ${nomeDoArquivo("json")}. Use "Abrir arquivo" para continuar depois.`);
+  statusSalvar(`Backup salvo: ${nomeDoArquivo("json")}. Para voltar a ele, use "Abrir backup (.json)" no menu Salvar planta.`);
 });
-$("abrir-arquivo").addEventListener("click", () => $("arquivo-projeto").click());
+$("abrir-arquivo").addEventListener("click", () => { fecharMenuSalvar(); $("arquivo-projeto").click(); });
 $("arquivo-projeto").addEventListener("change", async () => {
   const escolhido = $("arquivo-projeto").files[0];
   $("arquivo-projeto").value = "";  // deixa abrir o mesmo arquivo de novo
   if (!escolhido) return;
   try {
     const arquivo = JSON.parse(await escolhido.text());
-    if (arquivo.formato !== FORMATO_ARQUIVO || !abrirProjeto(arquivo.projeto)) throw new Error("formato");
-    definirNome(arquivo.nome);
-    statusSalvar(`Projeto aberto: ${arquivo.nome || escolhido.name}.`);
+    if (arquivo.formato !== FORMATO_ARQUIVO || !arquivo.projeto || arquivo.projeto.v !== 1) throw new Error("formato");
+    abrirBackup(arquivo);  // (parte da nuvem: pergunta se há uma horta com código aberta)
   } catch {
-    statusSalvar("Não consegui abrir: esse arquivo não é um projeto da Horta Inteligente.");
+    statusSalvar("Não consegui abrir: esse arquivo não é um backup da Horta Inteligente.");
   }
 });
 
@@ -1444,7 +1443,7 @@ function mostrarHortaNaTela(codigo, valor) {
   let dados;
   try { dados = JSON.parse(valor.dados); } catch { dados = null; }
   if (!dados || !abrirProjeto(dados)) {
-    $("codigo-status").textContent = "Essa horta está com os dados estragados; não consegui abrir.";
+    statusCodigo("Essa horta está com os dados estragados; não consegui abrir.");
     return false;
   }
   clearTimeout(temporizadorNuvem);  // abrir não é "mexer": não precisa enviar de volta
@@ -1466,20 +1465,20 @@ function mostrarHortaNaTela(codigo, valor) {
 }
 
 async function abrirPorCodigo(codigo) {
-  $("codigo-status").textContent = "Procurando…";
+  statusCodigo("Procurando…");
   await enviarPendencias();  // o que estava na tela antes vai para a nuvem
   try {
     const valor = await lerHorta(codigo);
     if (!valor) {
-      $("codigo-status").textContent = "Não encontrei uma horta com esse código.";
+      statusCodigo("Não encontrei uma horta com esse código.");
       return;
     }
     if (mostrarHortaNaTela(codigo, valor)) {
-      $("codigo-status").textContent = `Horta "${valor.nome}" aberta.`;
+      statusCodigo(`Horta "${valor.nome}" aberta.`);
       $("codigo-digitado").value = "";
     }
   } catch (erro) {
-    $("codigo-status").textContent = `Não consegui abrir: ${textoDoErro(erro)}.`;
+    statusCodigo(`Não consegui abrir: ${textoDoErro(erro)}.`);
   }
 }
 
@@ -1487,7 +1486,7 @@ $("form-codigo").addEventListener("submit", (evento) => {
   evento.preventDefault();
   const codigo = normalizarCodigo($("codigo-digitado").value);
   if (!codigo) {
-    $("codigo-status").textContent = "Código inválido: são 8 letras e números (ex.: HX7K-2Q9M).";
+    statusCodigo("Código inválido: são 8 letras e números (ex.: HX7K-2Q9M).");
     return;
   }
   abrirPorCodigo(codigo);
@@ -1625,7 +1624,7 @@ $("fazer-copia").addEventListener("click", async () => {
   if (!horta) return;
   await enviarPendencias();
   const nome = `${nomeDoProjeto()} (cópia)`.slice(0, 60);
-  if (await criarNaNuvem(nome)) $("codigo-status").textContent = "Cópia criada: este é o código novo. A horta original não mudou.";
+  if (await criarNaNuvem(nome)) statusSalvar("Cópia criada: este é o código novo. A horta original não mudou.");
 });
 
 // ---------- Arquivar / desarquivar ----------
@@ -1802,19 +1801,89 @@ $("ver-historico").addEventListener("click", () => {
 });
 
 // ---------- Sair desta horta (o que fizer depois fica só neste aparelho) ----------
-$("sair-horta").addEventListener("click", async () => {
-  if (!horta) return;
-  await enviarPendencias();
-  const codigo = horta.codigo;
+// Deixa de trabalhar na horta da nuvem: o que estiver na tela fica só neste aparelho
+function largarHorta() {
   if (pararDeOuvir) pararDeOuvir();
   pararDeOuvir = null;
+  clearTimeout(temporizadorNuvem);
   horta = null;
+  pendente = false;
   esconderConflito();
   guardarNuvemLocal();
   mostrarHortaAberta();
   mostrarHortas();
+}
+$("sair-horta").addEventListener("click", async () => {
+  if (!horta) return;
+  await enviarPendencias();
+  const codigo = horta.codigo;
+  largarHorta();
   conferirNomeRepetido();
-  $("codigo-status").textContent = `Você saiu da horta ${formatarCodigo(codigo)} (ela continua na nuvem). O que mudar agora fica só neste aparelho.`;
+  statusSalvar(`Você saiu da horta ${formatarCodigo(codigo)} (ela continua na nuvem). O que mudar agora fica só neste aparelho.`);
+});
+
+// ---------- Abrir backup (.json) ----------
+// Sem horta da nuvem aberta: abre direto. Com horta aberta: pergunta se é
+// uma horta nova (sem código, até salvar na nuvem) ou se substitui a atual.
+let backupEsperando = null;
+function abrirBackup(arquivo) {
+  if (!horta) { abrirBackupComoNova(arquivo); return; }
+  backupEsperando = arquivo;
+  const codigo = formatarCodigo(horta.codigo);
+  $("escolha-backup-texto").textContent = `Abrir o backup como uma horta nova (sem código, até você salvar na nuvem) ` +
+    `ou substituir a horta atual (${codigo})? A atual fica guardada no histórico.`;
+  $("backup-substituir").textContent = `Substituir a horta atual (${codigo})`;
+  $("escolha-backup").hidden = false;
+  $("backup-nova").focus();  // o padrão é horta nova
+}
+const fecharEscolhaBackup = () => { $("escolha-backup").hidden = true; backupEsperando = null; };
+
+async function abrirBackupComoNova(arquivo) {
+  if (horta) {
+    await enviarPendencias();  // o que estava na horta da nuvem vai antes para lá
+    largarHorta();
+  }
+  if (!abrirProjeto(arquivo.projeto)) { statusSalvar("Não consegui abrir esse backup."); return; }
+  definirNome(arquivo.nome);
+  conferirNomeRepetido();
+  statusSalvar(`Backup "${arquivo.nome || NOME_PADRAO}" aberto como uma horta nova: ainda sem código. ` +
+    "Toque em Salvar na nuvem para criar um.");
+}
+
+async function abrirBackupSubstituindo(arquivo) {
+  if (!horta) { abrirBackupComoNova(arquivo); return; }
+  if (horta.arquivada) { statusSalvar("Horta arquivada: desarquive antes de substituir."); return; }
+  const codigo = horta.codigo;
+  try {
+    // A atual vai para o histórico (para poder voltar)
+    await gravarVersao(codigo, { nome: nomeDoProjeto(), dados: dadosAtuais(), tipo: "restaurar" });
+    if (!abrirProjeto(arquivo.projeto)) { statusSalvar("Não consegui abrir esse backup."); return; }
+    definirNome(arquivo.nome);
+    await salvarNaNuvem({ forcar: true });
+    statusSalvar(`Backup aberto no lugar da horta ${formatarCodigo(codigo)}. A versão anterior ficou no histórico.`);
+    if (!$("historico").hidden) mostrarHistorico();
+  } catch (erro) {
+    statusSalvar(`Não consegui substituir: ${textoDoErro(erro)}.`);
+  }
+}
+$("backup-nova").addEventListener("click", () => { const a = backupEsperando; fecharEscolhaBackup(); if (a) abrirBackupComoNova(a); });
+$("backup-substituir").addEventListener("click", () => { const a = backupEsperando; fecharEscolhaBackup(); if (a) abrirBackupSubstituindo(a); });
+$("backup-cancelar").addEventListener("click", fecharEscolhaBackup);
+document.addEventListener("keydown", (evento) => {
+  if (evento.key === "Escape" && !$("escolha-backup").hidden) fecharEscolhaBackup();
+});
+
+// ---------- "Abrir pelo código": mostra o campo ----------
+function statusCodigo(texto) {
+  $("form-codigo").hidden = false;  // o recado aparece junto do campo
+  $("abrir-pelo-codigo").setAttribute("aria-expanded", "true");
+  $("codigo-status").textContent = texto;
+}
+$("abrir-pelo-codigo").addEventListener("click", () => {
+  const abrir = $("form-codigo").hidden;
+  $("form-codigo").hidden = !abrir;
+  $("abrir-pelo-codigo").setAttribute("aria-expanded", String(abrir));
+  if (abrir) $("codigo-digitado").focus();
 });
 
 // ---------- Minhas hortas: os códigos usados neste aparelho ----------
@@ -1986,7 +2055,7 @@ async function iniciarNuvem() {
     history.replaceState(null, "", location.pathname + location.hash);  // tira o ?h= do endereço
     const codigo = normalizarCodigo(pedido);
     if (codigo) await abrirPorCodigo(codigo);
-    else $("codigo-status").textContent = "O código do link está errado: não encontrei uma horta com esse código.";
+    else statusCodigo("O código do link está errado: não encontrei uma horta com esse código.");
     return;
   }
   let salvo = null;

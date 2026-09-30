@@ -267,6 +267,8 @@ Em **Salvar e compartilhar**, o botão **Salvar na nuvem** guarda a horta no Fir
 - **Fazer uma cópia:** cria outra horta, com código novo, a partir da aberta. Serve para o aluno partir da horta do colega sem mexer na dele.
 - **Arquivar:** a horta arquivada abre com a faixa "Horta arquivada" e só dá para mudar depois de **Desarquivar**. **Não existe apagar.**
 - **Minhas hortas:** a lista guarda, só neste aparelho, os códigos das hortas criadas ou abertas aqui. **Tirar da lista** só esquece o código; a horta continua na nuvem. Projetos antigos (salvos só no navegador) têm o botão **Enviar para a nuvem**.
-- **Copiar link** (o desenho inteiro no endereço) e **Arquivo do projeto** (.json) continuam existindo e não usam a nuvem.
+- **Abrir pelo código:** botão ao lado de **Salvar na nuvem**, que mostra o campo do código.
+- **Backup (.json):** no menu **Salvar planta ▾**, **Baixar backup** guarda uma cópia da horta no computador e **Abrir backup** volta a ela (sem internet, ou fora da nuvem). Com uma horta da nuvem aberta, a página pergunta se o backup abre como **horta nova** (sem código, até salvar na nuvem) ou se **substitui a atual** (a atual vai para o histórico).
+- **Copiar link** (o desenho inteiro no endereço) continua existindo e não usa a nuvem.
 
 **Limite importante:** quem tem o código pode ver **e alterar** a horta. Não dá para listar as hortas de ninguém: as regras (`firebase/database.rules.json`, parte `hortasPlanejadas`) só deixam abrir quem sabe o código, recusam apagar e conferem cada campo (nome até 60 caracteres, desenho até 300 000, datas que não estão no futuro). Se alguém bagunçar a horta, use o **Histórico** para voltar.

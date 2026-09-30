@@ -207,17 +207,31 @@
         <p id="nuvem-status" class="planejar-nuvem-status" aria-live="polite" hidden></p>
         <div class="planejar-botoes">
           <button type="button" id="salvar-nuvem" class="planejar-botao planejar-botao-forte">☁ Salvar na nuvem</button>
+          <button type="button" id="abrir-pelo-codigo" class="planejar-botao" aria-expanded="false" aria-controls="form-codigo">🔑 Abrir pelo código</button>
           <details id="menu-salvar" class="planejar-menu">
             <summary class="planejar-botao">🖨 Salvar planta</summary>
             <div class="planejar-menu-opcoes">
               <button type="button" id="salvar-png" class="planejar-botao">🖼 Imagem (PNG)</button>
-              <button type="button" id="salvar-impressao" class="planejar-botao">🖨 Imprimir / PDF (A4)</button>
-              <button type="button" id="salvar-arquivo" class="planejar-botao">📄 Arquivo do projeto (.json)</button>
+              <button type="button" id="salvar-impressao" class="planejar-botao">🖨 Imprimir / PDF</button>
+              <p class="planejar-menu-titulo">Backup</p>
+              <button type="button" id="salvar-arquivo" class="planejar-botao">⬇ Baixar backup (.json)</button>
+              <button type="button" id="abrir-arquivo" class="planejar-botao">📂 Abrir backup (.json)</button>
+              <p class="planejar-menu-ajuda">Backup é uma cópia da horta no seu computador. Para abrir em outro aparelho, use o código.</p>
             </div>
           </details>
-          <button type="button" id="abrir-arquivo" class="planejar-botao">📂 Abrir arquivo</button>
           <input type="file" id="arquivo-projeto" accept=".json,application/json" hidden>
         </div>
+        <!-- Abrir pelo código: aparece ao tocar em "Abrir pelo código" (ou quando há um recado) -->
+        <form id="form-codigo" class="planejar-codigo" hidden>
+          <label for="codigo-digitado">Código da horta</label>
+          <div class="planejar-botoes">
+            <input type="text" id="codigo-digitado" placeholder="HX7K-2Q9M" maxlength="12" autocomplete="off"
+              autocapitalize="characters" spellcheck="false">
+            <button type="submit" class="planejar-botao planejar-botao-forte">Abrir horta</button>
+          </div>
+          <p class="planejar-nota">Com ou sem hífen, maiúsculas ou minúsculas.</p>
+          <p id="codigo-status" class="planejar-nota" aria-live="polite"></p>
+        </form>
         <p id="salvar-status" class="planejar-nota" aria-live="polite"></p>
 
         <!-- Só aparece com uma horta da nuvem aberta -->
@@ -238,15 +252,6 @@
           <ul id="lista-versoes" class="planejar-versoes"></ul>
         </div>
 
-        <form id="form-codigo" class="planejar-codigo">
-          <label for="codigo-digitado">Tenho um código</label>
-          <div class="planejar-botoes">
-            <input type="text" id="codigo-digitado" placeholder="HX7K-2Q9M" maxlength="12" autocomplete="off"
-              autocapitalize="characters" spellcheck="false">
-            <button type="submit" class="planejar-botao">Abrir horta</button>
-          </div>
-          <p id="codigo-status" class="planejar-nota" aria-live="polite"></p>
-        </form>
 
         <h3 class="decisao-subtitulo">Minhas hortas</h3>
         <p class="planejar-nota">Esta lista fica só neste aparelho. Em outro aparelho, abra pelo código ou link.</p>
@@ -298,6 +303,19 @@
       </div>
       <p id="quadro-copiar-status" class="planejar-nota" aria-live="polite"></p>
       <p class="quadro-aviso">Anote este código. Quem tiver o código pode ver e alterar esta horta.</p>
+    </div>
+  </section>
+
+  <!-- Abrir backup com uma horta da nuvem aberta: horta nova ou substituir? -->
+  <section id="escolha-backup" class="planejar-sobreposicao" role="dialog" aria-modal="true" aria-labelledby="escolha-backup-texto" hidden>
+    <div class="quadro-codigo">
+      <h2>Abrir backup</h2>
+      <p id="escolha-backup-texto"></p>
+      <div class="planejar-botoes planejar-botoes-coluna">
+        <button type="button" id="backup-nova" class="planejar-botao planejar-botao-forte">Uma horta nova (sem código)</button>
+        <button type="button" id="backup-substituir" class="planejar-botao"></button>
+        <button type="button" id="backup-cancelar" class="planejar-botao">Cancelar</button>
+      </div>
     </div>
   </section>
 

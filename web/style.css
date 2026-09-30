@@ -963,6 +963,18 @@ main {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
 }
 .planejar-menu-opcoes .planejar-botao { text-align: left; }
+.planejar-menu-titulo {
+  margin: 4px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--borda);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texto-suave);
+}
+.planejar-menu-ajuda { margin: 0; max-width: 250px; font-size: 0.8rem; color: var(--texto-suave); }
+.planejar-botoes-coluna { flex-direction: column; align-items: stretch; }
 
 /* Minhas hortas */
 .planejar-nome-projeto { display: grid; gap: 4px; font-weight: 700; margin-bottom: 8px; }
@@ -1015,7 +1027,8 @@ main {
   font-weight: 700;
 }
 #nuvem-acoes { margin-top: 10px; }
-.planejar-codigo { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--borda); }
+.planejar-codigo { margin-top: 10px; padding: 12px; border: 1px solid var(--borda); border-radius: 12px; }
+.planejar-codigo .planejar-nota { margin: 6px 0 0; }
 .planejar-codigo label { display: block; font-weight: 700; margin-bottom: 6px; }
 .planejar-codigo input {
   font: inherit;
