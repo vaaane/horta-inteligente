@@ -37,7 +37,7 @@ const grupos = [
       { titulo: "Painel web ao vivo", frase: "Umidade, bomba e histórico atualizando sozinhos.", status: "funcionando" },
       { titulo: "Consulta do clima", frase: "Chance de chuva e ET₀ exibidas no painel.", status: "funcionando" },
       { titulo: "Motivo de cada decisão", frase: "\"Não reguei às 17h porque havia 80% de chance de chuva.\"", status: "funcionando" },
-      { titulo: "Alertas no celular", frase: "Avisos pelo Telegram.", status: "proxima" },
+      { titulo: "Alertas no celular", frase: "Avisos pelo Telegram.", status: "funcionando" },
       { titulo: "Modo demonstração", frase: "No painel, o visitante simula \"80% de chance de chuva\" e vê a horta mudar de decisão na hora (no DF, setembro e outubro são muito secos).", status: "funcionando" },
       { titulo: "Time-lapse de crescimento", frase: "Fotos com a ESP32-CAM (a avaliar).", status: "proxima" },
       { titulo: "Espantalho eletrônico", frase: "Sensor de movimento PIR com buzzer ou LED.", status: "proxima" }
