@@ -1094,12 +1094,13 @@ function abrirProjeto(dados) {
 // =====================================================================
 const NOME_PADRAO = "Minha horta";
 const CHAVE_NOME = "horta-planejar-nome-v1";  // nome do projeto que está na tela (rascunho)
+// O campo começa vazio ("Minha horta" é só o exemplo apagado); vazio vale "Minha horta"
 const nomeDoProjeto = () => $("nome-projeto").value.trim() || NOME_PADRAO;
 function definirNome(nome) {
-  $("nome-projeto").value = nome || NOME_PADRAO;
+  $("nome-projeto").value = nome && nome !== NOME_PADRAO ? nome : "";
   try { localStorage.setItem(CHAVE_NOME, $("nome-projeto").value); } catch { /* sem salvar */ }
 }
-try { $("nome-projeto").value = localStorage.getItem(CHAVE_NOME) || NOME_PADRAO; } catch { $("nome-projeto").value = NOME_PADRAO; }
+try { definirNome(localStorage.getItem(CHAVE_NOME) || ""); } catch { $("nome-projeto").value = ""; }
 $("nome-projeto").addEventListener("input", () => {
   try { localStorage.setItem(CHAVE_NOME, $("nome-projeto").value); } catch { /* sem salvar */ }
   projetoMudou();
@@ -1316,6 +1317,7 @@ let ultimoNome = null;
 let ultimoVisto = null;       // atualizadoEm que esta tela já conhece
 let ultimaVersaoEm = 0;
 let conflito = null;          // { atualizadoEm } quando outro aparelho salvou por cima
+let ultimaManual = null;      // { codigo, slot, quando }: a versão do último "Salvar" (para trocar no mesmo minuto)
 let temporizadorNuvem = null;
 
 const dadosAtuais = () => JSON.stringify(compactar(true));
@@ -1459,6 +1461,7 @@ function mostrarHortaNaTela(codigo, valor) {
   statusNuvem(textoSalvo());
   registrarHorta(codigo, valor.nome);
   ouvir(codigo);
+  conferirNomeRepetido();
   return true;
 }
 
@@ -1510,8 +1513,14 @@ async function salvarNaNuvem({ manual = false, forcar = false } = {}) {
   statusNuvem("Salvando…");
   try {
     await salvarHorta(codigo, { nome, dados });
-    if (manual || Date.now() - ultimaVersaoEm >= INTERVALO_VERSAO) {
-      await salvarVersao(codigo, { nome, dados });
+    if (manual) {
+      // No máximo uma versão por minuto: outro "Salvar" logo depois troca a do mesmo minuto
+      const recente = ultimaManual && ultimaManual.codigo === codigo && Date.now() - ultimaManual.quando < 60000;
+      const slot = await gravarVersao(codigo, { nome, dados, tipo: "manual", substituir: recente ? ultimaManual.slot : null });
+      if (slot !== null) ultimaManual = { codigo, slot, quando: recente ? ultimaManual.quando : Date.now() };
+      ultimaVersaoEm = Date.now();
+    } else if (Date.now() - ultimaVersaoEm >= INTERVALO_VERSAO) {
+      await gravarVersao(codigo, { nome, dados, tipo: "auto" });
       ultimaVersaoEm = Date.now();
     }
     if (!horta || horta.codigo !== codigo) return;
@@ -1550,7 +1559,7 @@ async function criarNaNuvem(nome) {
   try {
     const dados = dadosAtuais();
     const codigo = await criarHorta({ nome, dados });
-    await salvarVersao(codigo, { nome, dados });
+    await gravarVersao(codigo, { nome, dados, tipo: "manual" });
     if (pararDeOuvir) pararDeOuvir();
     pararDeOuvir = null;
     horta = { codigo, arquivada: false };
@@ -1567,6 +1576,7 @@ async function criarNaNuvem(nome) {
     registrarHorta(codigo, nome);
     ouvir(codigo);
     mostrarQuadroCodigo();
+    conferirNomeRepetido();
     return true;
   } catch (erro) {
     statusNuvem(`Não consegui criar o código: ${textoDoErro(erro)}.`);
@@ -1635,26 +1645,133 @@ async function trocarArquivada() {
 $("arquivar").addEventListener("click", trocarArquivada);
 $("desarquivar-faixa").addEventListener("click", trocarArquivada);
 
-// ---------- Histórico (as 10 últimas versões) ----------
-async function mostrarHistorico() {
+// ---------- Resumo de uma versão: o que tem e o que mudou ----------
+// Lê os dados compactos (os mesmos do link) e conta terreno, obstáculos e plantas.
+function lerConteudo(texto) {
+  let d;
+  try { d = typeof texto === "string" ? JSON.parse(texto) : texto; } catch { return null; }
+  if (!d) return null;
+  let terrenoMedidas = null;
+  let obstaculos = [];
+  if (d.m === "mapa") {
+    if (d.t) terrenoMedidas = [d.t[2], d.t[3]];
+    obstaculos = (d.o || []).map((o) => ({ nome: o[1], onde: JSON.stringify(o.slice(2)) }));
+  } else if (d.l) {
+    terrenoMedidas = [d.l.largura, d.l.comprimento];
+    obstaculos = (d.l.obstaculos || []).map((o) => ({ nome: o.nome, onde: JSON.stringify([o.x, o.y, o.largura, o.profundidade, o.raio, o.altura, o.angulo]) }));
+  }
+  const plantasDaVersao = CULTURAS.filter((c) => d.p && c.id in d.p);
+  return { terreno: terrenoMedidas, obstaculos, plantas: plantasDaVersao, canteiros: d.k || {} };
+}
+const textoPlantas = (n) => `${n} planta${n === 1 ? "" : "s"}`;
+
+// "+ Pimenta, Tomate movido · Terreno 6 × 4 m · 2 obstáculos · 3 plantas (Tomate, Alface, Pimenta)"
+function resumoDoProjeto(dados, anteriores = null) {
+  const agora = lerConteudo(dados);
+  if (!agora) return "";
+  const antes = anteriores ? lerConteudo(anteriores) : null;
+  const mudou = [];
+  if (antes) {
+    const [a, b] = [antes.terreno, agora.terreno];
+    if (JSON.stringify(a) !== JSON.stringify(b)) mudou.push(b ? "Terreno redimensionado" : "Sem terreno");
+    const idsAntes = new Set(antes.plantas.map((c) => c.id));
+    const idsAgora = new Set(agora.plantas.map((c) => c.id));
+    for (const c of agora.plantas) if (!idsAntes.has(c.id)) mudou.push(`+ ${c.nome}`);
+    for (const c of antes.plantas) if (!idsAgora.has(c.id)) mudou.push(`− ${c.nome}`);
+    for (const c of agora.plantas) {
+      const [ka, kb] = [antes.canteiros[c.id], agora.canteiros[c.id]];
+      if (idsAntes.has(c.id) && ka && kb && JSON.stringify(ka) !== JSON.stringify(kb)) mudou.push(`${c.nome} movido`);
+    }
+    // Obstáculos: pelo nome (entrou, saiu) e pelo lugar (mudou)
+    const restantes = [...antes.obstaculos];
+    const novos = [];
+    for (const o of agora.obstaculos) {
+      const i = restantes.findIndex((r) => r.nome === o.nome);
+      if (i < 0) novos.push(o);
+      else if (restantes.splice(i, 1)[0].onde !== o.onde) mudou.push(`${o.nome} mudou`);
+    }
+    for (const o of novos) mudou.push(`+ ${o.nome}`);
+    for (const o of restantes) mudou.push(`− ${o.nome}`);
+  }
+  const base = [
+    agora.terreno ? `Terreno ${numero(agora.terreno[0], 1)} × ${numero(agora.terreno[1], 1)} m` : "Sem terreno",
+    `${agora.obstaculos.length} obstáculo${agora.obstaculos.length === 1 ? "" : "s"}`
+  ];
+  const nomes = agora.plantas.map((c) => c.nome);
+  const comNomes = nomes.length ? `${textoPlantas(nomes.length)} (${nomes.join(", ")})` : "nenhuma planta";
+  const montar = (plantasTexto) => [mudou.length ? mudou.slice(0, 3).join(", ") + (mudou.length > 3 ? "…" : "") : null, ...base, plantasTexto]
+    .filter(Boolean).join(" · ");
+  let texto = montar(comNomes);
+  if (texto.length > 120) texto = montar(nomes.length ? textoPlantas(nomes.length) : comNomes);
+  return texto.length > 120 ? `${texto.slice(0, 119)}…` : texto;
+}
+
+// Grava a versão com o resumo (e não grava se for igual à mais recente)
+const gravarVersao = (codigo, { nome, dados, tipo, substituir = null }) =>
+  salvarVersao(codigo, { nome, dados, tipo, substituir, resumir: (anteriores) => resumoDoProjeto(dados, anteriores) });
+
+// ---------- Histórico: as versões desta horta ----------
+const ETIQUETAS = { manual: "salva por você", auto: "automática", restaurar: "antes de restaurar" };
+// "29/09/2026, 21:45:12"
+function dataHoraSegundos(quando) {
+  const d = new Date(quando);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+const horaSegundos = (quando) => new Date(quando).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+function linhaVersao({ titulo, resumo, etiqueta, botao, atual = false }) {
+  const li = document.createElement("li");
+  if (atual) li.className = "planejar-versao-atual";
+  const texto = document.createElement("div");
+  texto.className = "planejar-versao-texto";
+  const topo = document.createElement("strong");
+  topo.textContent = titulo;
+  texto.append(topo);
+  if (etiqueta) {
+    const selo = document.createElement("span");
+    selo.className = "planejar-versao-etiqueta";
+    selo.textContent = etiqueta;
+    texto.append(" ", selo);
+  }
+  if (resumo) {
+    const r = document.createElement("small");
+    r.textContent = resumo;
+    texto.append(r);
+  }
+  li.append(texto);
+  if (botao) li.append(botao);
+  return li;
+}
+
+async function mostrarHistorico(mensagem = "") {
   if (!horta) return;
   const codigo = horta.codigo;
-  $("lista-versoes").replaceChildren();
-  $("historico-status").textContent = "Carregando…";
+  $("historico-codigo").textContent = formatarCodigo(codigo);
+  $("historico-status").textContent = mensagem || "Carregando…";
   try {
     const versoes = await lerVersoes(codigo);
-    $("historico-status").textContent = versoes.length ? "" : "Ainda não há versões salvas.";
-    $("lista-versoes").replaceChildren(...versoes.map((v) => {
-      const li = document.createElement("li");
-      const texto = document.createElement("span");
-      texto.textContent = `${dataHora(v.em)} · ${v.nome}`;
+    if (!horta || horta.codigo !== codigo) return;
+    $("historico-status").textContent = mensagem || (versoes.length ? "" : "Ainda não há versões salvas.");
+    // Primeira linha: o que está na tela agora (sem restaurar)
+    const atual = linhaVersao({
+      titulo: "Atual",
+      resumo: resumoDoProjeto(dadosAtuais(), versoes[0] ? versoes[0].dados : null),
+      etiqueta: "na tela agora",
+      atual: true
+    });
+    $("lista-versoes").replaceChildren(atual, ...versoes.map((v, i) => {
       const botao = document.createElement("button");
       botao.type = "button";
       botao.className = "planejar-botao planejar-botao-pequeno";
       botao.textContent = "Restaurar esta versão";
       botao.addEventListener("click", () => restaurarVersao(v));
-      li.append(texto, botao);
-      return li;
+      return linhaVersao({
+        titulo: dataHoraSegundos(v.em),
+        resumo: v.resumo || "",   // versões antigas não têm resumo: só a data
+        etiqueta: ETIQUETAS[v.tipo] || "",
+        botao
+      });
     }));
   } catch (erro) {
     $("historico-status").textContent = `Não consegui ler o histórico: ${textoDoErro(erro)}.`;
@@ -1665,15 +1782,14 @@ async function restaurarVersao(versao) {
   if (horta.arquivada) { $("historico-status").textContent = "Horta arquivada: desarquive para restaurar."; return; }
   const codigo = horta.codigo;
   try {
-    // Antes, guarda a atual como versão (para poder desfazer)
-    await salvarVersao(codigo, { nome: nomeDoProjeto(), dados: dadosAtuais() });
+    // Antes, guarda a atual como versão (para poder desfazer); se for igual à última, não repete
+    await gravarVersao(codigo, { nome: nomeDoProjeto(), dados: dadosAtuais(), tipo: "restaurar" });
     abrirProjeto(JSON.parse(versao.dados));
     definirNome(versao.nome);
     await salvarNaNuvem({ forcar: true });
-    $("historico-status").textContent = `Versão de ${dataHora(versao.em)} restaurada. A que estava antes ficou no histórico.`;
-    mostrarHistorico().then(() => {
-      $("historico-status").textContent = `Versão de ${dataHora(versao.em)} restaurada. A que estava antes ficou no histórico.`;
-    });
+    const conteudo = lerConteudo(versao.dados);
+    const plantasTexto = conteudo ? ` (${textoPlantas(conteudo.plantas.length)})` : "";
+    await mostrarHistorico(`Voltou para a versão de ${horaSegundos(versao.em)}${plantasTexto}. A anterior foi guardada.`);
   } catch (erro) {
     $("historico-status").textContent = `Não consegui restaurar: ${textoDoErro(erro)}.`;
   }
@@ -1697,6 +1813,7 @@ $("sair-horta").addEventListener("click", async () => {
   guardarNuvemLocal();
   mostrarHortaAberta();
   mostrarHortas();
+  conferirNomeRepetido();
   $("codigo-status").textContent = `Você saiu da horta ${formatarCodigo(codigo)} (ela continua na nuvem). O que mudar agora fica só neste aparelho.`;
 });
 
@@ -1764,8 +1881,8 @@ function mostrarHortas(excluindo = null) {
     const aberta = !!(horta && horta.codigo === h.codigo);
     return itemDaLista({
       mini: h.miniatura,
-      titulo: aberta ? `${h.nome} (aberta agora)` : h.nome,
-      detalhe: `Código ${formatarCodigo(h.codigo)} · último acesso ${dataHora(h.ultimoAcesso)}`,
+      titulo: `${h.nome} · ${formatarCodigo(h.codigo)}${aberta ? " (aberta agora)" : ""}`,
+      detalhe: `Último acesso ${dataHora(h.ultimoAcesso)}`,
       destaque: aberta,
       botoes: [
         botaoPequeno("Abrir", () => {
@@ -1810,6 +1927,38 @@ function mostrarHortas(excluindo = null) {
   }));
 }
 
+// ---------- Nome repetido em "Minhas hortas" (avisa, não bloqueia) ----------
+// "Teste", " teste " e "TES TE" contam como o mesmo nome
+const chaveDoNome = (nome) => String(nome || "").toLowerCase().replace(/\s+/g, "");
+let nomeAceito = null;  // "codigo|nome" que a pessoa quis manter mesmo repetido
+
+function conferirNomeRepetido() {
+  $("aviso-nome").hidden = true;
+  if (!horta) return;
+  const nome = nomeDoProjeto();
+  if (nomeAceito === `${horta.codigo}|${chaveDoNome(nome)}`) return;
+  const hortas = lerHortas();
+  const outra = hortas.find((h) => h.codigo !== horta.codigo && chaveDoNome(h.nome) === chaveDoNome(nome));
+  if (!outra) return;
+  // Sugestão: "Teste (2)", "Teste (3)"… o primeiro que ainda não existe
+  let sugestao = nome;
+  for (let n = 2; hortas.some((h) => chaveDoNome(h.nome) === chaveDoNome(sugestao)); n++) sugestao = `${nome} (${n})`.slice(0, 60);
+  $("aviso-nome-texto").textContent =
+    `Você já tem uma horta chamada "${outra.nome}" neste aparelho (código ${formatarCodigo(outra.codigo)}). Quer chamar esta de "${sugestao}"?`;
+  $("aviso-nome-usar").textContent = `Usar "${sugestao}"`;
+  $("aviso-nome-usar").onclick = () => {
+    definirNome(sugestao);
+    $("aviso-nome").hidden = true;
+    projetoMudou();  // vai para a nuvem com o nome novo
+  };
+  $("aviso-nome-manter").onclick = () => {
+    nomeAceito = `${horta.codigo}|${chaveDoNome(nome)}`;
+    $("aviso-nome").hidden = true;
+  };
+  $("aviso-nome").hidden = false;
+}
+$("nome-projeto").addEventListener("change", conferirNomeRepetido);
+
 // Projeto antigo -> horta na nuvem com código (sem mexer no que está na tela)
 async function enviarAntigo(projeto) {
   if (conectado === false) { statusSalvar("Sem conexão: tente de novo quando a internet voltar."); return; }
@@ -1818,7 +1967,7 @@ async function enviarAntigo(projeto) {
     const nome = String(projeto.nome || NOME_PADRAO).slice(0, 60);
     const dados = JSON.stringify(projeto.dados);
     const codigo = await criarHorta({ nome, dados });
-    await salvarVersao(codigo, { nome, dados });
+    await gravarVersao(codigo, { nome, dados, tipo: "manual" });
     gravarProjetos(lerProjetos().filter((o) => o.id !== projeto.id));
     registrarHorta(codigo, nome, projeto.miniatura || null);
     statusSalvar(`"${nome}" agora está na nuvem com o código ${formatarCodigo(codigo)}. Anote o código.`);

@@ -191,10 +191,17 @@
       <section class="cartao planejar-salvar">
         <h2>Salvar e compartilhar</h2>
         <label class="planejar-nome-projeto">Nome do projeto
-          <input type="text" id="nome-projeto" maxlength="60" autocomplete="off" value="Minha horta" aria-describedby="nome-privacidade">
+          <input type="text" id="nome-projeto" maxlength="60" autocomplete="off" placeholder="Minha horta" aria-describedby="nome-privacidade">
         </label>
         <p id="nome-privacidade" class="planejar-nota planejar-privacidade">🔒 Não coloque nome completo, telefone ou outros
           dados pessoais no nome da horta.</p>
+        <div id="aviso-nome" class="planejar-aviso-nome" role="status" hidden>
+          <p id="aviso-nome-texto"></p>
+          <div class="planejar-botoes">
+            <button type="button" id="aviso-nome-usar" class="planejar-botao planejar-botao-pequeno planejar-botao-forte"></button>
+            <button type="button" id="aviso-nome-manter" class="planejar-botao planejar-botao-pequeno">Manter o nome</button>
+          </div>
+        </div>
         <p class="planejar-nota">"Salvar planta" faz um desenho limpo da horta (sem a foto de satélite),
           com o norte para cima, as horas de sol e as plantas, para imprimir ou mostrar na feira.</p>
         <p id="nuvem-status" class="planejar-nuvem-status" aria-live="polite" hidden></p>
@@ -222,8 +229,11 @@
           <button type="button" id="sair-horta" class="planejar-botao">Sair desta horta</button>
         </div>
         <div id="historico" class="planejar-historico" hidden>
-          <h3 class="decisao-subtitulo">Histórico</h3>
-          <p class="planejar-nota">As 10 últimas versões: uma a cada "Salvar na nuvem" e uma a cada 5 minutos de edição.</p>
+          <h3 class="decisao-subtitulo">Versões desta horta</h3>
+          <p class="planejar-nota">Todas as versões são da mesma horta (código <strong id="historico-codigo"></strong>).
+            Restaurar volta a horta para aquele momento.</p>
+          <p class="planejar-nota">Guardamos as 10 últimas: uma a cada "Salvar na nuvem" (no máximo uma por minuto)
+            e uma a cada 5 minutos de edição. Versões iguais não se repetem.</p>
           <p id="historico-status" class="planejar-nota" aria-live="polite"></p>
           <ul id="lista-versoes" class="planejar-versoes"></ul>
         </div>

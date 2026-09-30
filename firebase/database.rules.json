@@ -302,6 +302,12 @@
             "em": {
               ".validate": "newData.isNumber() && newData.val() <= now"
             },
+            "resumo": {
+              ".validate": "newData.isString() && newData.val().length <= 120"
+            },
+            "tipo": {
+              ".validate": "newData.isString() && newData.val().matches(/^(manual|auto|restaurar)$/)"
+            },
             "$outro": {
               ".validate": false
             }

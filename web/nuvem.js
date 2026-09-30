@@ -10,7 +10,9 @@
 //     nome, dados (o projeto em texto JSON), criadoEm, atualizadoEm,
 //     editor (identificador aleatório DA ABA, para perceber edição em dois lugares),
 //     arquivada,
-//     versoes: { "0".."9": { nome, dados, em } }   (as 10 últimas cópias, em rodízio)
+//     versoes: { "0".."9": { nome, dados, em, resumo, tipo } }   (as 10 últimas cópias, em rodízio)
+//       resumo: "Terreno 6 × 4 m · 2 obstáculos · 1 planta (Tomate)" (e o que mudou)
+//       tipo: "manual" (salva por você), "auto" (automática) ou "restaurar" (antes de restaurar)
 //   }
 //
 // O Firebase só é carregado quando precisa (import dinâmico): sem internet,
@@ -117,15 +119,30 @@ export async function lerVersoes(codigo) {
     .sort((a, b) => (b.em || 0) - (a.em || 0));
 }
 
-// Grava uma cópia numa das 10 gavetas: a primeira vazia ou a mais velha
-export async function salvarVersao(codigo, { nome, dados }) {
+// Grava uma cópia numa das 10 gavetas: a primeira vazia ou a mais velha.
+//   tipo: "manual", "auto" ou "restaurar"
+//   resumir(dadosAnteriores): devolve o resumo (o que tem e o que mudou)
+//   substituir: gaveta para trocar em vez de criar outra (o "Salvar" do mesmo minuto)
+// Devolve a gaveta usada, ou null se não gravou (igual à versão mais recente).
+export async function salvarVersao(codigo, { nome, dados, tipo = "manual", resumir = null, substituir = null }) {
   const f = await banco();
   const versoes = await lerVersoes(codigo);
-  const usadas = new Set(versoes.map((v) => v.slot));
+  const recente = versoes[0];
+  if (recente && recente.dados === dados) return null;  // nada mudou: não repete
   let slot = null;
-  for (let n = 0; n < MAX_VERSOES && slot === null; n++) if (!usadas.has(String(n))) slot = String(n);
-  if (slot === null) slot = versoes[versoes.length - 1].slot;  // todas cheias: troca a mais velha
-  await f.set(f.ref(f.db, caminho(codigo, `versoes/${slot}`)), { nome, dados, em: f.serverTimestamp() });
+  let anterior = recente;
+  if (substituir !== null && recente && recente.slot === substituir) {
+    slot = substituir;
+    anterior = versoes[1];  // compara com a de antes da que vai ser trocada
+  } else {
+    const usadas = new Set(versoes.map((v) => v.slot));
+    for (let n = 0; n < MAX_VERSOES && slot === null; n++) if (!usadas.has(String(n))) slot = String(n);
+    if (slot === null) slot = versoes[versoes.length - 1].slot;  // todas cheias: troca a mais velha
+  }
+  const versao = { nome, dados, em: f.serverTimestamp(), tipo };
+  if (resumir) versao.resumo = String(resumir(anterior ? anterior.dados : null)).slice(0, 120);
+  await f.set(f.ref(f.db, caminho(codigo, `versoes/${slot}`)), versao);
+  return slot;
 }
 
 // ---------- Ouvir mudanças (outra aba ou outro aparelho) ----------

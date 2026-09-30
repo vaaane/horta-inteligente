@@ -1030,6 +1030,28 @@ main {
 }
 .planejar-historico { margin-top: 12px; }
 .planejar-versoes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.planejar-versao-texto { display: grid; gap: 2px; flex: 1 1 220px; min-width: 0; }
+.planejar-versao-texto small { color: var(--texto-suave); overflow-wrap: anywhere; }
+.planejar-versao-etiqueta {
+  justify-self: start;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--verde-claro);
+  color: var(--verde);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.planejar-versao-atual { background: var(--verde-claro); border-color: var(--verde) !important; }
+.planejar-versao-atual .planejar-versao-etiqueta { background: var(--verde); color: #fff; }
+.planejar-aviso-nome {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--aviso);
+  color: var(--aviso-texto);
+  border: 1px solid #f9d77e;
+}
+.planejar-aviso-nome p { margin: 0 0 8px; }
 .planejar-versoes li {
   display: flex;
   flex-wrap: wrap;
