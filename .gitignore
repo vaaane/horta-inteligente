@@ -11,3 +11,7 @@ node_modules/
 
 # Configurações pessoais do Claude Code
 .claude/settings.local.json
+
+# package.json na raiz atrapalha o deploy da Cloudflare (o site usa o Firebase pelo CDN)
+package.json
+package-lock.json

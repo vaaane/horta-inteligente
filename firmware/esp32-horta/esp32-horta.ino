@@ -78,7 +78,7 @@ const bool MODO_TESTE = true;
 // Com o token ou os chat ids vazios, o Telegram desliga sozinho.
 const bool TELEGRAM_ATIVO = true;
 // No modo teste o potenciômetro muda toda hora: só avisos importantes.
-const bool TELEGRAM_TUDO_NO_MODO_TESTE = false;
+const bool TELEGRAM_TUDO_NO_MODO_TESTE = true;
 
 // ---------------------------------------------------------------------
 //  PINOS
