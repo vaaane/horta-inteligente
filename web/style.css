@@ -964,6 +964,45 @@ main {
 }
 .planejar-menu-opcoes .planejar-botao { text-align: left; }
 
+/* Minhas hortas */
+.planejar-nome-projeto { display: grid; gap: 4px; font-weight: 700; margin-bottom: 8px; }
+.planejar-nome-projeto input, .planejar-projeto-info input {
+  font: inherit;
+  font-weight: 400;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  max-width: 100%;
+}
+.planejar-projetos { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.planejar-projeto {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+}
+.planejar-projeto-mini {
+  flex: none;
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  background: var(--verde-claro);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.planejar-projeto-mini img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.planejar-projeto-info { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.planejar-projeto-info strong { overflow-wrap: anywhere; }
+.planejar-projeto-info small { color: var(--texto-suave); }
+.planejar-projeto-pergunta { color: #c62828; font-weight: 700; }
+.planejar-botao-pequeno { min-height: 38px; padding: 4px 10px; font-size: 0.9rem; }
+
 /* Folha A4 na tela (por cima da página) */
 .impressao {
   position: fixed;

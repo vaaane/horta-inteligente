@@ -176,12 +176,16 @@
 
       <!-- Salvar a planta: imagem, impressão e arquivo (planta.js) -->
       <section class="cartao planejar-salvar">
-        <h2>Salvar a planta da horta</h2>
-        <p class="planejar-nota">Um desenho limpo da horta (sem a foto de satélite), com o norte para cima,
-          as horas de sol e as plantas, para imprimir ou mostrar na feira.</p>
+        <h2>Salvar e imprimir</h2>
+        <label class="planejar-nome-projeto">Nome do projeto
+          <input type="text" id="nome-projeto" maxlength="60" autocomplete="off" value="Minha horta">
+        </label>
+        <p class="planejar-nota">"Salvar planta" faz um desenho limpo da horta (sem a foto de satélite),
+          com o norte para cima, as horas de sol e as plantas, para imprimir ou mostrar na feira.</p>
         <div class="planejar-botoes">
+          <button type="button" id="salvar-projeto" class="planejar-botao planejar-botao-forte">💾 Salvar projeto</button>
           <details id="menu-salvar" class="planejar-menu">
-            <summary class="planejar-botao planejar-botao-forte">💾 Salvar planta</summary>
+            <summary class="planejar-botao">🖨 Salvar planta</summary>
             <div class="planejar-menu-opcoes">
               <button type="button" id="salvar-png" class="planejar-botao">🖼 Imagem (PNG)</button>
               <button type="button" id="salvar-impressao" class="planejar-botao">🖨 Imprimir / PDF (A4)</button>
@@ -192,6 +196,12 @@
           <input type="file" id="arquivo-projeto" accept=".json,application/json" hidden>
         </div>
         <p id="salvar-status" class="planejar-nota" aria-live="polite"></p>
+
+        <h3 class="decisao-subtitulo">Minhas hortas</h3>
+        <p class="planejar-nota">Os projetos ficam salvos só neste navegador. Para levar para outro aparelho,
+          use Copiar link ou Arquivo do projeto.</p>
+        <p id="minhas-hortas-vazio" class="planejar-nota">Nenhum projeto salvo ainda. Dê um nome e toque em "Salvar projeto".</p>
+        <ul id="minhas-hortas" class="planejar-projetos"></ul>
       </section>
 
       <section class="cartao planejar-tabela">

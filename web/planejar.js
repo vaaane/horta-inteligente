@@ -974,9 +974,13 @@ function lerSalvo(chave) {
 // ---------- Link: o desenho vai inteiro no endereço (#p=...) ----------
 // JSON "compacto" (nomes curtos, números arredondados) -> texto em base64.
 const arred = (v, casas) => Math.round(v * 10 ** casas) / 10 ** casas;
-const ponto = (latlng) => [arred(latlng[0], 7), arred(latlng[1], 7)];
+let exato = false;  // true: sem arredondar as coordenadas (projetos salvos e arquivos)
+const ponto = (latlng) => (exato ? [latlng[0], latlng[1]] : [arred(latlng[0], 7), arred(latlng[1], 7)]);
 
-function compactar() {
+// exato = true guarda as coordenadas inteiras: aberto de novo, o cálculo dá
+// exatamente igual (no link, 7 casas bastam e o link fica mais curto)
+function compactar(comoEsta = false) {
+  exato = comoEsta;
   const dados = { v: 1, m: modo, p: escolhidas, d: dataEscolhida, a: anoTodo ? 1 : 0 };
   // Canteiros: [x, y, w, h, girada] de cada planta
   dados.k = {};
@@ -997,6 +1001,7 @@ function compactar() {
   } else {
     dados.l = terreno;
   }
+  exato = false;
   return dados;
 }
 
@@ -1077,7 +1082,16 @@ function abrirProjeto(dados) {
 //  SALVAR A PLANTA: imagem (PNG), impressão (A4 / PDF) e arquivo do projeto
 // =====================================================================
 const NOME_PADRAO = "Minha horta";
-const nomeDoProjeto = () => NOME_PADRAO;
+const CHAVE_NOME = "horta-planejar-nome-v1";  // nome do projeto que está na tela (rascunho)
+const nomeDoProjeto = () => $("nome-projeto").value.trim() || NOME_PADRAO;
+function definirNome(nome) {
+  $("nome-projeto").value = nome || NOME_PADRAO;
+  try { localStorage.setItem(CHAVE_NOME, $("nome-projeto").value); } catch { /* sem salvar */ }
+}
+try { $("nome-projeto").value = localStorage.getItem(CHAVE_NOME) || NOME_PADRAO; } catch { $("nome-projeto").value = NOME_PADRAO; }
+$("nome-projeto").addEventListener("input", () => {
+  try { localStorage.setItem(CHAVE_NOME, $("nome-projeto").value); } catch { /* sem salvar */ }
+});
 
 // Dados para o desenho da planta (planta.js). null = ainda não dá para desenhar.
 function projetoParaPlanta() {
@@ -1181,7 +1195,7 @@ for (const [campo, espelho] of [["impressao-turma", "impressao-turma-texto"], ["
 const FORMATO_ARQUIVO = "horta-inteligente-projeto";
 $("salvar-arquivo").addEventListener("click", () => {
   fecharMenuSalvar();
-  const arquivo = { formato: FORMATO_ARQUIVO, versao: 1, nome: nomeDoProjeto(), salvoEm: new Date().toISOString(), projeto: compactar() };
+  const arquivo = { formato: FORMATO_ARQUIVO, versao: 1, nome: nomeDoProjeto(), salvoEm: new Date().toISOString(), projeto: compactar(true) };
   baixar(new Blob([JSON.stringify(arquivo, null, 2)], { type: "application/json" }), nomeDoArquivo("json"));
   statusSalvar(`Arquivo salvo: ${nomeDoArquivo("json")}. Use "Abrir arquivo" para continuar depois.`);
 });
@@ -1193,11 +1207,175 @@ $("arquivo-projeto").addEventListener("change", async () => {
   try {
     const arquivo = JSON.parse(await escolhido.text());
     if (arquivo.formato !== FORMATO_ARQUIVO || !abrirProjeto(arquivo.projeto)) throw new Error("formato");
+    definirNome(arquivo.nome);
     statusSalvar(`Projeto aberto: ${arquivo.nome || escolhido.name}.`);
   } catch {
     statusSalvar("Não consegui abrir: esse arquivo não é um projeto da Horta Inteligente.");
   }
 });
+
+// =====================================================================
+//  MINHAS HORTAS: vários projetos guardados neste navegador (localStorage)
+// =====================================================================
+// Cada projeto: { id, nome, modificadoEm (data ISO), dados (o mesmo do link), miniatura }
+const CHAVE_PROJETOS = "horta-planejar-projetos-v1";
+
+function lerProjetos() {
+  try {
+    const lista = JSON.parse(localStorage.getItem(CHAVE_PROJETOS));
+    return Array.isArray(lista) ? lista : [];
+  } catch {
+    return [];
+  }
+}
+// Devolve false se o navegador não deixou salvar (sem espaço, aba anônima...)
+function gravarProjetos(lista) {
+  try {
+    localStorage.setItem(CHAVE_PROJETOS, JSON.stringify(lista));
+    return true;
+  } catch {
+    statusSalvar("Não deu para salvar neste navegador (sem espaço ou bloqueado). Use Arquivo do projeto.");
+    return false;
+  }
+}
+
+// A planta pequenininha, para a lista (JPEG, bem leve)
+function miniatura() {
+  const projeto = projetoParaPlanta();
+  if (!projeto) return null;
+  return desenharPlanta(document.createElement("canvas"), projeto, { ladoMaior: 320 }).toDataURL("image/jpeg", 0.7);
+}
+
+const novoId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const mesmoNome = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+// Salvar projeto: se já existe um com o mesmo nome, atualiza; senão, cria
+$("salvar-projeto").addEventListener("click", () => {
+  const nome = nomeDoProjeto();
+  definirNome(nome);
+  const lista = lerProjetos();
+  const existente = lista.find((p) => mesmoNome(p.nome, nome));
+  const projeto = { id: existente ? existente.id : novoId(), nome, modificadoEm: new Date().toISOString(), dados: compactar(true), miniatura: miniatura() };
+  const nova = [projeto, ...lista.filter((p) => p !== existente)];
+  if (!gravarProjetos(nova)) return;
+  statusSalvar(existente ? `Projeto "${nome}" atualizado.` : `Projeto "${nome}" salvo em Minhas hortas.`);
+  mostrarProjetos();
+});
+
+// "29/09/2026 14:05"
+function dataHora(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+const botaoPequeno = (texto, aoClicar, extra = "") => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = `planejar-botao planejar-botao-pequeno ${extra}`;
+  b.textContent = texto;
+  b.addEventListener("click", aoClicar);
+  return b;
+};
+
+// Lista "Minhas hortas". Renomear e Excluir abrem uma pergunta na própria linha.
+function mostrarProjetos(editando = null) {
+  const lista = lerProjetos();
+  $("minhas-hortas-vazio").hidden = lista.length > 0;
+  $("minhas-hortas").replaceChildren(...lista.map((p) => {
+    const li = document.createElement("li");
+    li.className = "planejar-projeto";
+
+    const figura = document.createElement("div");
+    figura.className = "planejar-projeto-mini";
+    if (p.miniatura) {
+      const img = document.createElement("img");
+      img.src = p.miniatura;
+      img.alt = "";
+      figura.append(img);
+    } else {
+      figura.textContent = "🌱";
+    }
+
+    const info = document.createElement("div");
+    info.className = "planejar-projeto-info";
+    const botoes = document.createElement("div");
+    botoes.className = "planejar-botoes";
+
+    if (editando && editando.id === p.id && editando.acao === "renomear") {
+      const campo = document.createElement("input");
+      campo.type = "text";
+      campo.value = p.nome;
+      campo.maxLength = 60;
+      campo.setAttribute("aria-label", "Novo nome do projeto");
+      const confirmar = () => {
+        const nome = campo.value.trim();
+        if (!nome) return;
+        const todos = lerProjetos();
+        if (todos.some((o) => o.id !== p.id && mesmoNome(o.nome, nome))) {
+          statusSalvar(`Já existe um projeto chamado "${nome}".`);
+          return;
+        }
+        const alvo = todos.find((o) => o.id === p.id);
+        if (alvo) alvo.nome = nome;
+        if (gravarProjetos(todos)) statusSalvar(`Nome trocado para "${nome}".`);
+        mostrarProjetos();
+      };
+      campo.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") confirmar();
+        if (e.key === "Escape") mostrarProjetos();
+      });
+      info.append(campo);
+      botoes.append(botaoPequeno("OK", confirmar, "planejar-botao-forte"), botaoPequeno("Cancelar", () => mostrarProjetos()));
+      requestAnimationFrame(() => { campo.focus(); campo.select(); });
+    } else {
+      const nome = document.createElement("strong");
+      nome.textContent = p.nome;
+      const quando = document.createElement("small");
+      quando.textContent = `Salvo em ${dataHora(p.modificadoEm)}`;
+      info.append(nome, quando);
+      if (editando && editando.id === p.id && editando.acao === "excluir") {
+        const pergunta = document.createElement("span");
+        pergunta.className = "planejar-projeto-pergunta";
+        pergunta.textContent = `Excluir "${p.nome}"? Não dá para desfazer.`;
+        info.append(pergunta);
+        botoes.append(
+          botaoPequeno("Sim, excluir", () => {
+            if (gravarProjetos(lerProjetos().filter((o) => o.id !== p.id))) statusSalvar(`Projeto "${p.nome}" excluído.`);
+            mostrarProjetos();
+          }, "planejar-botao-perigo"),
+          botaoPequeno("Cancelar", () => mostrarProjetos())
+        );
+      } else {
+        botoes.append(
+          botaoPequeno("Abrir", () => {
+            const alvo = lerProjetos().find((o) => o.id === p.id);
+            if (!alvo || !abrirProjeto(alvo.dados)) { statusSalvar("Não consegui abrir esse projeto."); return; }
+            definirNome(alvo.nome);
+            statusSalvar(`Projeto "${alvo.nome}" aberto.`);
+            // Volta para o topo, onde está o desenho
+            document.querySelector(".planejar-area")?.scrollIntoView({ behavior: "smooth" });
+          }, "planejar-botao-forte"),
+          botaoPequeno("Renomear", () => mostrarProjetos({ id: p.id, acao: "renomear" })),
+          botaoPequeno("Duplicar", () => {
+            const todos = lerProjetos();
+            let nome = `${p.nome} (cópia)`;
+            for (let n = 2; todos.some((o) => mesmoNome(o.nome, nome)); n++) nome = `${p.nome} (cópia ${n})`;
+            const copia = { ...p, id: novoId(), nome, modificadoEm: new Date().toISOString() };
+            todos.splice(todos.findIndex((o) => o.id === p.id), 0, copia);
+            if (gravarProjetos(todos)) statusSalvar(`Criada a cópia "${nome}".`);
+            mostrarProjetos();
+          }),
+          botaoPequeno("Excluir", () => mostrarProjetos({ id: p.id, acao: "excluir" }), "planejar-botao-perigo")
+        );
+      }
+    }
+    info.append(botoes);
+    li.append(figura, info);
+    return li;
+  }));
+}
+mostrarProjetos();
 
 // ---------- Ao abrir a página: link compartilhado, ou o que estava salvo ----------
 function iniciarModo() {
