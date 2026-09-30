@@ -90,6 +90,7 @@
     import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
     import { firebaseConfig } from "./firebase-config.js";
     import { iniciarClima } from "./clima.js";
+    import { ligarLinksTelegram } from "./config.js";
 
     const db = getDatabase(initializeApp(firebaseConfig));
 
@@ -111,6 +112,13 @@
 
     // ---------- Cartão "Clima agora" (código em clima.js) ----------
     iniciarClima(db, document.getElementById("clima"));
+
+    // Link do canal de alertas no rodapé
+    ligarLinksTelegram();
   </script>
+
+  <footer class="rodape">
+    <a data-canal-telegram>Alertas no Telegram</a>
+  </footer>
 </body>
 </html>

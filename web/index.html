@@ -51,15 +51,31 @@
         <h2>Clima agora</h2>
       </section>
 
-      <!-- Só aparece na tela grande (no celular o visitante já está no site) -->
+      <!-- Só aparece na tela grande (no celular o visitante já está no site):
+           um QR para o painel e outro para o canal de alertas no Telegram -->
       <section class="cartao cartao-qr">
         <h2>Abra no seu celular</h2>
-        <div id="qr" class="qr"></div>
+        <div class="qr-par">
+          <figure class="qr-item">
+            <figcaption class="qr-titulo"><span aria-hidden="true">📱</span> Abrir o painel</figcaption>
+            <div id="qr" class="qr"></div>
+          </figure>
+          <figure class="qr-item">
+            <figcaption class="qr-titulo"><span aria-hidden="true">🔔</span> Receber alertas</figcaption>
+            <div id="qr-telegram" class="qr"></div>
+          </figure>
+        </div>
       </section>
     </div>
 
     <!-- "Pode regar agora?": a resposta e os semáforos da decisão (código em podeRegar.js) -->
     <section id="pode-regar" class="pode-regar" aria-label="Pode regar agora?"></section>
+
+    <!-- Só no celular (na tela grande o QR do canal fica no cartão "Abra no seu celular") -->
+    <div class="alertas-celular">
+      <a class="botao-telegram" data-canal-telegram>🔔 Receber alertas no Telegram</a>
+      <p class="alertas-nota">Canal só de leitura. A horta avisa quando rega, quando adia e quando há falha.</p>
+    </div>
 
     <p id="atualizacao" class="atualizacao">Conectando ao Firebase...</p>
 
@@ -85,7 +101,8 @@
   </main>
 
   <footer class="rodape">
-    <a href="teste.html">Página de teste</a>
+    <a href="teste.html">Página de teste</a> ·
+    <a data-canal-telegram>Alertas no Telegram</a>
   </footer>
 
   <!-- Chart.js: biblioteca que desenha o gráfico -->

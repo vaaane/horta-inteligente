@@ -21,6 +21,9 @@ import {
   lerVersoes, salvarVersao, ouvirHorta, ouvirConexao
 } from "./nuvem.js";
 import { desenharQR } from "./qr.js";
+import { ligarLinksTelegram } from "./config.js";
+
+ligarLinksTelegram();  // link "Alertas no Telegram" do rodapé
 
 // ---------- Terreno padrão ----------
 const PADRAO = {

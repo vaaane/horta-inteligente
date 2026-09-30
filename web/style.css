@@ -571,6 +571,46 @@ main {
 /* Na página Sobre, aparece sempre */
 .cartao-qr-sobre { text-align: center; max-width: 320px; margin: 0 auto 40px; }
 
+/* Painel: dois QR lado a lado (o painel e o canal de alertas), com legenda grande */
+.qr-par { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+/* subgrid: legendas numa linha e QR na outra, alinhados mesmo se uma legenda quebrar */
+.qr-item { margin: 0; display: grid; grid-row: span 3; grid-template-rows: subgrid; align-items: end; }
+.qr-item .qr { display: contents; }
+.qr-titulo { margin: 0 0 8px; font-size: 1.15rem; font-weight: 700; }
+.qr-par .qr svg { min-width: 140px; }
+.qr-par .qr-endereco { align-self: start; font-size: 0.95rem; font-weight: 600; }
+
+/* Celular: botão para o canal do Telegram (na tela grande, o QR faz esse papel) */
+.alertas-celular { margin: 0 0 16px; }
+.botao-telegram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #229ed9;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+.botao-telegram:hover, .botao-telegram:focus-visible { background: #1b86ba; }
+.alertas-nota { margin: 6px 0 0; color: var(--texto-suave); font-size: 0.9rem; text-align: center; }
+@media (min-width: 1024px) {
+  .alertas-celular { display: none; }
+}
+
+/* Página Sobre: link do canal e QR pequeno (só na tela grande) no item "Alertas no celular" */
+.funcionalidade .funcionalidade-canal { margin: 10px 0 0; }
+.funcionalidade-canal a { font-weight: 700; color: var(--verde); }
+.qr-pequeno { display: none; width: 120px; margin-top: 10px; }
+.qr-pequeno .qr-endereco { display: none; }
+@media (min-width: 1024px) {
+  .qr-pequeno { display: block; }
+}
+
 /* Cartão "Por que regou (ou não)" (decisao.js) */
 .decisao-atual {
   display: flex;
@@ -625,16 +665,18 @@ main {
 /* 1024 a 1399px: umidade, bomba e QR em cima; o clima embaixo, na largura toda.
    "dense" deixa o QR subir para a primeira linha, ao lado da bomba. */
 @media (min-width: 1024px) and (max-width: 1399px) {
-  .painel .cartoes { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: dense; }
+  .painel .cartoes { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: dense; }
   .painel .clima { grid-column: 1 / -1; }
+  .painel .cartao-qr { grid-column: span 2; }  /* dois QR grandes o bastante para ler de longe */
 }
 
-/* Projetor: letras maiores e umidade, bomba, clima (2 colunas) e QR numa linha só */
+/* Projetor: letras maiores e umidade, bomba, clima (2 colunas) e QR (2 colunas) numa linha só */
 @media (min-width: 1400px) {
   html { font-size: 20px; }
   .painel main { max-width: 1400px; }
-  .painel .cartoes { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .painel .cartoes { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .painel .clima { grid-column: span 2; }
+  .painel .cartao-qr { grid-column: span 2; }
   .painel .numero { font-size: 5rem; }
   .painel .bomba { font-size: 1.8rem; padding: 12px 18px; }
   .painel .clima-valores dd { font-size: 1.7rem; }

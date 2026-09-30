@@ -28,6 +28,7 @@ export function desenharQR(elemento, endereco = null) {
   // Endereço por extenso embaixo, sem "https://" e sem a barra final
   const legenda = document.createElement("p");
   legenda.className = "qr-endereco";
-  legenda.textContent = endereco.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  // (depois de cada "/" pode quebrar a linha: "t.me/" + "hortainteligenteced")
+  legenda.textContent = endereco.replace(/^https?:\/\//, "").replace(/\/$/, "").replaceAll("/", "/\u200B");
   elemento.append(legenda);
 }

@@ -12,6 +12,7 @@ import { iniciarAgua } from "./agua.js";
 import { iniciarFalha } from "./falha.js";
 import { iniciarPodeRegar } from "./podeRegar.js";
 import { desenharQR } from "./qr.js";
+import { CANAL_TELEGRAM, ligarLinksTelegram } from "./config.js";
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -133,8 +134,12 @@ const podeRegar = iniciarPodeRegar(db, document.getElementById("pode-regar"), {
 // ---------- Cartão "Água" (código em agua.js) ----------
 iniciarAgua(db, document.getElementById("agua"));
 
-// ---------- QR code "Abra no seu celular" (só aparece na tela grande) ----------
-desenharQR(document.getElementById("qr"));
+// ---------- QR codes "Abra no seu celular" (só aparecem na tela grande) ----------
+desenharQR(document.getElementById("qr"));                           // o painel
+desenharQR(document.getElementById("qr-telegram"), CANAL_TELEGRAM);  // o canal (link fixo: aparece até no localhost)
+
+// Botão "Receber alertas no Telegram" (celular) e link do rodapé
+ligarLinksTelegram();
 
 // ---------- Gráfico com as últimas 50 leituras ----------
 const grafico = new Chart(document.getElementById("grafico"), {

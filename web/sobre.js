@@ -1,6 +1,7 @@
 // Página "Sobre o projeto" — monta os cartões de funcionalidades
 // Para mudar o status de um item, troque "proxima" por "funcionando" (ou o contrário).
 import { desenharQR } from "./qr.js";
+import { CANAL_TELEGRAM, ligarLinksTelegram } from "./config.js";
 
 const STATUS = {
   funcionando: { texto: "Funcionando", classe: "selo-funcionando" },
@@ -37,7 +38,7 @@ const grupos = [
       { titulo: "Painel web ao vivo", frase: "Umidade, bomba e histórico atualizando sozinhos.", status: "funcionando" },
       { titulo: "Consulta do clima", frase: "Chance de chuva e ET₀ exibidas no painel.", status: "funcionando" },
       { titulo: "Motivo de cada decisão", frase: "\"Não reguei às 17h porque havia 80% de chance de chuva.\"", status: "funcionando" },
-      { titulo: "Alertas no celular", frase: "Avisos pelo Telegram.", status: "funcionando" },
+      { titulo: "Alertas no celular", frase: "Avisos pelo Telegram.", status: "funcionando", canalTelegram: true },
       { titulo: "Modo demonstração", frase: "No painel, o visitante simula \"80% de chance de chuva\" e vê a horta mudar de decisão na hora (no DF, setembro e outubro são muito secos).", status: "funcionando" },
       { titulo: "Time-lapse de crescimento", frase: "Fotos com a ESP32-CAM (a avaliar).", status: "proxima" },
       { titulo: "Espantalho eletrônico", frase: "Sensor de movimento PIR com buzzer ou LED.", status: "proxima" }
@@ -77,6 +78,13 @@ for (const grupo of grupos) {
       <h4>${item.titulo}</h4>
       <p>${item.frase}</p>
     `;
+    if (item.canalTelegram) {
+      // Link do canal e, na tela grande, o QR pequeno para entrar pelo celular
+      cartao.insertAdjacentHTML("beforeend", `
+        <p class="funcionalidade-canal"><a data-canal-telegram>Entrar no canal</a></p>
+        <div class="qr qr-pequeno" data-qr-canal></div>`);
+      desenharQR(cartao.querySelector("[data-qr-canal]"), CANAL_TELEGRAM);
+    }
     lista.append(cartao);
   }
 
@@ -85,3 +93,6 @@ for (const grupo of grupos) {
 
 // ---------- QR code no fim da página ----------
 desenharQR(document.getElementById("qr"));
+
+// Links do canal de alertas (item "Alertas no celular" e rodapé)
+ligarLinksTelegram();
