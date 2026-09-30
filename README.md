@@ -243,6 +243,17 @@ Os avisos seguem a **decisão estável** (a que vai para o histórico, depois de
 4. Toque em "Já resolvi" no painel → "✅ Falha resolvida".
 5. Troque para `TELEGRAM_TUDO_NO_MODO_TESTE = true`, grave, e simule 80% de chuva com a rega em andamento → "🌧️ Parei de regar… (simulado)".
 
+### Próxima etapa: aviso de "horta sem sinal"
+Quando o ESP32 cai (sem energia ou sem Wi-Fi), ele não consegue avisar. Quem avisaria é um **Worker separado** no Cloudflare, sem mexer no site:
+1. Criar um Worker novo (ex.: `horta-vigia`) com um **Cron Trigger** a cada 5 min (`*/5 * * * *`).
+2. A cada rodada, ler `FIREBASE_DB_URL/horta/estado/ts.json` (a leitura é pública) e calcular há quantos minutos chegou o último dado.
+3. Guardar num **KV** (ex.: chave `offline`) se o aviso já foi mandado, para avisar uma vez só:
+   - mais de 10 min sem dado e ainda não avisou → "⚠️ A horta está sem sinal há X min" e grava `offline = true`;
+   - dado novo e `offline = true` → "✅ A horta voltou" e apaga a chave.
+4. O token e os chat ids ficam em *secrets* do Worker (`wrangler secret put TELEGRAM_TOKEN`), **nunca** no código.
+
+Não foi feito agora porque precisa de um Worker e de um KV novos, criados e publicados na conta do Cloudflare.
+
 ## Modo demonstração
 Na época da feira quase nunca chove no DF, então a previsão real marca ~0% e a decisão da chuva nunca aparece. O cartão **"Modo demonstração"** do painel resolve isso:
 
