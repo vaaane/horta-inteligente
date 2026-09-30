@@ -256,3 +256,17 @@ A página abre no modo **Sobre o mapa**: a imagem de satélite do lugar, para de
 - Não usamos Google Maps (exige chave e cartão).
 
 **Roteiro para a feira (modo mapa):** buscar "CED São Bartolomeu, São Sebastião, DF" (ou usar minha localização) → desenhar o terreno sobre a imagem → marcar a casa (3 m) e uma árvore (5 m) → ver o mapa de calor → marcar tomate e alface → ver as sugestões → **Copiar link** e abrir numa aba anônima.
+
+### Hortas na nuvem sem login
+Em **Salvar e compartilhar**, o botão **Salvar na nuvem** guarda a horta no Firebase **sem criar conta**. Não pedimos nem guardamos dados pessoais: só o nome da horta e o desenho (por isso o aviso para não pôr nome completo ou telefone no nome).
+
+- **Código:** na primeira vez a horta ganha um código de 8 letras e números, como `HX7K-2Q9M` (sem 0/O e 1/I/L, que confundem). Aparece um quadro com o código, o link (`planejar.html?h=HX7K2Q9M`) e o QR code. Em outro aparelho, abra pelo link ou digite o código em **Tenho um código** (com ou sem hífen, maiúsculas ou minúsculas).
+- **Salvamento automático:** depois de salvar uma vez, cada mudança vai para a nuvem 3 s depois que a pessoa para de mexer. Sem internet, fica salvo no aparelho e é enviado quando a conexão volta.
+- **Edição ao mesmo tempo:** se outra aba ou aparelho salvar a mesma horta, aparece o aviso para **Recarregar** a versão nova ou **Continuar com a minha** (que salva por cima).
+- **Histórico:** as 10 últimas versões (uma a cada **Salvar na nuvem** e uma a cada 5 minutos de edição). **Restaurar esta versão** guarda antes a atual, para poder desfazer.
+- **Fazer uma cópia:** cria outra horta, com código novo, a partir da aberta. Serve para o aluno partir da horta do colega sem mexer na dele.
+- **Arquivar:** a horta arquivada abre com a faixa "Horta arquivada" e só dá para mudar depois de **Desarquivar**. **Não existe apagar.**
+- **Minhas hortas:** a lista guarda, só neste aparelho, os códigos das hortas criadas ou abertas aqui. **Tirar da lista** só esquece o código; a horta continua na nuvem. Projetos antigos (salvos só no navegador) têm o botão **Enviar para a nuvem**.
+- **Copiar link** (o desenho inteiro no endereço) e **Arquivo do projeto** (.json) continuam existindo e não usam a nuvem.
+
+**Limite importante:** quem tem o código pode ver **e alterar** a horta. Não dá para listar as hortas de ninguém: as regras (`firebase/database.rules.json`, parte `hortasPlanejadas`) só deixam abrir quem sabe o código, recusam apagar e conferem cada campo (nome até 60 caracteres, desenho até 300 000, datas que não estão no futuro). Se alguém bagunçar a horta, use o **Histórico** para voltar.

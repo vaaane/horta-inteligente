@@ -191,8 +191,10 @@
       <section class="cartao planejar-salvar">
         <h2>Salvar e compartilhar</h2>
         <label class="planejar-nome-projeto">Nome do projeto
-          <input type="text" id="nome-projeto" maxlength="60" autocomplete="off" value="Minha horta">
+          <input type="text" id="nome-projeto" maxlength="60" autocomplete="off" value="Minha horta" aria-describedby="nome-privacidade">
         </label>
+        <p id="nome-privacidade" class="planejar-nota planejar-privacidade">🔒 Não coloque nome completo, telefone ou outros
+          dados pessoais no nome da horta.</p>
         <p class="planejar-nota">"Salvar planta" faz um desenho limpo da horta (sem a foto de satélite),
           com o norte para cima, as horas de sol e as plantas, para imprimir ou mostrar na feira.</p>
         <p id="nuvem-status" class="planejar-nuvem-status" aria-live="polite" hidden></p>
