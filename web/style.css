@@ -9,6 +9,18 @@
   --borda: #dbe7da;
   --aviso: #fff4e5;
   --aviso-texto: #8a4b00;
+
+  /* Tamanhos (todas as páginas). Os grandes crescem no projetor de 1920 e
+     encolhem em 1280 (clamp); o texto pequeno nunca fica abaixo de 14 px. */
+  --fs-gigante: clamp(2.5rem, 1.2rem + 2.6vw, 4.25rem);  /* número da umidade */
+  --fs-numero: clamp(1.6rem, 1rem + 1.4vw, 2.6rem);      /* litros, temperatura */
+  --fs-bomba: clamp(1.2rem, 0.85rem + 0.8vw, 1.75rem);   /* pílula "Desligada" */
+  --fs-titulo: clamp(1.3rem, 0.95rem + 1vw, 2rem);       /* respostas ("Não precisa regar") e títulos */
+  --fs-texto: clamp(1rem, 0.9rem + 0.2vw, 1.15rem);
+  --fs-nota: clamp(0.875rem, 0.8rem + 0.15vw, 1rem);     /* rótulos e notas: 14 px ou mais */
+  --espaco-cartao: clamp(12px, 0.35rem + 0.7vw, 20px);   /* espaço dentro dos cartões */
+  --gap: clamp(10px, 0.3rem + 0.55vw, 16px);             /* espaço entre os cartões */
+  --altura-botao: 44px;
 }
 
 * { box-sizing: border-box; }
@@ -37,14 +49,14 @@ body {
 .topo-marca { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
 .topo-nome { margin: 0; font-size: 1.5rem; line-height: 1.2; }
 .topo-nome a { color: inherit; text-decoration: none; }
-.topo-escola { font-size: 0.85rem; opacity: 0.85; }
+.topo-escola { font-size: var(--fs-nota); opacity: 0.85; }
 /* "🕐 15h": a hora que a horta está usando na decisão (pílula ao lado do nome) */
 .hora-horta {
   align-self: center;
   padding: 2px 10px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.18);
-  font-size: 0.85rem;
+  font-size: var(--fs-nota);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -106,26 +118,26 @@ body {
 main {
   max-width: 960px;
   margin: 0 auto;
-  padding: 24px 16px 40px;
+  padding: var(--gap) 16px 40px;
 }
 
 /* Dois cartões lado a lado na tela grande, um embaixo do outro no celular */
 .cartoes {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
+  gap: var(--gap);
 }
 
 .cartao {
   background: var(--cartao);
   border: 1px solid var(--borda);
   border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 16px;
+  padding: var(--espaco-cartao);
+  margin-bottom: var(--gap);
 }
 .cartao h2 {
   margin: 0 0 8px;
-  font-size: 1rem;
+  font-size: var(--fs-nota);
   font-weight: 600;
   color: var(--texto-suave);
   text-transform: uppercase;
@@ -135,7 +147,7 @@ main {
 /* Número grande da umidade */
 .numero {
   margin: 0;
-  font-size: clamp(4rem, 14vw, 7rem);
+  font-size: var(--fs-gigante);
   font-weight: 700;
   line-height: 1;
   color: var(--verde);
@@ -162,7 +174,7 @@ main {
   display: flex;
   justify-content: space-between;
   margin-top: 6px;
-  font-size: 0.85rem;
+  font-size: var(--fs-nota);
   color: var(--texto-suave);
 }
 
@@ -174,7 +186,7 @@ main {
   margin: 12px 0 0;
   padding: 12px 24px;
   border-radius: 999px;
-  font-size: clamp(1.5rem, 5vw, 2.2rem);
+  font-size: var(--fs-bomba);
   font-weight: 700;
   background: #eceff1;
   color: var(--texto-suave);
@@ -210,7 +222,7 @@ main {
   margin-top: 12px;
   min-height: 56px;
   padding: 12px;
-  font-size: 1.25rem;
+  font-size: var(--fs-texto);
   background: var(--verde);
   color: #fff;
   border: none;
@@ -219,12 +231,12 @@ main {
 .controle-modo:disabled, .controle-bomba:disabled { opacity: 0.45; cursor: not-allowed; }
 .controle-contagem, .controle-status, .controle-bloqueio {
   margin: 10px 0 0;
-  font-size: 0.95rem;
+  font-size: var(--fs-nota);
   color: var(--texto-suave);
 }
 .controle-contagem { font-weight: 600; }
 /* "Você pediu: ligada" logo abaixo do botão (o círculo mostra o estado real) */
-.controle-pedido { margin: 6px 0 0; font-size: 0.95rem; color: var(--texto-suave); text-align: center; }
+.controle-pedido { margin: 6px 0 0; font-size: var(--fs-nota); color: var(--texto-suave); text-align: center; }
 /* Selo "Modo teste" ao lado do título do cartão da bomba */
 .selo-teste {
   display: inline-block;
@@ -233,7 +245,7 @@ main {
   background: var(--aviso);
   color: var(--aviso-texto);
   border: 1px solid #f5c98b;
-  font-size: 0.7rem;
+  font-size: 0.875rem;  /* 14 px: nenhum texto menor que isso */
   letter-spacing: 0;
   text-transform: none;
   vertical-align: middle;
@@ -254,7 +266,7 @@ main {
   background: #ffe8b0;
   color: #6b3a00;
   border: 2px solid #f0b429;
-  font-size: 1.15rem;
+  font-size: var(--fs-texto);
   font-weight: 700;
 }
 .demo-voltar, .demo-rapido {
@@ -265,14 +277,14 @@ main {
   font-weight: 700;
   cursor: pointer;
 }
-.demo-voltar { font-size: 1rem; background: #fff; color: #6b3a00; border: 2px solid #f0b429; }
+.demo-voltar { font-size: var(--fs-texto); background: #fff; color: #6b3a00; border: 2px solid #f0b429; }
 /* Chave "Simular chuva": caixa grande, fácil de tocar */
 .demo-chave {
   display: inline-flex;
   align-items: center;
   gap: 12px;
   min-height: 44px;
-  font-size: 1.15rem;
+  font-size: var(--fs-texto);
   font-weight: 700;
   cursor: pointer;
 }
@@ -295,7 +307,7 @@ main {
   margin: 0;
   transform: translateX(-50%);
   white-space: nowrap;
-  font-size: 0.8rem;
+  font-size: var(--fs-nota);
   font-weight: 600;
   color: #e65100;
 }
@@ -316,7 +328,7 @@ main {
   margin: 0;
   transform: translateX(-50%);
   white-space: nowrap;
-  font-size: 0.8rem;
+  font-size: var(--fs-nota);
   color: #c62828;
 }
 .demo-numero {
@@ -332,7 +344,7 @@ main {
 .demo-rapido.ativo { background: #1565c0; color: #fff; }
 .demo input:disabled, .demo button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Linha embaixo do "Clima agora" enquanto a simulação estiver ativa */
-.clima-simulada { margin: 8px 0 0; font-size: 0.85rem; font-weight: 600; color: #6b3a00; }
+.clima-simulada { margin: 8px 0 0; font-size: var(--fs-nota); font-weight: 600; color: #6b3a00; }
 
 /* Cartão "Água" (agua.js) */
 .agua h2 .selo { text-transform: none; letter-spacing: 0; }
@@ -351,18 +363,18 @@ main {
   gap: 16px;
   margin: 8px 0 12px;
 }
-.agua-valores dt { font-size: 0.9rem; color: var(--texto-suave); }
+.agua-valores dt { font-size: var(--fs-nota); color: var(--texto-suave); }
 .agua-valores dd {
   margin: 2px 0 0;
-  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  font-size: var(--fs-numero);
   font-weight: 700;
   color: var(--verde);
   font-variant-numeric: tabular-nums;
 }
 .agua-valores dd.agua-negativa { color: var(--aviso-texto); }
-.agua-sub { margin: 2px 0 0; font-size: 0.85rem; color: var(--texto-suave); }
-.agua-traducao { margin: 0 0 8px; font-size: 1.15rem; font-weight: 700; }
-.agua-nota { margin: 0 0 12px; font-size: 0.85rem; color: var(--texto-suave); }
+.agua-sub { margin: 2px 0 0; font-size: var(--fs-nota); color: var(--texto-suave); }
+.agua-traducao { margin: 0 0 8px; font-size: var(--fs-texto); font-weight: 700; }
+.agua-nota { margin: 0 0 12px; font-size: var(--fs-nota); color: var(--texto-suave); }
 .agua-lista { margin-bottom: 12px; }
 .agua-lista summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
 .agua-zerar { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
@@ -383,7 +395,7 @@ main {
 .agua-cota { margin: 4px 0 12px; }
 .agua-cota-topo { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
 .agua-cota-titulo { font-weight: 600; }
-.agua-cota-valor { font-size: 1.3rem; font-weight: 700; color: var(--verde); font-variant-numeric: tabular-nums; }
+.agua-cota-valor { font-size: var(--fs-texto); font-weight: 700; color: var(--verde); font-variant-numeric: tabular-nums; }
 .agua-cota .trilho { margin-top: 6px; }
 /* A barra vai até 150% da cota: os últimos 1/3 (margem extra) ficam listrados */
 .agua-cota-trilho {
@@ -406,7 +418,7 @@ main {
   position: absolute;
   top: 22px;
   left: 66.667%;
-  font-size: 0.75rem;
+  font-size: var(--fs-nota);
   font-weight: 600;
   color: #e65100;
 }
@@ -428,7 +440,7 @@ main {
   border: 2px solid var(--verde);
 }
 .agua-periodo.ativo { background: var(--verde); color: #fff; }
-.agua-resumo { margin: 0 0 12px; font-size: 1.1rem; font-weight: 600; line-height: 1.4; }
+.agua-resumo { margin: 0 0 12px; font-size: var(--fs-texto); font-weight: 600; line-height: 1.4; }
 .agua-grafico { position: relative; height: 280px; margin-bottom: 8px; }
 .agua-tabela { margin-top: 8px; }
 .agua-tabela summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
@@ -445,8 +457,8 @@ main {
   color: #b71c1c;
   border: 2px solid #e53935;
 }
-.falha-cartao { margin: 12px 0 0; font-size: 0.95rem; }
-.falha-titulo { margin: 0; font-weight: 700; font-size: 1.1rem; }
+.falha-cartao { margin: 12px 0 0; font-size: var(--fs-nota); }
+.falha-titulo { margin: 0; font-weight: 700; font-size: var(--fs-texto); }
 .falha-motivo { margin: 4px 0 8px; line-height: 1.4; }
 .falha-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .falha-botao {
@@ -461,14 +473,14 @@ main {
   border: none;
 }
 .falha-botao:disabled { opacity: 0.5; cursor: not-allowed; }
-.falha-status { font-size: 0.9rem; }
-.demo-falha { margin-top: 12px; font-size: 1rem; }
+.falha-status { font-size: var(--fs-nota); }
+.demo-falha { margin-top: 12px; font-size: var(--fs-texto); }
 
 /* Faixa "Pode regar agora?" (podeRegar.js): a resposta grande e os semáforos.
    A cor da faixa acompanha a resposta; os chips têm sempre ícone e texto. */
 .pode-regar {
-  margin-bottom: 16px;
-  padding: 16px 20px;
+  margin-bottom: var(--gap);
+  padding: var(--espaco-cartao) calc(var(--espaco-cartao) + 4px);
   border-radius: 16px;
   background: var(--cartao);
   border: 2px solid var(--borda);
@@ -481,7 +493,7 @@ main {
 .pode-regar[data-cor="cinza"]    { border-color: #b0bec5; background: #f3f5f6; color: #546e7a; }
 .pode-titulo {
   margin: 0 0 4px;
-  font-size: 0.9rem;
+  font-size: var(--fs-nota);
   font-weight: 600;
   color: var(--texto-suave);
   text-transform: uppercase;
@@ -489,7 +501,7 @@ main {
 }
 .pode-resposta {
   margin: 0;
-  font-size: clamp(1.3rem, 3.6vw, 2rem);
+  font-size: var(--fs-titulo);
   font-weight: 800;
   line-height: 1.25;
 }
@@ -510,7 +522,7 @@ main {
   border: 2px solid;
   border-radius: 999px;
   font: inherit;
-  font-size: 1.05rem;
+  font-size: var(--fs-texto);
   text-align: left;
   cursor: pointer;
 }
@@ -528,20 +540,15 @@ main {
 @media (max-width: 600px) {
   .pode-regar { padding: 14px 14px 14px 16px; }
   .pode-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pode-chip { border-radius: 14px; font-size: 0.95rem; padding: 6px 10px; }
+  .pode-chip { border-radius: 14px; font-size: var(--fs-nota); padding: 6px 10px; }
   .pode-acao { grid-column: 1 / -1; }
-}
-/* Projetor: letras ainda maiores */
-@media (min-width: 1400px) {
-  .pode-resposta { font-size: 2.1rem; }
-  .pode-chip { font-size: 1.15rem; padding: 8px 18px; }
 }
 
 /* Cartões antes do primeiro dado do ESP32 */
 .espera-esp32 {
   margin: 12px 0 0;
   color: var(--texto-suave);
-  font-size: 1.1rem;
+  font-size: var(--fs-texto);
 }
 
 .atualizacao {
@@ -569,10 +576,10 @@ main {
   gap: 16px;
   margin: 12px 0;
 }
-.clima-valores dt { font-size: 0.85rem; color: var(--texto-suave); }
+.clima-valores dt { font-size: var(--fs-nota); color: var(--texto-suave); }
 .clima-valores dd {
   margin: 2px 0 0;
-  font-size: clamp(1.5rem, 6vw, 2rem);
+  font-size: var(--fs-numero);
   font-weight: 700;
   color: var(--verde);
   font-variant-numeric: tabular-nums;
@@ -580,9 +587,9 @@ main {
 }
 .clima-valores dd small { font-size: 0.55em; margin-left: 3px; }
 .clima-valores dt { white-space: nowrap; }
-.clima-explica, .clima-rodape { margin: 0; color: var(--texto-suave); font-size: 0.9rem; }
-.clima-rodape { margin-top: 8px; font-size: 0.85rem; }
-.clima-aviso { margin: 8px 0 0; color: var(--aviso-texto); font-size: 0.85rem; }
+.clima-explica, .clima-rodape { margin: 0; color: var(--texto-suave); font-size: var(--fs-nota); }
+.clima-rodape { margin-top: 8px; font-size: var(--fs-nota); }
+.clima-aviso { margin: 8px 0 0; color: var(--aviso-texto); font-size: var(--fs-nota); }
 
 /* Faixa de chuva: só informativa (a decisão da rega fica no cartão "Por que regou") */
 .clima-faixa-chuva {
@@ -605,11 +612,11 @@ main {
 }
 .qr-endereco {
   margin: 8px 0 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-nota);
   color: var(--texto-suave);
   overflow-wrap: anywhere;
 }
-.qr-aviso { margin: 8px 0 0; color: var(--texto-suave); font-size: 0.9rem; }
+.qr-aviso { margin: 8px 0 0; color: var(--texto-suave); font-size: var(--fs-nota); }
 /* Na página Sobre, aparece sempre */
 .cartao-qr-sobre { text-align: center; max-width: 320px; margin: 0 auto 40px; }
 
@@ -622,7 +629,7 @@ main {
   border-radius: 12px;
   background: #229ed9;
   color: #fff;
-  font-size: 1.1rem;
+  font-size: var(--fs-texto);
   font-weight: 700;
   text-align: center;
   text-decoration: none;
@@ -641,7 +648,7 @@ main {
 /* Cartão "Por que regou (ou não)" (decisao.js) */
 .decisao-subtitulo {
   margin: 0 0 8px;
-  font-size: 0.9rem;
+  font-size: var(--fs-nota);
   font-weight: 600;
   color: var(--texto-suave);
   text-transform: uppercase;
@@ -660,7 +667,7 @@ main {
   flex: none;
   min-width: 6.5em;
   color: var(--texto-suave);
-  font-size: 0.9rem;
+  font-size: var(--fs-nota);
   font-variant-numeric: tabular-nums;
 }
 .decisao-lista-icone { flex: none; }
@@ -676,13 +683,9 @@ main {
   .painel .cartoes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
-/* Projetor: letras maiores */
+/* Projetor de 1920: o painel usa mais da largura (as letras crescem pelos clamp() do :root) */
 @media (min-width: 1400px) {
-  html { font-size: 20px; }
-  .painel main { max-width: 1400px; }
-  .painel .numero { font-size: 4.5rem; }
-  .painel .bomba { font-size: 1.8rem; padding: 12px 18px; }
-  .painel .clima-valores dd { font-size: 1.7rem; }
+  .painel main { max-width: 1500px; }
   .painel .area-grafico { height: 360px; }
 }
 
@@ -690,7 +693,7 @@ main {
 .rodape {
   text-align: center;
   padding: 0 16px 24px;
-  font-size: 0.85rem;
+  font-size: var(--fs-nota);
 }
 .rodape a { color: var(--texto-suave); }
 
@@ -699,7 +702,7 @@ main {
 
 .titulo-secao {
   margin: 0 0 16px;
-  font-size: clamp(1.4rem, 4vw, 1.8rem);
+  font-size: var(--fs-titulo);
   color: var(--verde);
 }
 
@@ -710,10 +713,10 @@ main {
   border-radius: 16px;
   padding: 24px;
 }
-.abertura h2 { margin: 0; font-size: clamp(1.3rem, 4vw, 1.9rem); color: var(--verde); }
-.abertura .destaque { margin: 8px 0 16px; font-size: 1.15rem; font-weight: 600; }
+.abertura h2 { margin: 0; font-size: var(--fs-titulo); color: var(--verde); }
+.abertura .destaque { margin: 8px 0 16px; font-size: var(--fs-texto); font-weight: 600; }
 .abertura p { line-height: 1.6; }
-.abertura-info { margin-bottom: 0; color: var(--texto-suave); font-size: 0.95rem; }
+.abertura-info { margin-bottom: 0; color: var(--texto-suave); font-size: var(--fs-nota); }
 
 /* Fluxo Sensores → ESP32 → Firebase → Painel */
 .fluxo {
@@ -736,8 +739,8 @@ main {
   border-radius: 16px;
   padding: 16px 8px;
 }
-.fluxo-caixa strong { font-size: 1.15rem; }
-.fluxo-caixa span { color: var(--texto-suave); font-size: 0.9rem; }
+.fluxo-caixa strong { font-size: var(--fs-texto); }
+.fluxo-caixa span { color: var(--texto-suave); font-size: var(--fs-nota); }
 .fluxo-caixa .fluxo-icone { font-size: 2rem; }
 .fluxo-seta { font-size: 2rem; font-weight: 700; color: var(--verde); }
 
@@ -752,7 +755,7 @@ main {
   display: inline-block;
   padding: 2px 10px;
   border-radius: 999px;
-  font-size: 0.8rem;
+  font-size: var(--fs-nota);
   font-weight: 700;
   vertical-align: middle;
 }
@@ -763,15 +766,15 @@ main {
 .legenda { color: var(--texto-suave); margin: 0 0 8px; line-height: 2; }
 
 /* Cartões de funcionalidades */
-.grupo-titulo { margin: 24px 0 12px; font-size: 1.15rem; }
+.grupo-titulo { margin: 24px 0 12px; font-size: var(--fs-texto); }
 .funcionalidades {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
 }
 .funcionalidade { margin: 0; padding: 16px; }
-.funcionalidade h4 { margin: 10px 0 4px; font-size: 1.05rem; }
-.funcionalidade p { margin: 0; color: var(--texto-suave); font-size: 0.95rem; line-height: 1.5; }
+.funcionalidade h4 { margin: 10px 0 4px; font-size: var(--fs-texto); }
+.funcionalidade p { margin: 0; color: var(--texto-suave); font-size: var(--fs-nota); line-height: 1.5; }
 
 /* Tabela de materiais: no celular ela rola para o lado sozinha */
 .tabela-rolagem {
@@ -791,7 +794,7 @@ main {
   border-bottom: 1px solid var(--borda);
 }
 .tabela-materiais thead th {
-  font-size: 0.85rem;
+  font-size: var(--fs-nota);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--texto-suave);
@@ -801,13 +804,13 @@ main {
 .tabela-materiais .subtotal td { font-weight: 700; }
 .tabela-materiais .fora td { color: var(--texto-suave); font-style: italic; }
 .tabela-materiais tfoot td {
-  font-size: 1.15rem;
+  font-size: var(--fs-texto);
   font-weight: 700;
   color: var(--verde);
   border-bottom: none;
 }
-.tabela-materiais tfoot small { font-size: 0.8rem; font-weight: 400; color: var(--texto-suave); }
-.nota { color: var(--texto-suave); font-size: 0.9rem; }
+.tabela-materiais tfoot small { font-size: var(--fs-nota); font-weight: 400; color: var(--texto-suave); }
+.nota { color: var(--texto-suave); font-size: var(--fs-nota); }
 
 /* Linha do tempo */
 .linha-tempo {
@@ -832,7 +835,7 @@ main {
 .linha-tempo h3 { margin: 0 0 4px; }
 .linha-tempo p { margin: 4px 0; line-height: 1.5; }
 
-.equipe { margin: 0; font-size: 1.1rem; font-weight: 600; }
+.equipe { margin: 0; font-size: var(--fs-texto); font-weight: 600; }
 
 /* ================= Página "Planeje sua horta" ================= */
 .planejar main { max-width: 1280px; }
@@ -846,7 +849,7 @@ main {
 .planejar-canvas-caixa { position: relative; width: 100%; }
 /* touch-action: none deixa o dedo arrastar os obstáculos sem rolar a página */
 #terreno { display: block; max-width: 100%; touch-action: none; cursor: grab; }
-.planejar-ajuda, .planejar-nota { margin: 8px 0 0; font-size: 0.85rem; color: var(--texto-suave); }
+.planejar-ajuda, .planejar-nota { margin: 8px 0 0; font-size: var(--fs-nota); color: var(--texto-suave); }
 .planejar-grupo {
   margin: 0 0 12px;
   padding: 10px 12px;
@@ -861,7 +864,7 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 0.95rem;
+  font-size: var(--fs-nota);
 }
 .planejar-grupo input[type="number"], .planejar-editor input[type="number"], .planejar-editor input[type="text"] {
   width: 7.5em;
@@ -910,7 +913,7 @@ main {
   border-radius: 8px;
   background: rgba(27, 42, 28, 0.9);
   color: #fff;
-  font-size: 0.85rem;
+  font-size: var(--fs-nota);
   font-weight: 600;
   pointer-events: none;
   white-space: nowrap;
@@ -925,7 +928,7 @@ main {
 .planejar-datas input[type="date"] { min-height: 44px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
 .planejar-data.ativo { background: var(--verde); color: #fff; }
 .planejar-status { margin: 10px 0; font-weight: 600; line-height: 1.4; }
-.planejar-legenda { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.95rem; }
+.planejar-legenda { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: var(--fs-nota); }
 .planejar-legenda li { display: flex; align-items: center; gap: 6px; }
 .planejar-cor { display: inline-block; width: 22px; height: 16px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, 0.3); }
 .cor-sombra { background: var(--sol-sombra); }
@@ -950,10 +953,10 @@ main {
 .planejar-planta-nome { display: flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; }
 .planejar-planta-nome input { width: 22px; height: 22px; accent-color: var(--verde); }
 .planejar-planta-nome small { color: var(--texto-suave); }
-.planejar-planta-area { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; color: var(--texto-suave); }
+.planejar-planta-area { display: flex; align-items: center; gap: 6px; font-size: var(--fs-nota); color: var(--texto-suave); }
 .planejar-planta-area input { width: 5.5em; min-height: 40px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
 .planejar-sugestoes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.planejar-sugestoes li { display: flex; align-items: baseline; gap: 8px; line-height: 1.4; font-size: 1.02rem; }
+.planejar-sugestoes li { display: flex; align-items: baseline; gap: 8px; line-height: 1.4; font-size: var(--fs-texto); }
 .planejar-sugestoes li .planejar-cor { flex: none; transform: translateY(2px); }
 .planejar-sugestoes li.sem-lugar { color: var(--aviso-texto); font-weight: 600; }
 .planejar-explica { margin: 0 0 12px; padding-left: 20px; line-height: 1.6; }
@@ -967,7 +970,7 @@ main {
   padding: 10px 16px;
   border-radius: 12px;
   font: inherit;
-  font-size: 1.05rem;
+  font-size: var(--fs-texto);
   font-weight: 700;
   cursor: pointer;
   background: var(--cartao);
@@ -1035,7 +1038,7 @@ main {
 .planejar-opacidade { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; font-weight: 600; }
 .planejar-opacidade input { flex: 1 1 160px; min-height: 40px; accent-color: var(--verde); }
 .planejar-opacidade output { min-width: 3em; text-align: right; font-variant-numeric: tabular-nums; }
-.planejar-link { width: 100%; min-height: 40px; margin-top: 6px; padding: 6px 8px; font: inherit; font-size: 0.85rem; border: 1px solid var(--borda); border-radius: 8px; }
+.planejar-link { width: 100%; min-height: 40px; margin-top: 6px; padding: 6px 8px; font: inherit; font-size: var(--fs-nota); border: 1px solid var(--borda); border-radius: 8px; }
 .planejar-sugestoes li { cursor: pointer; border-radius: 8px; padding: 4px 6px; }
 .planejar-sugestoes li.ativo { background: #fff3e0; outline: 2px solid #d84315; }
 /* Selo da avaliação da planta: cor + ícone + palavra (não depende só da cor) */
@@ -1043,7 +1046,7 @@ main {
   flex: none;
   padding: 1px 8px;
   border-radius: 999px;
-  font-size: 0.8rem;
+  font-size: var(--fs-nota);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -1053,10 +1056,10 @@ main {
 .planejar-sugestoes li { flex-wrap: wrap; }
 /* Convivência entre plantas */
 .planejar-avisos { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
-.planejar-avisos li { padding: 8px 10px; border-radius: 10px; line-height: 1.4; font-size: 0.95rem; }
+.planejar-avisos li { padding: 8px 10px; border-radius: 10px; line-height: 1.4; font-size: var(--fs-nota); }
 .planejar-aviso-sobreposicao { background: #ffebee; color: #b71c1c; border: 2px solid #e53935; font-weight: 700; }
 .planejar-aviso-rega { background: #fff8e1; color: #6b4e00; border: 1px solid #f9d77e; }
-.planejar-resumo { margin: 8px 0; font-size: 1.1rem; font-weight: 700; }
+.planejar-resumo { margin: 8px 0; font-size: var(--fs-texto); font-weight: 700; }
 .planejar-filtro { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; font-weight: 600; }
 .planejar-filtro select { min-height: 44px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
 .planejar-botao:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -1085,13 +1088,13 @@ main {
   margin: 4px 0 0;
   padding-top: 8px;
   border-top: 1px solid var(--borda);
-  font-size: 0.75rem;
+  font-size: var(--fs-nota);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--texto-suave);
 }
-.planejar-menu-ajuda { margin: 0; max-width: 250px; font-size: 0.8rem; color: var(--texto-suave); }
+.planejar-menu-ajuda { margin: 0; max-width: 250px; font-size: var(--fs-nota); color: var(--texto-suave); }
 .planejar-botoes-coluna { flex-direction: column; align-items: stretch; }
 
 /* Minhas hortas */
@@ -1133,7 +1136,7 @@ main {
 .planejar-projeto-pergunta { color: #c62828; font-weight: 700; }
 .planejar-nome-projeto + .planejar-privacidade { margin-top: -4px; }
 .planejar-projeto-aberto { border-color: var(--verde); background: var(--verde-claro); }
-.planejar-botao-pequeno { min-height: 38px; padding: 4px 10px; font-size: 0.9rem; }
+.planejar-botao-pequeno { min-height: 38px; padding: 4px 10px; font-size: var(--fs-nota); }
 
 /* Hortas na nuvem */
 .planejar-nuvem-status {
@@ -1150,7 +1153,7 @@ main {
 .planejar-codigo label { display: block; font-weight: 700; margin-bottom: 6px; }
 .planejar-codigo input {
   font: inherit;
-  font-size: 1.1rem;
+  font-size: var(--fs-texto);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   min-height: 44px;
@@ -1169,7 +1172,7 @@ main {
   border-radius: 999px;
   background: var(--verde-claro);
   color: var(--verde);
-  font-size: 0.8rem;
+  font-size: var(--fs-nota);
   font-weight: 700;
 }
 .planejar-versao-atual { background: var(--verde-claro); border-color: var(--verde) !important; }
@@ -1239,7 +1242,7 @@ main {
   color: var(--verde);
 }
 .quadro-link { display: grid; gap: 4px; text-align: left; font-weight: 700; margin: 8px 0; }
-.quadro-link input { font: inherit; font-weight: 400; font-size: 0.9rem; padding: 8px; border: 1px solid var(--borda); border-radius: 8px; }
+.quadro-link input { font: inherit; font-weight: 400; font-size: var(--fs-nota); padding: 8px; border: 1px solid var(--borda); border-radius: 8px; }
 .quadro-qr { width: 180px; margin: 8px auto; }
 .quadro-qr svg { width: 100%; height: auto; display: block; }
 .quadro-qr .qr-endereco { display: none; }
@@ -1350,7 +1353,7 @@ body.imprimindo { overflow: hidden; }
   border-bottom: 4px solid transparent;
   background: none;
   font: inherit;
-  font-size: 1.05rem;
+  font-size: var(--fs-texto);
   font-weight: 700;
   color: var(--texto-suave);
   cursor: pointer;
@@ -1390,7 +1393,7 @@ body.imprimindo { overflow: hidden; }
 
 /* ---------- Aba Agora ---------- */
 /* Faixa "Pode regar agora?" e, na tela grande, o cartão do QR ao lado */
-.agora-topo { display: grid; gap: 16px; margin-bottom: 16px; }
+.agora-topo { display: grid; gap: var(--gap); margin-bottom: var(--gap); }
 .agora-topo .pode-regar, .agora-topo .cartao { margin-bottom: 0; }
 @media (min-width: 1024px) {
   .agora-topo { grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; }
@@ -1401,7 +1404,7 @@ body.imprimindo { overflow: hidden; }
 .cartao-economia:hover, .cartao-economia:focus-visible { border-color: var(--verde); }
 .economia-valor {
   margin: 0;
-  font-size: clamp(2.2rem, 7vw, 3rem);
+  font-size: var(--fs-numero);
   font-weight: 700;
   line-height: 1.1;
   color: var(--verde);
@@ -1409,10 +1412,10 @@ body.imprimindo { overflow: hidden; }
 }
 .economia-valor.agua-negativa { color: var(--aviso-texto); }
 .economia-coisas { margin: 6px 0 0; font-weight: 600; }
-.economia-mais { margin: 8px 0 0; font-size: 0.85rem; color: var(--texto-suave); }
+.economia-mais { margin: 8px 0 0; font-size: var(--fs-nota); color: var(--texto-suave); }
 
 /* "Última decisão, 11:31: …  ver histórico" */
-.ultima-decisao { margin: 0 0 8px; font-size: 1.05rem; line-height: 1.4; }
+.ultima-decisao { margin: 0 0 8px; font-size: var(--fs-texto); line-height: 1.4; }
 .ultima-decisao a { font-weight: 700; color: var(--verde); white-space: nowrap; }
 
 /* Barra de umidade com tracinhos em "liga" e "desliga" */
@@ -1428,7 +1431,7 @@ body.imprimindo { overflow: hidden; }
   background: var(--texto);
   opacity: 0.6;
 }
-.escala-limites { margin: 2px 0 0; font-size: 0.9rem; font-weight: 600; text-align: center; }
+.escala-limites { margin: 2px 0 0; font-size: var(--fs-nota); font-weight: 600; text-align: center; }
 
 /* Clima mais compacto no painel: os 4 valores em 2 × 2, sem a frase da ET₀ */
 .painel .clima [data-clima="explica"] { display: none; }
@@ -1445,7 +1448,7 @@ body.imprimindo { overflow: hidden; }
 .so-leitura .falha-acoes { display: none !important; }
 .controle-modo-texto { display: none; margin: 12px 0 0; font-weight: 700; }
 .so-leitura .controle-modo-texto { display: block; }
-.nota-demo { margin: 10px 0 0; font-size: 0.85rem; color: var(--aviso-texto); }
+.nota-demo { margin: 10px 0 0; font-size: var(--fs-nota); color: var(--aviso-texto); }
 
 /* ---------- Aba Demonstração ---------- */
 .demo-aviso {
@@ -1455,7 +1458,7 @@ body.imprimindo { overflow: hidden; }
   background: #ede7f6;
   color: #4527a0;
   border: 2px solid #b39ddb;
-  font-size: 1.1rem;
+  font-size: var(--fs-texto);
   font-weight: 700;
 }
 
@@ -1500,18 +1503,18 @@ body.imprimindo { overflow: hidden; }
 
 /* ================= Tela grande: tudo mais justo, para caber sem rolar ================= */
 @media (min-width: 1024px) {
-  .painel .cartao { padding: 16px 18px; }
   .painel .cartoes .cartao { margin-bottom: 0; }
-  .painel .cartoes { margin-bottom: 12px; }
-  .painel .numero { font-size: 4rem; }
-  .painel .bomba { margin-top: 4px; padding: 8px 18px; font-size: 1.5rem; }
-  .painel .controle { margin-top: 12px; }
-  .painel .trilho-limites { margin-top: 12px; }
+  .painel .cartoes { margin-bottom: var(--gap); }
+  .painel .bomba { margin-top: 4px; padding: 6px 16px; }
+  .painel .controle { margin-top: 10px; }
+  .painel .trilho-limites { margin-top: 10px; }
+  /* Botões grandes mais baixos no computador (no celular continuam com 44 px) */
+  .painel .controle-modo { min-height: 38px; padding: 4px 6px; }
+  .painel .controle-bomba { min-height: 44px; margin-top: 8px; padding: 8px; }
 
   /* Água: os números à esquerda, a água por dia à direita */
   .agua-colunas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 24px; align-items: start; }
   .agua-colunas .agua-valores { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .agua-colunas .agua-valores dd { font-size: 2rem; }
   .agua-colunas .agua-dias { margin: 0; padding: 0 0 0 24px; border-top: none; border-left: 1px solid var(--borda); }
   .agua-colunas .agua-grafico { height: 260px; }
 
@@ -1525,33 +1528,26 @@ body.imprimindo { overflow: hidden; }
   .projetor .area-grafico { height: 330px; }
   .projetor .agua-nota, .projetor .agua-resumo { display: none; }
   .projetor .decisao-lista li:nth-child(n + 6) { display: none; }
-  /* Aba Agora: faixa, chips e números um pouco menores */
-  .projetor .pode-resposta { font-size: 1.6rem; }
-  .projetor .pode-chips { margin-top: 10px; }
-  .projetor .pode-chip { min-height: 38px; padding: 4px 12px; font-size: 0.95rem; }
-  .projetor .numero { font-size: 3.2rem; }
-  .projetor .economia-valor { font-size: 2.4rem; }
 }
 
-/* Cartões da mesma fileira: mesma altura, conteúdo no topo; títulos numa linha só */
+/* Cartões da mesma fileira: mesma altura, conteúdo no topo */
 @media (min-width: 1024px) {
   .painel .cartoes { align-items: stretch; }
-  .painel .cartoes .cartao h2 { font-size: 0.85rem; }
-  .painel .bomba { font-size: 1.35rem; }
+  /* Chips da faixa mais baixos no computador (no celular, 44 px para o dedo) */
+  .pode-chips { gap: 6px; margin-top: 10px; }
+  .pode-chip { min-height: 36px; padding: 3px 12px; }
+  .pode-acao { min-height: 36px; padding: 3px 12px; }
 }
 
 /* ================= Cartão "Receba os alertas da horta" (canal do Telegram) ================= */
 .telegram-corpo { display: flex; align-items: center; gap: 16px; }
 .telegram-frase { margin: 0; font-weight: 600; line-height: 1.35; }
-.telegram-arroba { margin: 6px 0 0; font-size: 1.05rem; font-weight: 700; color: #1b86ba; overflow-wrap: anywhere; }
+.telegram-arroba { margin: 6px 0 0; font-size: var(--fs-texto); font-weight: 700; color: #1b86ba; overflow-wrap: anywhere; }
 .telegram-texto .botao-telegram { margin-top: 12px; }
 /* O QR do canal: só na tela grande (no celular, o botão abre o canal direto) */
-.qr-telegram { display: none; flex: none; width: 150px; }
-.qr-telegram svg { width: 150px; max-width: none; }
+.qr-telegram { display: none; flex: none; width: clamp(110px, 9vw, 170px); }
+.qr-telegram svg { width: 100%; max-width: none; }
 .qr-telegram .qr-endereco { display: none; }  /* o @ do canal já aparece ao lado */
-@media (min-width: 1400px) {
-  .qr-telegram, .qr-telegram svg { width: 190px; }
-}
 @media (min-width: 1024px) {
   .qr-telegram { display: block; }
   .telegram-texto { max-width: 13rem; }
