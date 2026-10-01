@@ -373,10 +373,6 @@ main {
 }
 .agua-valores dd.agua-negativa { color: var(--aviso-texto); }
 .agua-sub { margin: 2px 0 0; font-size: var(--fs-nota); color: var(--texto-suave); }
-.agua-traducao { margin: 0 0 8px; font-size: var(--fs-texto); font-weight: 700; }
-.agua-nota { margin: 0 0 12px; font-size: var(--fs-nota); color: var(--texto-suave); }
-.agua-lista { margin-bottom: 12px; }
-.agua-lista summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
 .agua-zerar { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .agua-confirmar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; }
 .agua-botao {
@@ -391,43 +387,12 @@ main {
   border: 2px solid var(--borda);
 }
 .agua-botao-forte { background: var(--aviso-texto); color: #fff; border-color: var(--aviso-texto); }
-/* Barra "Cota de hoje pela ET₀" */
-.agua-cota { margin: 4px 0 12px; }
-.agua-cota-topo { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
-.agua-cota-titulo { font-weight: 600; }
-.agua-cota-valor { font-size: var(--fs-texto); font-weight: 700; color: var(--verde); font-variant-numeric: tabular-nums; }
-.agua-cota .trilho { margin-top: 6px; }
-/* A barra vai até 150% da cota: os últimos 1/3 (margem extra) ficam listrados */
-.agua-cota-trilho {
-  position: relative;
-  overflow: visible;
-  margin-bottom: 20px;
-  background:
-    repeating-linear-gradient(45deg, rgba(239, 108, 0, 0.18) 0 6px, transparent 6px 12px) 66.667% 0 / 33.333% 100% no-repeat,
-    var(--verde-claro);
-}
-.agua-cota-extra {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  width: 0;
-  border-radius: 0 999px 999px 0;
-  background: repeating-linear-gradient(45deg, #ef6c00 0 6px, #ffb74d 6px 12px);
-}
-.agua-cota-margem {
-  position: absolute;
-  top: 22px;
-  left: 66.667%;
-  font-size: var(--fs-nota);
-  font-weight: 600;
-  color: #e65100;
-}
 /* Botão "Recomeçar a cota (demo)" no cartão Modo demonstração */
 .demo-cota { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--borda); }
 
-/* "Água por dia": seletor de período, gráfico de altura fixa e tabela com rolagem própria */
-.agua-dias { margin: 16px 0; padding-top: 16px; border-top: 1px solid var(--borda); }
-.agua-periodos { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+/* "Água por dia": gráfico de altura fixa; a tabela rola sozinha para o lado */
+.agua-dias { margin: 16px 0 0; padding-top: 16px; border-top: 1px solid var(--borda); }
+.agua-periodos { display: flex; flex-wrap: wrap; gap: 8px; }
 .agua-periodo {
   min-height: 44px;
   padding: 8px 16px;
@@ -440,10 +405,7 @@ main {
   border: 2px solid var(--verde);
 }
 .agua-periodo.ativo { background: var(--verde); color: #fff; }
-.agua-resumo { margin: 0 0 12px; font-size: var(--fs-texto); font-weight: 600; line-height: 1.4; }
 .agua-grafico { position: relative; height: 280px; margin-bottom: 8px; }
-.agua-tabela { margin-top: 8px; }
-.agua-tabela summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
 .tabela-agua { min-width: 560px; }
 .tabela-agua th, .tabela-agua td { white-space: nowrap; }
 @media (min-width: 1400px) { .painel .agua-grafico { height: 360px; } }
@@ -1462,22 +1424,6 @@ body.imprimindo { overflow: hidden; }
   font-weight: 700;
 }
 
-/* ---------- Aba Água ---------- */
-.agua-coisas { margin: 0 0 12px; }
-.agua-traducao span { display: block; }
-/* "Tabela por dia" e "Últimas regas": seta que gira ao abrir (parece clicável) */
-.agua-tabela summary, .agua-lista summary { list-style: none; gap: 8px; }
-.agua-tabela summary::-webkit-details-marker, .agua-lista summary::-webkit-details-marker { display: none; }
-.agua-tabela summary::before, .agua-lista summary::before {
-  content: "›";
-  display: inline-block;
-  width: 1em;
-  font-size: 1.5em;
-  line-height: 1;
-  text-align: center;
-  transition: transform 0.2s;
-}
-.agua-tabela[open] > summary::before, .agua-lista[open] > summary::before { transform: rotate(90deg); }
 
 /* ================= Modo projetor (projetor.js) ================= */
 /* Pontinhos discretos no canto: qual aba está no ar */
@@ -1526,8 +1472,9 @@ body.imprimindo { overflow: hidden; }
 @media (min-width: 1024px) and (max-height: 800px) {
   .projetor .agua-colunas .agua-grafico { height: 190px; }
   .projetor .area-grafico { height: 330px; }
-  .projetor .agua-nota, .projetor .agua-resumo { display: none; }
   .projetor .decisao-lista li:nth-child(n + 6) { display: none; }
+  /* No projetor ninguém abre os recolhidos da aba Água */
+  .projetor .agua-detalhe { display: none; }
 }
 
 /* Cartões da mesma fileira: mesma altura, conteúdo no topo */
@@ -1561,3 +1508,70 @@ body.imprimindo { overflow: hidden; }
 /* Botões da bomba desativados ficam mais baixos */
 .controle-modo:disabled { min-height: 32px; padding-top: 2px; padding-bottom: 2px; }
 .controle-bomba:disabled { min-height: 36px; }
+
+/* ================= Aba Água (agua.js) ================= */
+/* Um período só para a aba inteira: o seletor e a nota no topo */
+.agua-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 4px 0 14px; }
+.agua-periodo-nota { margin: 0; font-size: var(--fs-nota); color: var(--texto-suave); }
+.agua-frase { margin: 0 0 12px; font-size: calc(var(--fs-titulo) * 0.78); font-weight: 700; line-height: 1.3; }
+/* Os 3 números: Horta · Timer fixo · Economia (fundo verde; negativa, fundo de alerta) */
+.agua-valores { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0 0 12px; }
+.agua-valor { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--fundo); border: 1px solid var(--borda); }
+.agua-valor dd { font-size: var(--fs-numero); }
+.agua-valor-economia { background: var(--verde-claro); border-color: #a5d6a7; }
+.agua-valor-economia.agua-valor-negativa { background: var(--aviso); border-color: #f5c98b; }
+.agua-valor-negativa dd { color: var(--aviso-texto); }
+@media (max-width: 600px) {
+  .agua-valores { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .agua-valor-economia { grid-column: 1 / -1; }
+}
+/* Equivalências numa linha */
+.agua-coisas { margin: 0 0 12px; font-size: var(--fs-texto); font-weight: 600; }
+
+/* Hoje: usado × cota × limite com margem */
+.agua-hoje { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--borda); }
+.agua-hoje-titulo { margin: 0 0 6px; font-size: var(--fs-texto); }
+.agua-hoje-titulo small { margin-left: 6px; font-size: var(--fs-nota); font-weight: 400; color: var(--texto-suave); }
+.agua-hoje-linha { margin: 0 0 8px; font-size: var(--fs-texto); }
+.agua-hoje-usado { font-size: calc(var(--fs-numero) * 0.8); font-variant-numeric: tabular-nums; }
+.agua-hoje-verde-texto { color: var(--verde); }
+.agua-hoje-amarelo-texto { color: #8a5a00; }
+.agua-hoje-vermelho-texto { color: #c62828; }
+.agua-hoje-barra { position: relative; height: 18px; margin: 4px 0 30px; border-radius: 999px; background: #eceff1; }
+.agua-hoje-trecho { position: absolute; top: 0; bottom: 0; }
+.agua-hoje-verde { background: var(--verde); border-radius: 999px 0 0 999px; }
+.agua-hoje-amarelo { background: #f9a825; }
+.agua-hoje-vermelho { background: #e53935; border-radius: 0 999px 999px 0; }
+/* Tracinhos da cota e do limite, com o nome embaixo ("cota" à esquerda, "limite" à direita do traço) */
+.agua-hoje-marca { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--texto); }
+.agua-hoje-marca span { position: absolute; top: 26px; font-size: var(--fs-nota); font-weight: 600; white-space: nowrap; color: var(--texto-suave); }
+[data-agua="marca-cota"] span { right: 4px; }
+[data-agua="marca-limite"] span { left: 4px; }
+.agua-hoje-aviso {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #ffebee;
+  color: #b71c1c;
+  border: 1px solid #e57373;
+  font-size: var(--fs-nota);
+  font-weight: 700;
+}
+
+/* Recolhidos no fim: Como calculamos, Tabela por dia, Últimas regas (seta que gira ao abrir) */
+.agua-detalhe { border-top: 1px solid var(--borda); }
+.agua-detalhe:first-of-type { margin-top: 16px; }
+.agua-detalhe summary { list-style: none; display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; font-weight: 600; }
+.agua-detalhe summary::-webkit-details-marker { display: none; }
+.agua-detalhe summary::before {
+  content: "›";
+  display: inline-block;
+  width: 1em;
+  font-size: 1.5em;
+  line-height: 1;
+  text-align: center;
+  transition: transform 0.2s;
+}
+.agua-detalhe[open] > summary::before { transform: rotate(90deg); }
+.agua-detalhe .tabela-rolagem, .agua-detalhe .decisao-lista { margin-bottom: 12px; }
+.agua-calculo { margin: 0 0 12px; padding-left: 22px; font-size: var(--fs-nota); color: var(--texto-suave); line-height: 1.5; }
