@@ -12,7 +12,7 @@ import { iniciarAgua, numero } from "./agua.js";
 import { iniciarFalha } from "./falha.js";
 import { iniciarPodeRegar, LIMITE_LIGAR, LIMITE_DESLIGAR, LIMITE_CRITICO } from "./podeRegar.js";
 import { desenharQR } from "./qr.js";
-import { CANAL_TELEGRAM, ligarLinksTelegram } from "./config.js";
+import { TELEGRAM_CANAL, arrobaDoCanal, ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
 import { iniciarAbas } from "./abas.js";
 import { iniciarProjetor } from "./projetor.js";
@@ -182,12 +182,15 @@ document.querySelector('[data-marca="ligar"]').style.left = `${LIMITE_LIGAR}%`;
 document.querySelector('[data-marca="desligar"]').style.left = `${LIMITE_DESLIGAR}%`;
 document.querySelector("[data-limites]").textContent = `liga ${LIMITE_LIGAR}% · desliga ${LIMITE_DESLIGAR}%`;
 
-// ---------- QR codes "Abra no seu celular" (só aparecem na tela grande) ----------
-desenharQR(document.getElementById("qr"));                           // o painel
-desenharQR(document.getElementById("qr-telegram"), CANAL_TELEGRAM);  // o canal (link fixo: aparece até no localhost)
-
-// Botão "Receber alertas no Telegram" (celular) e link do rodapé
-ligarLinksTelegram();
+// ---------- Cartão "Receba os alertas da horta" (canal do Telegram) ----------
+// Quem olha o projetor já está vendo o site: o QR é o do canal, não o do painel.
+// QR na tela grande; no celular, o botão "Abrir canal no Telegram".
+if (TELEGRAM_CANAL) {
+  document.getElementById("cartao-telegram").hidden = false;
+  document.querySelector("[data-telegram-arroba]").textContent = arrobaDoCanal();
+  desenharQR(document.getElementById("qr-telegram"), TELEGRAM_CANAL);  // link fixo: aparece até no localhost
+}
+ligarLinksTelegram();  // botão do cartão e link do rodapé
 
 // ---------- Gráfico com as últimas 50 leituras (aba Histórico) ----------
 // Faixas de fundo com os limites da rega, desenhadas antes da curva

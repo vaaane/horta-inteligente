@@ -69,22 +69,20 @@ export function iniciarProjetor(db, abas, interruptor) {
     const agora = Date.now();
     const pausado = agora < pausadoAte;
     const travado = emFalha || bombaLigada || agora < travadoAte;
+    if (pausado) {
+      abaDesde = agora;  // quando a pausa acabar, a aba atual ainda fica 20 s
+    } else if (travado) {
+      if (abas.atual() !== "agora") mostrarAba("agora");
+      abaDesde = agora;
+    } else if (agora - abaDesde >= TEMPO_POR_ABA_MS) {
+      const i = ROTACAO.indexOf(abas.atual());  // -1 (Demonstração) volta para Agora
+      mostrarAba(ROTACAO[(i + 1) % ROTACAO.length]);
+    }
+
+    // Pontinhos: a aba que está no ar agora (laranja = pausado)
     indicador.classList.toggle("pausado", pausado);
     for (const ponto of indicador.children) {
       ponto.classList.toggle("ativo", ponto.dataset.ponto === abas.atual());
-    }
-    if (pausado) {
-      abaDesde = agora;  // quando a pausa acabar, a aba atual ainda fica 20 s
-      return;
-    }
-    if (travado) {
-      if (abas.atual() !== "agora") mostrarAba("agora");
-      abaDesde = agora;
-      return;
-    }
-    if (agora - abaDesde >= TEMPO_POR_ABA_MS) {
-      const i = ROTACAO.indexOf(abas.atual());  // -1 (Demonstração) volta para Agora
-      mostrarAba(ROTACAO[(i + 1) % ROTACAO.length]);
     }
   }
 

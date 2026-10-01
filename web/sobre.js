@@ -1,7 +1,7 @@
 // Página "Sobre o projeto" — monta os cartões de funcionalidades
 // Para mudar o status de um item, troque "proxima" por "funcionando" (ou o contrário).
 import { desenharQR } from "./qr.js";
-import { CANAL_TELEGRAM, ligarLinksTelegram } from "./config.js";
+import { TELEGRAM_CANAL, ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
 
 iniciarCabecalho();
@@ -81,12 +81,12 @@ for (const grupo of grupos) {
       <h4>${item.titulo}</h4>
       <p>${item.frase}</p>
     `;
-    if (item.canalTelegram) {
+    if (item.canalTelegram && TELEGRAM_CANAL) {
       // Link do canal e, na tela grande, o QR pequeno para entrar pelo celular
       cartao.insertAdjacentHTML("beforeend", `
         <p class="funcionalidade-canal"><a data-canal-telegram>Entrar no canal</a></p>
         <div class="qr qr-pequeno" data-qr-canal></div>`);
-      desenharQR(cartao.querySelector("[data-qr-canal]"), CANAL_TELEGRAM);
+      desenharQR(cartao.querySelector("[data-qr-canal]"), TELEGRAM_CANAL);
     }
     lista.append(cartao);
   }
