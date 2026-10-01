@@ -18,7 +18,13 @@ O ESP32 mede a umidade do solo, liga a bomba quando a terra está seca e envia o
 | `firebase/` | As regras de segurança do banco de dados |
 
 Arquivos do site (`web/`):
-- `index.html` + `app.js`: o painel ao vivo (umidade, bomba, clima, motivo da rega e gráfico).
+- `index.html` + `app.js`: o painel ao vivo, em abas (Agora · Água · Histórico · Demonstração). Veja "O painel" abaixo.
+- `abas.js`: as abas do painel (endereço próprio para cada uma, setas do teclado).
+- `projetor.js`: o modo projetor (o painel alterna as abas sozinho).
+- `podeRegar.js`: a faixa "Pode regar agora?" com os semáforos (solo, chuva, horário, cota, falha).
+- `falha.js`: a faixa vermelha de falha e o botão "Já resolvi".
+- `cabecalho.js`: o cabeçalho das 3 páginas (no celular, a navegação vira o botão ☰).
+- `config.js`: configurações públicas do site, como o link do canal do Telegram (`TELEGRAM_CANAL`). Nada de senha aqui.
 - `sobre.html` + `sobre.js`: a página "Sobre o projeto" para a feira (funcionalidades, materiais, evolução). Para mudar o status de uma funcionalidade, edite a lista no `sobre.js`.
 - `clima.js`: o cartão "Clima agora", usado no painel e na `teste.html` (o mesmo código nas duas páginas).
 - `controle.js`: o controle da bomba no cartão "Bomba d'água" (Automático | Manual e Ligar/Desligar). Veja "Controle pelo site" no final.
@@ -28,9 +34,9 @@ Arquivos do site (`web/`):
 - `mapa.js`: o modo "Sobre o mapa" da página Planeje sua horta (imagem de satélite, busca de endereço e desenho por cima).
 - `sol.js`: o cálculo das horas de sol (sem mexer na página). Testes: `node web/sol.test.mjs` (precisa de internet para baixar o SunCalc).
 - `culturas.js`: sol e umidade de referência de cada planta e a escolha do melhor lugar.
-- `decisao.js`: o cartão "Por que regou (ou não)" do painel: motivo da decisão atual do ESP32 e as 5 últimas decisões (`/horta/decisoes`). Fica escondido se o firmware ainda não manda a decisão.
-- `qr.js`: desenha o QR code "Abra no seu celular" (no painel só aparece em telas largas; na `sobre.html`, sempre).
-- `teste.html`: a página do teste acende/apaga.
+- `decisao.js`: a lista "Últimas decisões" (aba Histórico) e a linha "Última decisão, 11:31: …" (aba Agora), de `/horta/decisoes`. Fica escondida se o firmware ainda não manda a decisão.
+- `qr.js`: desenha os QR codes (o do canal do Telegram no painel; o do site na `sobre.html`).
+- `teste.html`: a página do teste acende/apaga. Não tem link no site: abra pelo endereço direto (`/teste.html`).
 
 ---
 
@@ -127,7 +133,7 @@ Para testar tudo na mesa, sem bomba e sem sensor de verdade:
 Um teste mínimo para conferir que o caminho **ESP32 → Firebase → site** está funcionando, antes de montar o sensor e a bomba.
 
 1. **Publique as regras** (`firebase/database.rules.json`) no console do Firebase, como no passo 2.
-2. Abra **`/teste.html`** no site (ou pelo link "Página de teste" no rodapé da página principal).
+2. Abra **`/teste.html`** no site (digite o endereço: a página não tem link no menu nem no rodapé).
 3. Na pasta `firmware/teste-acende/`, copie `secrets.example.h` para **`secrets.h`**, preencha o Wi-Fi e o endereço do banco e grave o `teste-acende.ino` no ESP32.
 4. Abra o **Serial Monitor em 115200** (final de linha: "Nova linha") e digite **`acende`**. O círculo do site fica verde e o LED azul da placa acende. Digite **`apaga`** para desligar.
 
@@ -163,7 +169,7 @@ A cada leitura do sensor (a cada 2 s) o ESP32 decide o que fazer, nesta ordem:
    - Chance baixa → rega. → `regando`
 5. **Solo úmido:** não faz nada. → `solo_ok`
 
-Cada decisão tem um **código** e um **motivo** em português (ex.: "Não reguei: 80% de chance de chuva nas próximas 6 h."). O motivo vai junto com o estado para o Firebase e aparece no painel, no cartão **"Por que regou (ou não)"**. Quando o código muda, o ESP32 escreve `[Decisão] <código> — <motivo>` no Serial Monitor e guarda a mudança no histórico `/horta/decisoes` (se estiver sem Wi-Fi, envia a última mudança quando a conexão voltar).
+Cada decisão tem um **código** e um **motivo** em português (ex.: "Não reguei: 80% de chance de chuva nas próximas 6 h."). O motivo vai junto com o estado para o Firebase e aparece no painel, na faixa **"Pode regar agora?"** (e na lista "Últimas decisões", aba Histórico). Quando o código muda, o ESP32 escreve `[Decisão] <código> — <motivo>` no Serial Monitor e guarda a mudança no histórico `/horta/decisoes` (se estiver sem Wi-Fi, envia a última mudança quando a conexão voltar).
 
 Os limites ficam no bloco **REGRAS DA REGA** do `esp32-horta.ino`: `LIMITE_LIGAR`, `LIMITE_DESLIGAR`, `LIMITE_CHUVA`, `LIMITE_CRITICO` e `VALIDADE_CLIMA`.
 
@@ -178,8 +184,22 @@ O jeito mais fácil é o cartão **"Modo demonstração"** do painel (veja no fi
 
 ⚠️ **Antes da feira**, volte para `SIMULAR_CHANCE_CHUVA = -1` e grave o ESP32 de novo. Se o Serial Monitor ainda mostrar `[Teste] SIMULAR_CHANCE_CHUVA ativo` ou o painel mostrar "(simulado)", a simulação continua ligada.
 
+## O painel
+O `index.html` tem quatro abas, logo abaixo do cabeçalho. Cada uma tem endereço próprio: dá para abrir direto numa delas, e trocar de aba muda o endereço sem recarregar.
+
+| Aba | Endereço | O que tem |
+|---|---|---|
+| **Agora** | `index.html#agora` (padrão) | faixa "Pode regar agora?" com os semáforos; ao lado, o QR do canal do Telegram; os cartões Umidade do solo (com os tracinhos de liga 35% / desliga 60%), Bomba, Clima agora e Água economizada; a linha "Última decisão" |
+| **Água** | `index.html#agua` | água usada, timer fixo e economia; "Em coisas do dia a dia"; cota de hoje; gráfico "Água por dia" (7/14/30 dias); tabela por dia e últimas regas |
+| **Histórico** | `index.html#historico` | gráfico da umidade com as faixas desliga / liga / crítico e as regas em pontos azuis; lista "Últimas decisões" |
+| **Demonstração** | `index.html#demo` | simular chuva e horário, recomeçar a cota, simular fim do dia, detectar falha, zerar contagem e o interruptor do modo projetor |
+
+- **Celular do visitante:** a primeira coisa abaixo do cabeçalho é "Pode regar agora?"; as abas ficam presas embaixo da tela.
+- **Quem pode mexer:** a aba Demonstração e os botões que gravam no Firebase (Manual/Ligar, "Já resolvi", os botões da faixa) só aparecem em telas de **1024 px ou mais** (o computador do projetor). No celular, sem eles, a bomba mostra só "Modo: Automático" ou "Modo: Manual". Para a professora usar os controles no celular: **`index.html?demo=1`** (aparece uma nota avisando que o que mudar aparece para todos).
+- **Modo projetor:** **`index.html?tela=projetor`** (ou o interruptor "Modo projetor" na aba Demonstração, guardado no navegador) alterna Agora → Água → Histórico a cada **20 s**. Fica parado na aba Agora enquanto há falha, a bomba está ligada ou a decisão acabou de mudar (30 s). Um toque, clique ou tecla pausa a rotação por **2 min**. Três pontinhos no canto mostram a aba no ar (laranja = pausado). A Demonstração nunca entra na rotação. Em 1920×1080 e 1280×720, cada aba cabe sem rolar (no 720 p os gráficos ficam mais baixos).
+
 ## Controle pelo site
-No cartão **"Bomba d'água"** do painel tem dois botões: **Automático** | **Manual**. Não precisa de login.
+No cartão **"Bomba d'água"** do painel tem dois botões: **Automático** | **Manual**. Não precisa de login. No celular, os botões só aparecem com `?demo=1` (veja "O painel").
 
 - **Automático:** o ESP32 decide sozinho (veja "Como a rega funciona").
 - **Manual:** aparece o botão **Ligar bomba** / **Desligar bomba**.
@@ -236,6 +256,17 @@ Os avisos seguem a **decisão estável** (a que vai para o histórico, depois de
 - **Anti-spam:** a mesma mensagem não se repete antes de 60 s. Uma rega de menos de 20 s vira uma mensagem só ("💧 Regou 15 s (~0,4 L).").
 - **Envio:** fila de até 8 mensagens, uma a cada 3 s no máximo (cada envio trava o ESP32 ~1 s). Sem Wi-Fi, a fila espera; mensagens com mais de 10 min são descartadas. Se o Telegram responder que o token ou o chat id estão errados, o Serial avisa e os alertas ficam desligados até reiniciar a placa.
 
+### Canal da horta (para os visitantes)
+Na feira, o painel mostra o QR de um **canal** do Telegram: quem escaneia entra e passa a receber os avisos. Canal, e não grupo: no canal só o bot publica e a lista de inscritos fica oculta.
+1. No Telegram, crie um **canal público** (ex.: `t.me/hortainteligenteced`). Na descrição do canal, coloque o link do site.
+2. Em **Administradores**, adicione o bot como administrador, com permissão de publicar mensagens.
+3. Publique qualquer mensagem no canal e encaminhe-a para o bot; abra `https://api.telegram.org/bot<TOKEN>/getUpdates` e copie o `chat.id` do canal (negativo, começa com `-100`).
+4. Coloque esse número em `TELEGRAM_CHAT_IDS` no `secrets.h` (pode ficar junto com o seu chat pessoal: `"123456789,-1001234567890"`) e grave o ESP32.
+5. Coloque o link do canal em `TELEGRAM_CANAL`, no `web/config.js`. Com o link vazio, o cartão "Receba os alertas da horta" não aparece no painel.
+6. **Durante a feira, ligue `TELEGRAM_TUDO_NO_MODO_TESTE = true`** no `.ino` (se a placa estiver com `MODO_TESTE = true`): assim quem entrar no canal recebe também as regas e os adiamentos, não só as falhas.
+
+No painel, o cartão **"Receba os alertas da horta"** mostra o QR do canal (tela grande) ou o botão **"Abrir canal no Telegram"** (celular). O QR do site continua na página Sobre.
+
 ### Testar (com `MODO_TESTE = true`)
 1. Ligue a placa → chega "🌱 Horta ligada".
 2. Gire o potenciômetro para 15% e espere 10 s → "🚨" de solo crítico.
@@ -255,10 +286,10 @@ Quando o ESP32 cai (sem energia ou sem Wi-Fi), ele não consegue avisar. Quem av
 Não foi feito agora porque precisa de um Worker e de um KV novos, criados e publicados na conta do Cloudflare.
 
 ## Modo demonstração
-Na época da feira quase nunca chove no DF, então a previsão real marca ~0% e a decisão da chuva nunca aparece. O cartão **"Modo demonstração"** do painel resolve isso:
+Na época da feira quase nunca chove no DF, então a previsão real marca ~0% e a decisão da chuva nunca aparece. O cartão **"Modo demonstração"** (aba **Demonstração** do painel) resolve isso:
 
 - Ligue a chave **Simular chuva** e escolha a chance (controle de 0 a 100% ou os botões 0%, 30%, 60%, 80% e 100%). A marca em **60%** mostra a partir de onde a rega é adiada.
-- O valor vai para `/horta/comandos/simularChuva` quando você solta o controle, e o ESP32 decide de novo na hora. O motivo no cartão "Por que regou (ou não)" termina com **"(simulado)"**.
+- O valor vai para `/horta/comandos/simularChuva` quando você solta o controle, e o ESP32 decide de novo na hora. O motivo na faixa "Pode regar agora?" termina com **"(simulado)"**.
 - Enquanto a simulação estiver ativa, aparece uma faixa âmbar com o botão **Voltar à previsão real**. O cartão "Clima agora" continua mostrando a previsão **real**, com a linha "A decisão está usando uma chance simulada de X%".
 - Prioridade da chance usada na decisão: simulação do site → `SIMULAR_CHANCE_CHUVA` do código → previsão real.
 - Com `MODO_TESTE = false`, a simulação do site desliga sozinha em **15 min** (o ESP32 grava `simularChuva: -1`). Com `MODO_TESTE = true`, fica até alguém desligar.
