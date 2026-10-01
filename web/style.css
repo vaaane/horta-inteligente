@@ -819,8 +819,10 @@ main {
   gap: 8px;
   font-size: var(--fs-nota);
 }
+.planejar-grupo label, .planejar-editor label { min-width: 0; }
 .planejar-grupo input[type="number"], .planejar-editor input[type="number"], .planejar-editor input[type="text"] {
   width: 7.5em;
+  min-width: 0;
   min-height: 40px;
   padding: 6px 8px;
   font: inherit;
@@ -966,7 +968,8 @@ main {
 .planejar-resumo { margin: 8px 0; font-size: var(--fs-texto); font-weight: 700; }
 .planejar-filtro { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; font-weight: 600; }
 .planejar-filtro select { min-height: 44px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
-.planejar-botao:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Desativado, mas legível ("Voltar à sugestão") */
+.planejar-botao:disabled { opacity: 1; color: #66756a; background: #f1f4f0; border-color: #c3cec2; cursor: not-allowed; }
 
 /* ---------- Salvar a planta ---------- */
 .planejar-menu { position: relative; }
@@ -1764,3 +1767,10 @@ body.imprimindo { overflow: hidden; }
 .planejar-sugestao-texto { flex: 1; min-width: 0; }
 .planejar-sugestao-info { color: var(--texto-suave); font-size: var(--fs-nota); }
 .planejar-sugestoes .planejar-selo-avaliacao { margin-left: auto; }
+
+/* Largura e comprimento (latitude e longitude) lado a lado: o rótulo em cima, o campo
+   ocupando a coluna toda (antes os campos estouravam a caixa) */
+.planejar-grupo-duplo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.planejar-grupo-duplo legend { grid-column: 1 / -1; }
+.planejar-grupo-duplo label { flex-direction: column; align-items: stretch; gap: 4px; }
+.planejar-grupo-duplo input[type="number"] { width: 100%; }

@@ -54,7 +54,7 @@ const EXEMPLO = {
 
 const CHAVE_SALVAR = "horta-planejar-v1";
 const MARGEM = 34;       // espaço (px) para a régua em cima e à esquerda
-const RAIO_BUSSOLA = 26; // tamanho da seta do norte (px)
+const RAIO_BUSSOLA = 24; // seta do norte: 48 px, como a rosa do modo Mapa
 const ESPACO_BUSSOLA = RAIO_BUSSOLA * 2 + 16;  // coluna à direita do terreno, só para a seta
 
 const copia = (obj) => JSON.parse(JSON.stringify(obj));
@@ -99,8 +99,8 @@ const paraPxX = (m) => MARGEM + m * escala;
 const paraPxY = (m) => MARGEM + m * escala;
 const paraMetro = (px) => (px - MARGEM) / escala;
 
-// Centro da seta do norte (canto de cima à direita do desenho)
-const centroBussola = () => ({ x: larguraTela - RAIO_BUSSOLA - 6, y: MARGEM + RAIO_BUSSOLA });
+// Centro da seta do norte: canto de cima à direita, a 10 px das bordas (igual à rosa do modo Mapa)
+const centroBussola = () => ({ x: larguraTela - RAIO_BUSSOLA - 10, y: RAIO_BUSSOLA + 10 });
 
 // Ajusta o tamanho do canvas à largura da tela, nítido em telas de alta densidade
 function medir() {
@@ -112,8 +112,8 @@ function medir() {
     (largura - MARGEM - 12 - ESPACO_BUSSOLA) / terreno.largura,
     (alturaMax - MARGEM - 12) / terreno.comprimento
   );
-  // A seta do norte fica numa coluna à direita, fora do terreno
-  larguraTela = Math.round(MARGEM + terreno.largura * escala + 12 + ESPACO_BUSSOLA);
+  // O canvas ocupa a largura do cartão; a seta do norte fica no canto, fora do terreno
+  larguraTela = Math.round(largura);
   alturaTela = Math.round(MARGEM + terreno.comprimento * escala + 12);
 
   const dpr = window.devicePixelRatio || 1;
