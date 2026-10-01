@@ -13,7 +13,7 @@ import {
   calcularHorasDeSol, meioDiaLocal, classificar, SOMBRA, MEIA_SOMBRA, PLENO_SOL
 } from "./sol.js";
 import { CULTURAS, NECESSIDADE, NIVEIS } from "./culturas.js";
-import { iniciarModoMapa } from "./mapa.js";
+import { iniciarModoMapa, estadoParaModelo, modeloParaEstado } from "./mapa.js";
 import { iniciarPlantas } from "./plantas.js";
 import { desenharPlanta, avaliarPlantas, textoNecessidade, textoUmidade } from "./planta.js";
 import {
@@ -29,35 +29,101 @@ import { rotularObstaculos } from "./rotulos.js";
 iniciarCabecalho();
 ligarLinksTelegram();  // link "Alertas no Telegram" do rodapé
 
-// ---------- Terreno padrão ----------
+// =====================================================================
+//  UMA HORTA, DUAS VISTAS
+//  A horta é um modelo só ("terreno"), em METROS no sistema do terreno:
+//  largura, comprimento, norte, latitude e longitude do centro, obstáculos
+//  (x, y, tamanho, ângulo, altura). Os canteiros também (plantas.js).
+//  - Desenho: o terreno reto, com a rosa dos ventos girada.
+//  - Mapa: o mesmo modelo sobre a foto de satélite (mapa.js converte).
+//  "geo" diz se a horta tem lugar no mapa (referência geográfica). Sem ela,
+//  o Desenho funciona sozinho, com a latitude e a longitude digitadas.
+// =====================================================================
+const FORMATO_MODELO = 2;
 const PADRAO = {
+  formato: FORMATO_MODELO,
   largura: 6,          // m (da esquerda para a direita)
   comprimento: 4,      // m (de cima para baixo)
   norte: 0,            // ângulo do norte, em graus, girando no sentido do relógio a partir do topo
   latitude: -15.90,    // São Sebastião (DF)
   longitude: -47.78,
+  geo: false,          // true = a horta tem lugar no mapa (latitude/longitude vêm de lá)
   obstaculos: []
 };
 
 // Exemplo pronto para a feira: muro de 2 m no lado norte e árvore de 4 m no canto leste
 const EXEMPLO = {
+  formato: FORMATO_MODELO,
+  geo: false,
   largura: 6,
   comprimento: 4,
   norte: 0,
   latitude: -15.90,
   longitude: -47.78,
   obstaculos: [
-    { tipo: "retangulo", nome: "Muro", x: 0, y: 0, largura: 6, profundidade: 0.2, altura: 2 },
+    { tipo: "retangulo", nome: "Muro", x: 0, y: 0, largura: 6, profundidade: 0.2, angulo: 0, altura: 2 },
     { tipo: "circulo", nome: "Mangueira", x: 5.3, y: 3.2, raio: 0.6, altura: 4 }
   ]
 };
 
-const CHAVE_SALVAR = "horta-planejar-v1";
+const CHAVE_SALVAR = "horta-planejar-v1";      // a horta (modelo, formato 2)
+const CHAVE_MODO = "horta-planejar-modo-v1";    // a vista aberta: "mapa" ou "livre"
+const CHAVE_MAPA = "horta-planejar-mapa-v1";    // onde o mapa está (centro e zoom)
+const CHAVE_CANTEIROS = "horta-planejar-canteiros-v1";
+const CHAVE_OUTRA = "horta-planejar-outra-v1";  // o segundo desenho de uma horta antiga (até virar cópia)
 const MARGEM = 34;       // espaço (px) para a régua em cima e à esquerda
 const RAIO_BUSSOLA = 24; // seta do norte: 48 px, como a rosa do modo Mapa
 const ESPACO_BUSSOLA = RAIO_BUSSOLA * 2 + 16;  // coluna à direita do terreno, só para a seta
 
 const copia = (obj) => JSON.parse(JSON.stringify(obj));
+const lerJSON = (chave) => { try { return JSON.parse(localStorage.getItem(chave)); } catch { return null; } };
+const gravarJSON = (chave, valor) => { try { localStorage.setItem(chave, JSON.stringify(valor)); } catch { /* sem salvar */ } };
+
+// Modelo no formato atual (de qualquer origem: Desenho antigo, mapa, link, nuvem)
+function normalizarModelo(m) {
+  return {
+    formato: FORMATO_MODELO,
+    largura: Number(m.largura) || PADRAO.largura,
+    comprimento: Number(m.comprimento) || PADRAO.comprimento,
+    norte: Number(m.norte) || 0,
+    latitude: typeof m.latitude === "number" ? m.latitude : PADRAO.latitude,
+    longitude: typeof m.longitude === "number" ? m.longitude : PADRAO.longitude,
+    geo: !!m.geo,
+    obstaculos: (m.obstaculos || []).map((ob) => (ob.tipo === "circulo"
+      ? { tipo: "circulo", nome: ob.nome, x: ob.x, y: ob.y, raio: ob.raio, altura: ob.altura }
+      : { tipo: "retangulo", nome: ob.nome, x: ob.x, y: ob.y, largura: ob.largura, profundidade: ob.profundidade, angulo: ob.angulo || 0, altura: ob.altura }))
+  };
+}
+
+// ---------- Hortas de antes desta mudança (não perder nada) ----------
+// Antes, Mapa e Desenho eram duas hortas: o Desenho em CHAVE_SALVAR, o mapa
+// em CHAVE_MAPA e os canteiros em { livre, mapa }. Fica a do modo que estava
+// aberto (sem ele: a do mapa, se tinha terreno; senão a do Desenho). A outra,
+// se tinha alguma coisa, vai para CHAVE_OUTRA e a página oferece abrir como cópia.
+function migrarHortaAntiga() {
+  const salvo = lerJSON(CHAVE_SALVAR);
+  if (salvo && salvo.formato === FORMATO_MODELO) return null;  // já está no formato novo
+  const doDesenho = salvo && typeof salvo.largura === "number" && Array.isArray(salvo.obstaculos) ? salvo : null;
+  const estadoMapa = lerJSON(CHAVE_MAPA);
+  const doMapa = estadoMapa && estadoMapa.terreno ? estadoParaModelo(estadoMapa) : null;
+  const canteirosAntigos = lerJSON(CHAVE_CANTEIROS) || {};
+  let modoSalvo = null;
+  try { modoSalvo = localStorage.getItem(CHAVE_MODO); } catch { /* sem salvo */ }
+  if (!doDesenho && !doMapa) return null;  // nada salvo: horta nova
+
+  const versaoMapa = doMapa ? { modelo: { ...doMapa, geo: true }, canteiros: canteirosAntigos.mapa || {} } : null;
+  const versaoDesenho = doDesenho ? { modelo: { ...doDesenho, geo: false }, canteiros: canteirosAntigos.livre || {} } : null;
+  let [escolhida, outra] = [versaoDesenho, versaoMapa];
+  if (modoSalvo === "mapa" ? versaoMapa : !versaoDesenho || (modoSalvo !== "livre" && versaoMapa)) [escolhida, outra] = [versaoMapa, versaoDesenho];
+  if (!escolhida) [escolhida, outra] = [outra, null];
+
+  const modelo = normalizarModelo(escolhida.modelo);
+  gravarJSON(CHAVE_SALVAR, modelo);
+  gravarJSON(CHAVE_CANTEIROS, escolhida.canteiros);
+  const outraTemAlgo = outra && (outra.modelo.geo || (outra.modelo.obstaculos || []).length > 0 || Object.keys(outra.canteiros).length > 0);
+  if (outraTemAlgo) gravarJSON(CHAVE_OUTRA, { modelo: normalizarModelo(outra.modelo), canteiros: outra.canteiros });
+  return modelo;
+}
 const arredondar = (valor, passo = 0.05) => Number((Math.round(valor / passo) * passo).toFixed(2));
 const numero = (valor, casas = 2) => Number(valor).toLocaleString("pt-BR", { maximumFractionDigits: casas });
 
@@ -65,7 +131,7 @@ const numero = (valor, casas = 2) => Number(valor).toLocaleString("pt-BR", { max
 let modo = "livre";       // "mapa" (sobre o satélite, mapa.js) ou "livre" (este canvas)
 let aoMudarProjeto = null; // avisado a cada mudança salva (a nuvem usa para o salvamento automático)
 const projetoMudou = () => { if (aoMudarProjeto) aoMudarProjeto(); };
-let terreno = carregar() || copia(PADRAO);
+let terreno = migrarHortaAntiga() || carregar() || copia(PADRAO);
 let selecionado = -1;     // índice do obstáculo selecionado (-1 = nenhum)
 let plantasProntas = false; // o plantas.js já foi iniciado? (o primeiro desenho vem antes dele)
 let arrastando = null;    // { tipo: "obstaculo" | "norte", dx, dy }
@@ -84,20 +150,47 @@ function salvar() {
   projetoMudou();
 }
 function carregar() {
-  try {
-    const texto = localStorage.getItem(CHAVE_SALVAR);
-    if (!texto) return null;
-    const dados = JSON.parse(texto);
-    return typeof dados.largura === "number" && Array.isArray(dados.obstaculos) ? dados : null;
-  } catch {
-    return null;
-  }
+  const dados = lerJSON(CHAVE_SALVAR);
+  return dados && typeof dados.largura === "number" && Array.isArray(dados.obstaculos) ? normalizarModelo(dados) : null;
 }
 
 // ---------- Metros <-> pixels ----------
-const paraPxX = (m) => MARGEM + m * escala;
-const paraPxY = (m) => MARGEM + m * escala;
-const paraMetro = (px) => (px - MARGEM) / escala;
+// O desenho mostra o terreno e também os obstáculos fora dele (a casa do
+// vizinho, no Mapa): "origem" é o canto de cima à esquerda do que aparece.
+let origem = { x: 0, y: 0 };
+const paraPxX = (m) => MARGEM + (m - origem.x) * escala;
+const paraPxY = (m) => MARGEM + (m - origem.y) * escala;
+const paraMetroX = (px) => (px - MARGEM) / escala + origem.x;
+const paraMetroY = (py) => (py - MARGEM) / escala + origem.y;
+
+// Cantos de um retângulo girado (em volta do centro), em metros no terreno
+function cantosRetangulo(ob) {
+  const cx = ob.x + ob.largura / 2;
+  const cy = ob.y + ob.profundidade / 2;
+  const a = ((ob.angulo || 0) * Math.PI) / 180;
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
+    const ox = (sx * ob.largura) / 2;
+    const oy = (sy * ob.profundidade) / 2;
+    return { x: cx + ox * Math.cos(a) - oy * Math.sin(a), y: cy + ox * Math.sin(a) + oy * Math.cos(a) };
+  });
+}
+const cantosObstaculo = (ob) => (ob.tipo === "circulo"
+  ? [{ x: ob.x - ob.raio, y: ob.y - ob.raio }, { x: ob.x + ob.raio, y: ob.y + ob.raio }]
+  : cantosRetangulo(ob));
+
+// O que aparece no desenho: o terreno e todos os obstáculos (com uma folga)
+function limitesDoDesenho() {
+  let [minX, minY, maxX, maxY] = [0, 0, terreno.largura, terreno.comprimento];
+  for (const ob of terreno.obstaculos) {
+    for (const c of cantosObstaculo(ob)) {
+      minX = Math.min(minX, c.x); minY = Math.min(minY, c.y);
+      maxX = Math.max(maxX, c.x); maxY = Math.max(maxY, c.y);
+    }
+  }
+  const folga = (minX < 0 || minY < 0 || maxX > terreno.largura || maxY > terreno.comprimento) ? 0.3 : 0;
+  return { minX: minX - (minX < 0 ? folga : 0), minY: minY - (minY < 0 ? folga : 0),
+    maxX: maxX + (maxX > terreno.largura ? folga : 0), maxY: maxY + (maxY > terreno.comprimento ? folga : 0) };
+}
 
 // Centro da seta do norte: canto de cima à direita, a 10 px das bordas (igual à rosa do modo Mapa)
 const centroBussola = () => ({ x: larguraTela - RAIO_BUSSOLA - 10, y: RAIO_BUSSOLA + 10 });
@@ -108,13 +201,15 @@ function medir() {
   if (largura === 0) return false;  // escondido (modo mapa): mede quando aparecer
   // A altura é a do cartão do mapa (fixo na tela); sem ela, 70% da janela
   const alturaMax = caixa.clientHeight > 100 ? caixa.clientHeight : Math.max(260, window.innerHeight * 0.7);
+  const lim = limitesDoDesenho();
+  origem = { x: lim.minX, y: lim.minY };
   escala = Math.min(
-    (largura - MARGEM - 12 - ESPACO_BUSSOLA) / terreno.largura,
-    (alturaMax - MARGEM - 12) / terreno.comprimento
+    (largura - MARGEM - 12 - ESPACO_BUSSOLA) / (lim.maxX - lim.minX),
+    (alturaMax - MARGEM - 12) / (lim.maxY - lim.minY)
   );
   // O canvas ocupa a largura do cartão; a seta do norte fica no canto, fora do terreno
   larguraTela = Math.round(largura);
-  alturaTela = Math.round(MARGEM + terreno.comprimento * escala + 12);
+  alturaTela = Math.round(MARGEM + (lim.maxY - lim.minY) * escala + 12);
 
   const dpr = window.devicePixelRatio || 1;
   canvas.style.width = `${larguraTela}px`;
@@ -169,9 +264,10 @@ function desenharLivre() {
   // Nomes dos obstáculos por último: desviam dos rótulos das plantas
   rotularObstaculos(ctx, terreno.obstaculos.map((ob) => {
     const c = centroObstaculo(ob);
-    const caixa = ob.tipo === "retangulo"
-      ? { x: paraPxX(ob.x), y: paraPxY(ob.y), w: ob.largura * escala, h: ob.profundidade * escala }
-      : { x: paraPxX(ob.x - ob.raio), y: paraPxY(ob.y - ob.raio), w: 2 * ob.raio * escala, h: 2 * ob.raio * escala };
+    const pts = cantosObstaculo(ob).map((q) => ({ x: paraPxX(q.x), y: paraPxY(q.y) }));
+    const xs = pts.map((q) => q.x);
+    const ys = pts.map((q) => q.y);
+    const caixa = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
     return { texto: `${ob.nome} (${numero(ob.altura, 1)} m)`, centro: { x: paraPxX(c.x), y: paraPxY(c.y) }, caixa };
   }), plantasProntas ? plantas.caixasOcupadas() : []);
   desenharBussola();
@@ -204,10 +300,14 @@ function desenharRegua(L, C) {
 function desenharObstaculo(ob, destacado) {
   ctx.lineWidth = destacado ? 3 : 2;
   if (ob.tipo === "retangulo") {
+    // Girado em volta do centro (casas e muros nem sempre seguem o terreno)
     ctx.fillStyle = "rgba(120, 110, 100, 0.85)";
     ctx.strokeStyle = destacado ? "#d84315" : "#3e3a36";
-    ctx.fillRect(paraPxX(ob.x), paraPxY(ob.y), ob.largura * escala, ob.profundidade * escala);
-    ctx.strokeRect(paraPxX(ob.x), paraPxY(ob.y), ob.largura * escala, ob.profundidade * escala);
+    ctx.beginPath();
+    cantosRetangulo(ob).forEach((q, i) => (i ? ctx.lineTo(paraPxX(q.x), paraPxY(q.y)) : ctx.moveTo(paraPxX(q.x), paraPxY(q.y))));
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   } else {
     ctx.fillStyle = "rgba(46, 125, 50, 0.75)";
     ctx.strokeStyle = destacado ? "#d84315" : "#1b5e20";
@@ -262,7 +362,13 @@ export function obstaculoEm(x, y) {
   for (let i = terreno.obstaculos.length - 1; i >= 0; i--) {
     const ob = terreno.obstaculos[i];
     if (ob.tipo === "retangulo") {
-      if (x >= ob.x && x <= ob.x + ob.largura && y >= ob.y && y <= ob.y + ob.profundidade) return i;
+      // O ponto nos eixos do retângulo (desfazendo o giro)
+      const a = (-(ob.angulo || 0) * Math.PI) / 180;
+      const dx = x - (ob.x + ob.largura / 2);
+      const dy = y - (ob.y + ob.profundidade / 2);
+      const u = dx * Math.cos(a) - dy * Math.sin(a);
+      const v = dx * Math.sin(a) + dy * Math.cos(a);
+      if (Math.abs(u) <= ob.largura / 2 && Math.abs(v) <= ob.profundidade / 2) return i;
     } else if (Math.hypot(x - ob.x, y - ob.y) <= ob.raio) {
       return i;
     }
@@ -274,20 +380,21 @@ canvas.addEventListener("pointerdown", (evento) => {
   const { px, py } = pontoDoEvento(evento);
   const b = centroBussola();
   // Tocou numa planta? (quem cuida é o plantas.js)
-  const planta = plantas.tocar({ x: paraMetro(px), y: paraMetro(py) }, { x: px, y: py });
+  const planta = plantas.tocar({ x: paraMetroX(px), y: paraMetroY(py) }, { x: px, y: py });
   if (planta === true) { evento.preventDefault(); return; }
   if (planta) {
     arrastando = { tipo: "planta", manipulador: planta };
   } else if (Math.hypot(px - b.x, py - b.y) <= RAIO_BUSSOLA) {
     arrastando = { tipo: "norte" };
   } else {
-    const x = paraMetro(px);
-    const y = paraMetro(py);
+    const x = paraMetroX(px);
+    const y = paraMetroY(py);
     const i = obstaculoEm(x, y);
     selecionar(i);
     if (i >= 0) {
       const ob = terreno.obstaculos[i];
-      arrastando = { tipo: "obstaculo", dx: x - ob.x, dy: y - ob.y };
+      // Enquanto arrasta, o desenho não muda de escala: o obstáculo fica no que está à vista
+      arrastando = { tipo: "obstaculo", dx: x - ob.x, dy: y - ob.y, limites: limitesDoDesenho() };
     }
   }
   if (arrastando) {
@@ -300,7 +407,7 @@ canvas.addEventListener("pointermove", (evento) => {
   if (!arrastando) return;
   const { px, py } = pontoDoEvento(evento);
   if (arrastando.tipo === "planta") {
-    arrastando.manipulador.mover({ x: paraMetro(px), y: paraMetro(py) });
+    arrastando.manipulador.mover({ x: paraMetroX(px), y: paraMetroY(py) });
     return;
   }
   if (arrastando.tipo === "norte") {
@@ -310,9 +417,9 @@ canvas.addEventListener("pointermove", (evento) => {
     terreno.norte = Math.round((graus + 360) % 360);
   } else {
     const ob = terreno.obstaculos[selecionado];
-    ob.x = arredondar(paraMetro(px) - arrastando.dx);
-    ob.y = arredondar(paraMetro(py) - arrastando.dy);
-    manterDentro(ob);
+    ob.x = arredondar(paraMetroX(px) - arrastando.dx);
+    ob.y = arredondar(paraMetroY(py) - arrastando.dy);
+    manterDentro(ob, arrastando.limites);
   }
   aoMudar({ arrastando: true });
 });
@@ -325,22 +432,23 @@ function soltar(evento) {
     if (canvas.hasPointerCapture(evento.pointerId)) canvas.releasePointerCapture(evento.pointerId);
     return;
   }
+  const eraObstaculo = arrastando.tipo === "obstaculo";
   arrastando = null;
   if (canvas.hasPointerCapture(evento.pointerId)) canvas.releasePointerCapture(evento.pointerId);
-  aoMudar();
+  aoMudar({ redimensionar: eraObstaculo });  // soltou: o desenho se ajusta ao que ficou à vista
 }
 canvas.addEventListener("pointerup", soltar);
 canvas.addEventListener("pointercancel", soltar);
 
-// O obstáculo não sai do terreno
-function manterDentro(ob) {
-  if (ob.tipo === "retangulo") {
-    ob.x = Math.min(Math.max(ob.x, 0), Math.max(0, terreno.largura - ob.largura));
-    ob.y = Math.min(Math.max(ob.y, 0), Math.max(0, terreno.comprimento - ob.profundidade));
-  } else {
-    ob.x = Math.min(Math.max(ob.x, 0), terreno.largura);
-    ob.y = Math.min(Math.max(ob.y, 0), terreno.comprimento);
-  }
+// O obstáculo pode ficar fora do terreno (a casa do vizinho também faz sombra),
+// mas não some do desenho: o centro fica dentro dos limites dados (por
+// padrão, o terreno com uma volta do mesmo tamanho em cada lado)
+function manterDentro(ob, lim = { minX: -terreno.largura, minY: -terreno.comprimento, maxX: 2 * terreno.largura, maxY: 2 * terreno.comprimento }) {
+  const c = centroObstaculo(ob);
+  const nx = Math.min(Math.max(c.x, lim.minX), lim.maxX);
+  const ny = Math.min(Math.max(c.y, lim.minY), lim.maxY);
+  ob.x += nx - c.x;
+  ob.y += ny - c.y;
 }
 
 // ---------- Painel lateral ----------
@@ -353,6 +461,9 @@ function preencherCampos() {
   $("norte-valor").textContent = `${terreno.norte}°`;
   $("latitude").value = terreno.latitude;
   $("longitude").value = terreno.longitude;
+  // Com a horta no mapa, a posição vem de lá (só leitura no Desenho)
+  $("latitude").readOnly = $("longitude").readOnly = !!terreno.geo;
+  $("nota-posicao").hidden = !terreno.geo;
 }
 
 // Campos do terreno
@@ -364,7 +475,6 @@ for (const [id, campo, min, max] of [
     const valor = parseFloat($(id).value);
     if (Number.isNaN(valor)) return;
     terreno[campo] = Math.min(Math.max(valor, min), max);
-    if (campo === "largura" || campo === "comprimento") terreno.obstaculos.forEach(manterDentro);
     aoMudar({ redimensionar: true });
   });
 }
@@ -403,9 +513,9 @@ function mostrarLista() {
 
 // Campos do editor para cada tipo: [campo, rótulo, mínimo, máximo]
 const CAMPOS = {
-  retangulo: [["x", "x (m)", 0, 100], ["y", "y (m)", 0, 100], ["largura", "Largura (m)", 0.1, 100],
-    ["profundidade", "Profundidade (m)", 0.1, 100], ["altura", "Altura (m)", 0, 50]],
-  circulo: [["x", "Centro x (m)", 0, 100], ["y", "Centro y (m)", 0, 100], ["raio", "Raio (m)", 0.1, 50],
+  retangulo: [["x", "x (m)", -100, 200], ["y", "y (m)", -100, 200], ["largura", "Largura (m)", 0.1, 100],
+    ["profundidade", "Profundidade (m)", 0.1, 100], ["angulo", "Giro (°)", 0, 359], ["altura", "Altura (m)", 0, 50]],
+  circulo: [["x", "Centro x (m)", -100, 200], ["y", "Centro y (m)", -100, 200], ["raio", "Raio (m)", 0.1, 50],
     ["altura", "Altura (m)", 0, 50]]
 };
 
@@ -472,7 +582,7 @@ function atualizarEditor() {
 $("add-retangulo").addEventListener("click", () => {
   if (modo === "mapa") { modoMapa.usarFerramenta("retangulo"); return; }
   terreno.obstaculos.push({ tipo: "retangulo", nome: "Muro", x: 0, y: 0,
-    largura: Math.min(2, terreno.largura), profundidade: 0.2, altura: 2 });
+    largura: Math.min(2, terreno.largura), profundidade: 0.2, angulo: 0, altura: 2 });
   selecionado = terreno.obstaculos.length - 1;
   aoMudar({ lista: true, editor: true });
 });
@@ -483,19 +593,24 @@ $("add-circulo").addEventListener("click", () => {
   selecionado = terreno.obstaculos.length - 1;
   aoMudar({ lista: true, editor: true });
 });
+// Exemplo: no Mapa, a horta de exemplo aparece onde o mapa está olhando
 $("exemplo").addEventListener("click", () => {
-  if (modo === "mapa") { modoMapa.carregarExemplo(); return; }
   terreno = copia(EXEMPLO);
+  if (modo === "mapa") {
+    [terreno.latitude, terreno.longitude] = modoMapa.centroDaVista();
+    terreno.geo = true;
+  }
   selecionado = -1;
   preencherCampos();
   aoMudar({ redimensionar: true, lista: true, editor: true });
+  if (modo === "mapa") { mostrarNoMapa(); modoMapa.enquadrarTerreno(); }
 });
 $("zerar").addEventListener("click", () => {
-  if (modo === "mapa") { modoMapa.definirDesenho(null, []); salvarMapa(); agendarCalculo(0); return; }
   terreno = copia(PADRAO);
   selecionado = -1;
   preencherCampos();
   aoMudar({ redimensionar: true, lista: true, editor: true });
+  if (modo === "mapa") mostrarNoMapa();
 });
 
 // ---------- Quando algo muda ----------
@@ -506,7 +621,7 @@ export const terrenoAtual = () => terreno;
 export const redesenhar = () => desenhar();
 export const metrosDoEvento = (evento) => {
   const { px, py } = pontoDoEvento(evento);
-  return { x: paraMetro(px), y: paraMetro(py) };
+  return { x: paraMetroX(px), y: paraMetroY(py) };
 };
 export const estaArrastando = () => arrastando !== null;
 
@@ -555,9 +670,9 @@ function diasDoCalculo(longitude) {
   return [meioDiaLocal(ano, mes - 1, dia, longitude)];
 }
 
-// O terreno do modo atual, no formato do sol.js (null = nada desenhado no mapa)
+// O cálculo usa o modelo (o mesmo nas duas vistas: trocar de vista não recalcula)
 function terrenoDoCalculo() {
-  return modo === "mapa" ? modoMapa.terrenoParaCalculo() : terreno;
+  return terreno;
 }
 
 // Espera um pouquinho antes de calcular (enquanto arrasta, não recalcula a cada pixel)
@@ -587,10 +702,9 @@ function calcularMapa() {
     for (const funcao of aoCalcularMapa) funcao(mapa);
     return;
   }
-  if (modo === "mapa") {
-    $("centro-terreno").textContent = `O cálculo usa o centro do terreno: latitude ${numero(terrenoCalculado.latitude, 5)}, ` +
-      `longitude ${numero(terrenoCalculado.longitude, 5)}.`;
-  }
+  $("centro-terreno").textContent = terreno.geo
+    ? `O cálculo usa o centro do terreno: latitude ${numero(terrenoCalculado.latitude, 5)}, longitude ${numero(terrenoCalculado.longitude, 5)}.`
+    : "A horta ainda não está no mapa: busque o endereço ou use a sua localização.";
   const inicio = performance.now();
   mapa = calcularHorasDeSol(SunCalc, terrenoCalculado, diasDoCalculo(terrenoCalculado.longitude));
   ultimaDuracao = performance.now() - inicio;
@@ -820,17 +934,14 @@ function linhaDaPlanta(cultura) {
 }
 
 // ---------- Canteiros das plantas (arrastar e girar: plantas.js) ----------
-const CHAVE_CANTEIROS = "horta-planejar-canteiros-v1";
-let canteirosPorModo = lerCanteiros();  // { livre: { tomate: {...} }, mapa: {...} }
-let modoDosCanteiros = null;            // de qual modo são os canteiros que estão no plantas.js
-
+// Um conjunto só: { tomate: { x, y, w, h, girada } } em metros no terreno (o mesmo nas duas vistas)
 function lerCanteiros() {
-  try { return JSON.parse(localStorage.getItem(CHAVE_CANTEIROS)) || { livre: {}, mapa: {} }; } catch { return { livre: {}, mapa: {} }; }
+  const salvo = lerJSON(CHAVE_CANTEIROS) || {};
+  // (formato antigo { livre, mapa }: a migração lá em cima já escolheu um)
+  return salvo.livre || salvo.mapa ? {} : salvo;
 }
 function salvarCanteiros() {
-  if (modoDosCanteiros !== modo) return;
-  canteirosPorModo[modo] = plantas.obterPosicoes();
-  try { localStorage.setItem(CHAVE_CANTEIROS, JSON.stringify(canteirosPorModo)); } catch { /* sem salvar */ }
+  gravarJSON(CHAVE_CANTEIROS, plantas.obterPosicoes());
   projetoMudou();
 }
 
@@ -843,6 +954,12 @@ const plantas = iniciarPlantas({
   botaoVoltar: $("voltar-sugestao"),
   filtro: $("filtro-planta"),
   filtroNota: $("filtro-nota"),
+  // Tocou numa planta da lista: no Mapa, o canteiro vem para a tela (sem mudar o zoom)
+  aoTocarNaLista: (id) => {
+    if (modo !== "mapa") return;
+    const r = plantas.obterPosicoes()[id];
+    if (r) modoMapa.centralizarSeFora(r.x + r.w / 2, r.y + r.h / 2);
+  },
   aoMudar: (opcoes) => {
     desenhar();
     if (opcoes.salvar) salvarCanteiros();
@@ -850,6 +967,7 @@ const plantas = iniciarPlantas({
 });
 
 plantasProntas = true;
+plantas.definirPosicoes(lerCanteiros());
 
 // Depois do cálculo (ou quando mudam as plantas): cada planta ganha ou mantém o seu canteiro
 function calcularSugestoes() {
@@ -879,11 +997,35 @@ const modoMapa = iniciarModoMapa({
   lista: $("lista-obstaculos"),
   editor: $("editor"),
   ferramentaStatus: $("ferramenta-status"),
+  // Mexeram no mapa: o modelo passa a ser o que está lá
   aoMudar: (opcoes) => {
-    agendarCalculo(opcoes.arrastando ? 300 : 150);
+    const doMapa = modoMapa.terrenoParaCalculo();
+    if (doMapa && !terreno.geo) {
+      // Desenharam o terreno no mapa agora: a horta ganha lugar, com os obstáculos e canteiros que já tinha
+      Object.assign(terreno, { largura: doMapa.largura, comprimento: doMapa.comprimento, norte: doMapa.norte,
+        latitude: doMapa.latitude, longitude: doMapa.longitude, geo: true });
+      mostrarNoMapa();
+    } else if (doMapa) {
+      terreno = normalizarModelo({ ...doMapa, geo: true });
+    }
+    preencherCampos();
+    salvar();
+    for (const funcao of aoMudarTerreno) funcao(opcoes);  // recalcula o mapa de sol
     if (!opcoes.arrastando) salvarMapa();
   },
   aoMudarVista: () => salvarMapa(),
+  // Busca ou "minha localização" acharam um lugar: a horta sem lugar vai para lá
+  aoEscolherLugar: (lugar) => {
+    if (terreno.geo) return;
+    [terreno.latitude, terreno.longitude] = lugar;
+    terreno.geo = true;
+    preencherCampos();
+    salvar();
+    mostrarNoMapa();
+    modoMapa.enquadrarTerreno();
+    for (const funcao of aoMudarTerreno) funcao({});
+  },
+  aoTirarDoMapa: () => tirarDoMapa(),
   textoDoPonto: textoDaDica,
   rotulosOcupados: () => plantas.caixasOcupadas(),
   // Toque numa planta: o plantas.js cuida (e o mapa não anda enquanto ela é arrastada)
@@ -902,9 +1044,35 @@ for (const botao of document.querySelectorAll('[data-ferramenta="terreno"]')) {
   botao.addEventListener("click", () => modoMapa.usarFerramenta(botao.dataset.ferramenta));
 }
 
+// O modelo vai para o mapa (ou a faixa "Posicione sua horta no mapa", se ainda não tem lugar)
+function mostrarNoMapa() {
+  if (terreno.geo) {
+    const e = modeloParaEstado(terreno);
+    modoMapa.definirDesenho(e.terreno, e.obstaculos);
+  } else {
+    modoMapa.definirDesenho(null, []);
+  }
+  $("faixa-posicionar").hidden = !!terreno.geo;
+  $("tirar-do-mapa").hidden = !terreno.geo;
+}
+
+// "Tirar do mapa": a horta perde o lugar, mas o desenho (e os canteiros) continuam
+function tirarDoMapa() {
+  terreno.geo = false;
+  preencherCampos();
+  salvar();
+  if (modo === "mapa") mostrarNoMapa();
+}
+$("tirar-do-mapa").addEventListener("click", tirarDoMapa);
+$("posicionar-localizar").addEventListener("click", () => $("minha-localizacao").click());
+$("posicionar-buscar").addEventListener("click", () => {
+  etapas?.mostrar("terreno");
+  $("busca-texto").focus();
+});
+
+// Trocar de vista: a mesma horta, sem recalcular o mapa de sol e sem perder canteiros
 function trocarModo(novo) {
   if (novo === "mapa" && !modoMapa.disponivel) novo = "livre";  // sem Leaflet (sem internet)
-  salvarCanteiros();  // guarda os canteiros do modo que está saindo
   modo = novo;
   try { localStorage.setItem(CHAVE_MODO, modo); } catch { /* sem salvar */ }
   document.body.classList.toggle("modo-mapa", modo === "mapa");
@@ -912,13 +1080,9 @@ function trocarModo(novo) {
   for (const botao of document.querySelectorAll(".planejar-modo")) {
     botao.setAttribute("aria-pressed", String(botao.dataset.modo === modo));
   }
-  mapa = null;  // o mapa de sol era do outro modo: calcula de novo
-  // Cada modo tem os seus canteiros (o terreno é outro)
-  plantas.definirPosicoes(canteirosPorModo[modo] || {});
-  modoDosCanteiros = modo;
-  agendarCalculo(0);
   if (modo === "mapa") {
     modoMapa.mostrar();
+    mostrarNoMapa();
   } else {
     modoMapa.usarFerramenta(null);
     medir();
@@ -992,13 +1156,10 @@ modoMapa.adicionarCamada((ctx2, { terreno: noMapa, pixelDaForma }) => {
 // =====================================================================
 //  SALVAR E COMPARTILHAR
 // =====================================================================
-const CHAVE_MODO = "horta-planejar-modo-v1";
-const CHAVE_MAPA = "horta-planejar-mapa-v1";
-
-// Salva o desenho do mapa (centro, zoom, terreno e obstáculos) no navegador
+// Onde o mapa está olhando (centro e zoom); a horta mesmo fica no modelo
 function salvarMapa() {
-  try { localStorage.setItem(CHAVE_MAPA, JSON.stringify(modoMapa.obterEstado())); } catch { /* sem salvar */ }
-  projetoMudou();
+  const { centro, zoom } = modoMapa.obterEstado();
+  gravarJSON(CHAVE_MAPA, { centro, zoom });
 }
 function lerSalvo(chave) {
   try { return JSON.parse(localStorage.getItem(chave)); } catch { return null; }
@@ -1008,38 +1169,63 @@ function lerSalvo(chave) {
 // JSON "compacto" (nomes curtos, números arredondados) -> texto em base64.
 const arred = (v, casas) => Math.round(v * 10 ** casas) / 10 ** casas;
 let exato = false;  // true: sem arredondar as coordenadas (projetos salvos e arquivos)
-const ponto = (latlng) => (exato ? [latlng[0], latlng[1]] : [arred(latlng[0], 7), arred(latlng[1], 7)]);
 
-// exato = true guarda as coordenadas inteiras: aberto de novo, o cálculo dá
-// exatamente igual (no link, 7 casas bastam e o link fica mais curto)
+// Formato dos dados (link, nuvem, backup):
+//   v: 2, m: vista ("mapa" | "livre"), p: plantas, d: dia, a: ano todo,
+//   k: canteiros, h: a horta (modelo compacto), c/z: centro e zoom do mapa,
+//   x: o segundo desenho de uma horta antiga (até virar cópia)
+// O formato 1 (antes de "uma horta, duas vistas") continua abrindo.
+// exato = true guarda os números inteiros: aberto de novo, o cálculo dá
+// exatamente igual (no link, menos casas bastam e o link fica mais curto)
+const FORMATO_DADOS = 2;
+const n = (v, casas) => (exato ? v : arred(v, casas));
+
+function compactarModelo(m) {
+  return {
+    l: n(m.largura, 2), c: n(m.comprimento, 2), n: m.norte, la: n(m.latitude, 7), lo: n(m.longitude, 7), g: m.geo ? 1 : 0,
+    o: m.obstaculos.map((ob) => (ob.tipo === "circulo"
+      ? ["c", ob.nome, n(ob.x, 3), n(ob.y, 3), n(ob.raio, 2), ob.altura]
+      : ["r", ob.nome, n(ob.x, 3), n(ob.y, 3), n(ob.largura, 2), n(ob.profundidade, 2), ob.angulo || 0, ob.altura]))
+  };
+}
+function descompactarModelo(h) {
+  return normalizarModelo({
+    largura: h.l, comprimento: h.c, norte: h.n, latitude: h.la, longitude: h.lo, geo: h.g === 1,
+    obstaculos: (h.o || []).map((o) => (o[0] === "c"
+      ? { tipo: "circulo", nome: o[1], x: o[2], y: o[3], raio: o[4], altura: o[5] }
+      : { tipo: "retangulo", nome: o[1], x: o[2], y: o[3], largura: o[4], profundidade: o[5], angulo: o[6], altura: o[7] }))
+  });
+}
+const compactarCanteiros = (posicoes) => {
+  const k = {};
+  for (const [id, r] of Object.entries(posicoes || {})) {
+    if (r) k[id] = [arred(r.x, 2), arred(r.y, 2), arred(r.w, 2), arred(r.h, 2), r.girada ? 1 : 0];
+  }
+  return k;
+};
+const descompactarCanteiros = (k) => {
+  const canteiros = {};
+  for (const [id, c] of Object.entries(k || {})) canteiros[id] = { x: c[0], y: c[1], w: c[2], h: c[3], girada: !!c[4] };
+  return canteiros;
+};
+
 function compactar(comoEsta = false) {
   exato = comoEsta;
-  const dados = { v: 1, m: modo, p: escolhidas, d: dataEscolhida, a: anoTodo ? 1 : 0 };
-  // Canteiros: [x, y, w, h, girada] de cada planta
-  dados.k = {};
-  for (const [id, r] of Object.entries(plantas.obterPosicoes())) {
-    if (r) dados.k[id] = [arred(r.x, 2), arred(r.y, 2), arred(r.w, 2), arred(r.h, 2), r.girada ? 1 : 0];
-  }
-  if (modo === "mapa") {
-    const e = modoMapa.obterEstado();
-    dados.c = ponto(e.centro);
-    dados.z = e.zoom;
-    if (e.terreno) {
-      const t = e.terreno;
-      dados.t = [...ponto(t.centro), arred(t.largura, 2), arred(t.comprimento, 2), t.angulo || 0];
-    }
-    dados.o = e.obstaculos.map((ob) => (ob.tipo === "circulo"
-      ? ["c", ob.nome, ...ponto(ob.centro), arred(ob.raio, 2), ob.altura]
-      : ["r", ob.nome, ...ponto(ob.centro), arred(ob.largura, 2), arred(ob.profundidade, 2), ob.angulo || 0, ob.altura]));
-  } else {
-    dados.l = terreno;
-  }
+  const dados = { v: FORMATO_DADOS, m: modo, p: escolhidas, d: dataEscolhida, a: anoTodo ? 1 : 0,
+    k: compactarCanteiros(plantas.obterPosicoes()), h: compactarModelo(terreno) };
+  const { centro, zoom } = modoMapa.obterEstado();
+  dados.c = [n(centro[0], 7), n(centro[1], 7)];
+  dados.z = zoom;
+  const outra = lerJSON(CHAVE_OUTRA);
+  if (outra) dados.x = { h: compactarModelo(outra.modelo), k: compactarCanteiros(outra.canteiros) };
   exato = false;
   return dados;
 }
 
+// Lê os dados (formato 1 ou 2) para o modelo, os canteiros e o resto.
+// Devolve a vista ("mapa" | "livre"), ou false se não deu.
 function descompactar(dados) {
-  if (!dados || dados.v !== 1) return false;
+  if (!dados || (dados.v !== 1 && dados.v !== FORMATO_DADOS)) return false;
   escolhidas = dados.p && typeof dados.p === "object" ? dados.p : {};
   // Data do cálculo (links antigos não têm: fica a de hoje)
   if (typeof dados.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dados.d)) {
@@ -1047,26 +1233,33 @@ function descompactar(dados) {
     $("data").value = dados.d;
   }
   anoTodo = dados.a === 1;
-  const canteiros = {};
-  if (dados.k && typeof dados.k === "object") {
-    for (const [id, k] of Object.entries(dados.k)) canteiros[id] = { x: k[0], y: k[1], w: k[2], h: k[3], girada: !!k[4] };
+  const vista = dados.m === "mapa" ? "mapa" : "livre";
+  if (Array.isArray(dados.c) && typeof dados.z === "number") {
+    modoMapa.aplicarEstado({ centro: dados.c, zoom: dados.z, terreno: null, obstaculos: [] });
   }
-  canteirosPorModo[dados.m === "mapa" ? "mapa" : "livre"] = canteiros;
-  try { localStorage.setItem(CHAVE_CANTEIROS, JSON.stringify(canteirosPorModo)); } catch { /* sem salvar */ }
-  if (dados.m === "mapa") {
-    const t = dados.t;
-    modoMapa.aplicarEstado({
-      centro: dados.c,
-      zoom: dados.z,
-      terreno: t ? { centro: [t[0], t[1]], largura: t[2], comprimento: t[3], angulo: t[4] } : null,
-      obstaculos: (dados.o || []).map((o) => (o[0] === "c"
-        ? { tipo: "circulo", nome: o[1], centro: [o[2], o[3]], raio: o[4], altura: o[5] }
-        : { tipo: "retangulo", nome: o[1], centro: [o[2], o[3]], largura: o[4], profundidade: o[5], angulo: o[6], altura: o[7] }))
-    });
-  } else if (dados.l && typeof dados.l.largura === "number") {
-    terreno = dados.l;
+  if (dados.v === 1) {
+    // Formato 1: só tinha a horta da vista que estava aberta
+    if (vista === "mapa") {
+      const t = dados.t;
+      const estado = {
+        terreno: t ? { centro: [t[0], t[1]], largura: t[2], comprimento: t[3], angulo: t[4] } : null,
+        obstaculos: (dados.o || []).map((o) => (o[0] === "c"
+          ? { tipo: "circulo", nome: o[1], centro: [o[2], o[3]], raio: o[4], altura: o[5] }
+          : { tipo: "retangulo", nome: o[1], centro: [o[2], o[3]], largura: o[4], profundidade: o[5], angulo: o[6], altura: o[7] }))
+      };
+      const doMapa = estadoParaModelo(estado);
+      terreno = doMapa ? normalizarModelo({ ...doMapa, geo: true }) : copia(PADRAO);
+    } else {
+      terreno = dados.l && typeof dados.l.largura === "number" ? normalizarModelo({ ...dados.l, geo: false }) : copia(PADRAO);
+    }
+  } else {
+    terreno = descompactarModelo(dados.h || {});
   }
-  return dados.m === "mapa" ? "mapa" : "livre";
+  gravarJSON(CHAVE_CANTEIROS, descompactarCanteiros(dados.k));
+  // O segundo desenho de uma horta antiga continua junto (até virar cópia)
+  if (dados.x && dados.x.h) gravarJSON(CHAVE_OUTRA, { modelo: descompactarModelo(dados.x.h), canteiros: descompactarCanteiros(dados.x.k) });
+  else try { localStorage.removeItem(CHAVE_OUTRA); } catch { /* sem salvar */ }
+  return vista;
 }
 
 // base64 que aceita acentos (UTF-8) e não usa "+" nem "/" (ficam estranhos no link)
@@ -1101,13 +1294,14 @@ function abrirProjeto(dados) {
   const novoModo = descompactar(dados);
   if (!novoModo) return false;
   selecionado = -1;
-  salvar();
+  plantas.definirPosicoes(lerCanteiros());
   salvarPlantas();
   montarEscolha();
   preencherCampos();
-  modoDosCanteiros = null;  // os canteiros do projeto não podem ser trocados pelos que estavam na tela
   trocarModo(novoModo);
-  if (novoModo === "mapa") salvarMapa();
+  aoMudar({ redimensionar: true, lista: modo === "livre", editor: modo === "livre" });  // o terreno mudou: recalcula
+  if (modo === "mapa") mostrarNoMapa();
+  mostrarAvisoSegundo();
   return true;
 }
 
@@ -1236,7 +1430,7 @@ for (const [campo, espelho] of [["impressao-turma", "impressao-turma-texto"], ["
 const FORMATO_ARQUIVO = "horta-inteligente-projeto";
 $("salvar-arquivo").addEventListener("click", () => {
   fecharMenuSalvar();
-  const arquivo = { formato: FORMATO_ARQUIVO, versao: 1, nome: nomeDoProjeto(), salvoEm: new Date().toISOString(), projeto: compactar(true) };
+  const arquivo = { formato: FORMATO_ARQUIVO, versao: FORMATO_DADOS, nome: nomeDoProjeto(), salvoEm: new Date().toISOString(), projeto: compactar(true) };
   baixar(new Blob([JSON.stringify(arquivo, null, 2)], { type: "application/json" }), nomeDoArquivo("json"));
   statusSalvar(`Backup salvo: ${nomeDoArquivo("json")}. Para voltar a ele, use "Abrir backup (.json)" no menu Salvar planta.`);
 });
@@ -1247,7 +1441,8 @@ $("arquivo-projeto").addEventListener("change", async () => {
   if (!escolhido) return;
   try {
     const arquivo = JSON.parse(await escolhido.text());
-    if (arquivo.formato !== FORMATO_ARQUIVO || !arquivo.projeto || arquivo.projeto.v !== 1) throw new Error("formato");
+    // Backup antigo (formato 1) também abre
+    if (arquivo.formato !== FORMATO_ARQUIVO || !arquivo.projeto || ![1, FORMATO_DADOS].includes(arquivo.projeto.v)) throw new Error("formato");
     abrirBackup(arquivo);  // (parte da nuvem: pergunta se há uma horta com código aberta)
   } catch {
     statusSalvar("Não consegui abrir: esse arquivo não é um backup da Horta Inteligente.");
@@ -1306,6 +1501,7 @@ function iniciarModo() {
   if (codigo) {
     try {
       modoInicial = descompactar(JSON.parse(deBase64(codigo[1])));
+      if (!modoInicial) throw new Error("formato");
       salvar();
       salvarPlantas();
       montarEscolha();
@@ -1316,14 +1512,68 @@ function iniciarModo() {
     history.replaceState(null, "", location.pathname);  // tira o #p= do endereço
   }
   if (!modoInicial) {
+    // Só a vista do mapa (centro e zoom): a horta já está no modelo
     const salvoMapa = lerSalvo(CHAVE_MAPA);
-    if (salvoMapa) modoMapa.aplicarEstado(salvoMapa);
+    if (salvoMapa && Array.isArray(salvoMapa.centro)) {
+      modoMapa.aplicarEstado({ centro: salvoMapa.centro, zoom: salvoMapa.zoom, terreno: null, obstaculos: [] });
+    }
     try { modoInicial = localStorage.getItem(CHAVE_MODO); } catch { /* sem salvo */ }
   }
+  plantas.definirPosicoes(lerCanteiros());
   trocarModo(modoInicial || "mapa");
-  if (modoInicial === "mapa" || !modoInicial) salvarMapa();
+  salvarMapa();
 }
 iniciarModo();
+agendarCalculo(0);
+
+// ---------- Horta antiga com um segundo desenho: "Abrir como cópia?" (uma vez) ----------
+const CHAVE_SEGUNDO_VISTO = "horta-planejar-outra-vista-v1";
+// Uma "marca" do segundo desenho, para não perguntar de novo pelo mesmo
+const marcaDaOutra = (outra) => {
+  let h = 0;
+  for (const letra of JSON.stringify(outra.modelo)) h = (h * 31 + letra.charCodeAt(0)) | 0;
+  return String(h);
+};
+function mostrarAvisoSegundo() {
+  const outra = lerJSON(CHAVE_OUTRA);
+  $("aviso-segundo").hidden = !outra || (lerJSON(CHAVE_SEGUNDO_VISTO) || []).includes(marcaDaOutra(outra));
+}
+$("segundo-depois").addEventListener("click", () => {
+  const outra = lerJSON(CHAVE_OUTRA);
+  if (outra) gravarJSON(CHAVE_SEGUNDO_VISTO, [...(lerJSON(CHAVE_SEGUNDO_VISTO) || []), marcaDaOutra(outra)]);
+  $("aviso-segundo").hidden = true;
+});
+// O segundo desenho vira uma horta nova: na nuvem (código novo) se esta é da
+// nuvem; senão, em "Salvas só neste aparelho"
+$("segundo-copia").addEventListener("click", async () => {
+  const outra = lerJSON(CHAVE_OUTRA);
+  if (!outra) return;
+  exato = true;
+  const dados = { v: FORMATO_DADOS, m: outra.modelo.geo ? "mapa" : "livre", p: escolhidas, d: dataEscolhida, a: anoTodo ? 1 : 0,
+    k: compactarCanteiros(outra.canteiros), h: compactarModelo(outra.modelo) };
+  exato = false;
+  const nome = `${nomeDoProjeto()} (segundo desenho)`.slice(0, 60);
+  if (horta) {
+    try {
+      const texto = JSON.stringify(dados);
+      const codigo = await criarHorta({ nome, dados: texto });
+      await gravarVersao(codigo, { nome, dados: texto, tipo: "manual" });
+      registrarHorta(codigo, nome, null);
+      statusSalvar(`O segundo desenho virou a horta "${nome}", código ${formatarCodigo(codigo)} (em Minhas hortas).`);
+    } catch (erro) {
+      statusSalvar(`Não consegui criar a cópia: ${textoDoErro(erro)}.`);
+      return;
+    }
+  } else {
+    gravarProjetos([{ id: String(Date.now()), nome, modificadoEm: new Date().toISOString(), dados, miniatura: null }, ...lerProjetos()]);
+    mostrarHortas();
+    statusSalvar(`O segundo desenho virou a horta "${nome}", em "Salvas só neste aparelho" (aba 4 Salvar).`);
+  }
+  try { localStorage.removeItem(CHAVE_OUTRA); } catch { /* sem salvar */ }
+  $("aviso-segundo").hidden = true;
+  projetoMudou();  // a horta desta tela vai para a nuvem sem o segundo desenho
+});
+mostrarAvisoSegundo();
 
 // =====================================================================
 //  ETAPAS (abas.js): 1 Terreno · 2 Sombras · 3 Plantas · 4 Salvar
@@ -1331,8 +1581,9 @@ iniciarModo();
 //  antigo com o desenho (#p=…) já foi lido e tirado do endereço acima, e o
 //  ?h=CODIGO da horta na nuvem fica na busca (não no #): não se misturam.
 // =====================================================================
-const temTerreno = () => modo === "livre" || !!modoMapa.obterTerreno();
-iniciarAbas({ padrao: temTerreno() ? "plantas" : "terreno" });
+// Abre em Plantas quando a horta já tem alguma coisa; numa horta nova, em Terreno
+const hortaNova = () => terreno.obstaculos.length === 0 && !terreno.geo && Object.keys(escolhidas).length === 0;
+const etapas = iniciarAbas({ padrao: hortaNova() ? "terreno" : "plantas" });
 
 // ---------- Cartão do mapa: recolher (celular) e a altura dele (para as abas presas logo abaixo) ----------
 $("recolher-mapa").addEventListener("click", () => {
@@ -1371,16 +1622,6 @@ let ultimaManual = null;      // { codigo, slot, quando }: a versão do último 
 let temporizadorNuvem = null;
 
 const dadosAtuais = () => JSON.stringify(compactar(true));
-// Mesmo desenho? (ignora só o centro e o zoom da vista do mapa)
-function mesmoProjeto(a, b) {
-  try {
-    const [x, y] = [JSON.parse(a), JSON.parse(b)];
-    for (const d of [x, y]) { delete d.c; delete d.z; }
-    return JSON.stringify(x) === JSON.stringify(y);
-  } catch {
-    return a === b;
-  }
-}
 const statusNuvem = (texto) => {
   $("nuvem-status").textContent = texto;
   $("nuvem-status").hidden = !texto;
@@ -1390,7 +1631,7 @@ const SEM_CONEXAO = "Sem conexão: salvo neste aparelho, envio quando voltar";
 
 function guardarNuvemLocal() {
   try {
-    if (horta) localStorage.setItem(CHAVE_NUVEM, JSON.stringify({ codigo: horta.codigo, pendente }));
+    if (horta) localStorage.setItem(CHAVE_NUVEM, JSON.stringify({ codigo: horta.codigo, pendente, visto: ultimoVisto }));
     else localStorage.removeItem(CHAVE_NUVEM);
   } catch { /* sem salvar */ }
 }
@@ -1450,8 +1691,9 @@ async function ouvir(codigo) {
   try {
     const parar = await ouvirHorta(codigo, (info) => {
       if (!horta || horta.codigo !== codigo) return;
-      if (info.editor === EDITOR) {  // fui eu que salvei
+      if (info.editor === EDITOR) {  // fui eu (ou outra aba deste navegador) que salvei
         ultimoVisto = info.atualizadoEm;
+        guardarNuvemLocal();
         return;
       }
       if (info.atualizadoEm !== null && info.atualizadoEm !== ultimoVisto) mostrarConflito(info.atualizadoEm);
@@ -1553,7 +1795,10 @@ async function salvarNaNuvem({ manual = false, forcar = false } = {}) {
   const codigo = horta.codigo;
   const dados = dadosAtuais();
   const nome = nomeDoProjeto();
-  if (!manual && !forcar && dados === ultimoEnviado && nome === ultimoNome) return;
+  if (!manual && !forcar && dados === ultimoEnviado && nome === ultimoNome) {
+    if (pendente) { pendente = false; guardarNuvemLocal(); }  // nada mudou de verdade
+    return;
+  }
   if (conectado === false) {
     pendente = true;
     guardarNuvemLocal();
@@ -1595,6 +1840,7 @@ async function enviarPendencias() {
 // Salvamento automático: 3 s depois da última mudança
 aoMudarProjeto = () => {
   if (!horta || horta.arquivada || conflito) return;
+  if (!pendente) { pendente = true; guardarNuvemLocal(); }
   clearTimeout(temporizadorNuvem);
   temporizadorNuvem = setTimeout(() => salvarNaNuvem(), ESPERA_AUTOMATICO);
 };
@@ -1703,7 +1949,10 @@ function lerConteudo(texto) {
   if (!d) return null;
   let terrenoMedidas = null;
   let obstaculos = [];
-  if (d.m === "mapa") {
+  if (d.v === FORMATO_DADOS && d.h) {
+    terrenoMedidas = [d.h.l, d.h.c];
+    obstaculos = (d.h.o || []).map((o) => ({ nome: o[1], onde: JSON.stringify(o.slice(2)) }));
+  } else if (d.m === "mapa") {
     if (d.t) terrenoMedidas = [d.t[2], d.t[3]];
     obstaculos = (d.o || []).map((o) => ({ nome: o[1], onde: JSON.stringify(o.slice(2)) }));
   } else if (d.l) {
@@ -2130,7 +2379,7 @@ async function iniciarNuvem() {
     registrarHorta(salvo.codigo, valor.nome);
     ouvir(salvo.codigo);
     if (pendente) salvarNaNuvem({ forcar: true });
-    else if (!mesmoProjeto(dadosAtuais(), valor.dados)) mostrarConflito(valor.atualizadoEm);
+    else if (salvo.visto != null && valor.atualizadoEm !== salvo.visto && valor.editor !== EDITOR) mostrarConflito(valor.atualizadoEm);
   } catch {
     iniciarConexao();
     statusNuvem(SEM_CONEXAO);

@@ -8,7 +8,7 @@
 // No banco (Firebase Realtime Database):
 //   /hortasPlanejadas/{codigo} = {
 //     nome, dados (o projeto em texto JSON), criadoEm, atualizadoEm,
-//     editor (identificador aleatório DA ABA, para perceber edição em dois lugares),
+//     editor (identificador aleatório DO NAVEGADOR, para perceber edição em outro aparelho),
 //     arquivada,
 //     versoes: { "0".."9": { nome, dados, em, resumo, tipo } }   (as 10 últimas cópias, em rodízio)
 //       resumo: "Terreno 6 × 4 m · 2 obstáculos · 1 planta (Tomate)" (e o que mudou)
@@ -47,7 +47,22 @@ export function normalizarCodigo(texto) {
 }
 
 // Identificador desta ABA (não é da pessoa): muda a cada vez que a página abre
-export const EDITOR = gerarCodigo() + gerarCodigo();
+// Quem está editando: um identificador DESTE NAVEGADOR (o mesmo em todas as
+// abas). Assim o aviso "alterada em outro aparelho" não aparece por causa de
+// outra aba aberta aqui mesmo.
+function editorDesteNavegador() {
+  try {
+    let id = localStorage.getItem("horta-planejar-editor-v1");
+    if (!id) {
+      id = gerarCodigo() + gerarCodigo();
+      localStorage.setItem("horta-planejar-editor-v1", id);
+    }
+    return id;
+  } catch {
+    return gerarCodigo() + gerarCodigo();  // sem localStorage: um por aba
+  }
+}
+export const EDITOR = editorDesteNavegador();
 
 // ---------- Conexão com o Firebase (carregado só quando precisa) ----------
 let carregando = null;

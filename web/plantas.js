@@ -20,6 +20,7 @@ const MOTIVOS = { fora: "Aqui não dá: fora do terreno", obstaculo: "Aqui não 
 
 const VIZINHAS_M = 0.5;  // canteiros a menos de 0,5 m um do outro são vizinhos
 const MAPA_ESTREITO_PX = 500;  // desenho mais estreito que isso: só números nos canteiros
+const CANTEIRO_MINUSCULO_PX = 24; // canteiro menor que isso na tela (terreno grande): alfinete com o número
 
 // Duas caixas (x, y, w, h) se encostam?
 const baterem = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -85,7 +86,7 @@ export function convivenciaEntre(atuais) {
   return { sobrepostas, pares };
 }
 
-export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, botaoVoltar, filtro, filtroNota, aoMudar }) {
+export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, botaoVoltar, filtro, filtroNota, aoMudar, aoTocarNaLista = () => {} }) {
   let filtroId = "";        // "Mostrar só as áreas boas para…" (id da planta, ou "")
   let mapa = null;          // horas de sol (sol.js)
   let terreno = null;       // terreno do cálculo
@@ -260,7 +261,14 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
       const caixaNome = { x: n.meio.x - larguraNome / 2, y: n.meio.y - 11, w: larguraNome, h: 22 };
       const cabeNome = n.forcarNome || (!estreito && n.comprido >= larguraNome + 4 && n.lado >= 26);
       let caixa;
-      if (cabeNome && (n.forcarNome || !ocupadas.some((o) => baterem(caixaNome, o)))) {
+      let ondeSelo = { x: n.canto.x, y: n.canto.y, raio: n.lado < 30 ? 7 : 9 };
+      if (n.comprido < CANTEIRO_MINUSCULO_PX && !n.forcarNome) {
+        // Canteiro minúsculo (terreno grande no Mapa): alfinete com o número e a cor da planta;
+        // o selo fica ao lado da cabeça do alfinete, nunca em cima do número
+        const pino = alfinete(ctx, n.numero, n.meio.x, n.meio.y, n.cor, ocupadas);
+        caixa = pino.caixa;
+        ondeSelo = { x: pino.cabeca.x + 13, y: pino.cabeca.y - 10, raio: 7 };
+      } else if (cabeNome && (n.forcarNome || !ocupadas.some((o) => baterem(caixaNome, o)))) {
         caixa = etiqueta(ctx, n.nome, n.meio.x, n.meio.y, n.cor);
       } else {
         // O número fica no meio do canteiro; se ali já tem outro rótulo, ao lado (com uma linha)
@@ -284,11 +292,41 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
       ocupadas.push(caixa);
       caixasNomes.push({ id: n.id, ...caixa });
       if (n.nivelId) {
-        const raio = n.lado < 30 ? 7 : 9;
-        desenharSelo(ctx, n.canto.x, n.canto.y, raio, n.nivelId);
-        selosNoDesenho.push({ x: n.canto.x - raio, y: n.canto.y - raio, w: 2 * raio, h: 2 * raio });
+        const { x, y, raio } = ondeSelo;
+        desenharSelo(ctx, x, y, raio, n.nivelId);
+        selosNoDesenho.push({ x: x - raio, y: y - raio, w: 2 * raio, h: 2 * raio });
       }
     }
+  }
+
+  // Alfinete: a ponta no canteiro, a cabeça (com o número) em cima. Se a cabeça
+  // bater em outro rótulo, vai um pouco para o lado.
+  function alfinete(ctx, numero, x, y, cor, ocupadas) {
+    const raio = 11;
+    const lugares = [0, 26, -26, 52, -52].map((dx) => ({ x: x + dx, y: y - 22 }));
+    const cabeca = lugares.find((c) => !ocupadas.some((o) => baterem({ x: c.x - raio, y: c.y - raio, w: 2 * raio, h: 2 * raio }, o))) || lugares[0];
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(cabeca.x - 5, cabeca.y + 6);
+    ctx.lineTo(cabeca.x + 5, cabeca.y + 6);
+    ctx.closePath();
+    ctx.fillStyle = cor;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cabeca.x, cabeca.y, raio, 0, Math.PI * 2);
+    ctx.fillStyle = cor;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(numero), cabeca.x, cabeca.y + 0.5);
+    ctx.restore();
+    return { cabeca, caixa: { x: cabeca.x - raio, y: cabeca.y - raio, w: 2 * raio, h: 2 * raio + 12 } };
   }
 
   // Bolinha branca com o número da planta
@@ -430,12 +468,26 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
   }
 
   // ---------- Lista ao lado ----------
+  // Nenhum quadradinho livre fica dentro da meia-sombra (todo o terreno passa de 6 h)?
+  function semSombra() {
+    if (!mapa) return false;
+    const max = NECESSIDADE.meia.maximo;
+    const querMeia = Object.keys(escolhidas).some((id) => culturaDe(id)?.sol === "meia");
+    if (!querMeia) return false;
+    for (let i = 0; i < mapa.horas.length; i++) if (!mapa.ocupado[i] && mapa.horas[i] <= max) return false;
+    return true;
+  }
+
   function mostrarAvisos() {
     const { mensagens } = convivencia();
+    if (semSombra()) {
+      mensagens.push({ tipo: "rega", texto: "Seu terreno não tem sombra: plantas de meia-sombra vão receber sol demais. " +
+        "Uma árvore, muro ou tela de sombreamento ajudaria.", icone: "☀️" });
+    }
     avisos.replaceChildren(...mensagens.map((m) => {
       const li = document.createElement("li");
       li.className = `planejar-aviso-${m.tipo}`;
-      li.textContent = `${m.tipo === "sobreposicao" ? "✕" : "💧"} ${m.texto}`;
+      li.textContent = `${m.icone || (m.tipo === "sobreposicao" ? "✕" : "💧")} ${m.texto}`;
       return li;
     }));
     avisos.hidden = mensagens.length === 0;
@@ -494,16 +546,23 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
   // Meio em meio: "~6,5 h"
   const horas = (h) => numero(Math.round(h * 2) / 2);
 
-  // "~6,5 h · canto noroeste" e, quando não é recomendado, o porquê:
-  // "~5 h em média, mas parte do canteiro passa de 6 h" ou "~4,5 h, falta ~1,5 h"
+  // "~6,5 h · canto noroeste" e, quando não é recomendado, o porquê
+  // (com minimo, maior, media, falta e excesso de avaliarRegiao):
+  //   sol demais na média:   "sol demais: ~12 h, o ideal é até 6 h"
+  //   sol demais só em parte: "~5 h em média, mas parte do canteiro passa de 6 h"
+  //   falta sol:             "falta ~1,5 h: ~4,5 h, precisa de 6 h"
+  //   parte com pouco sol:   "~6,5 h em média, mas parte do canteiro fica abaixo de 6 h"
   function infoDoLugar(id, r, av) {
     const cultura = culturaDe(id);
-    const max = NECESSIDADE[cultura.sol].maximo;
+    const { minimo: min, maximo: max } = NECESSIDADE[cultura.sol];
     const pior = anoTodo ? " no pior mês" : "";
     let sol;
     if (av.nivel === "recomendado") sol = `~${horas(av.media)} h${pior}`;
-    else if (max !== null && av.maior > max && av.falta < 1) sol = `~${horas(av.media)} h em média${pior}, mas parte do canteiro passa de ${max} h`;
-    else sol = `~${horas(av.media)} h${pior}, falta ~${horas(Math.max(av.falta, 0.5))} h`;
+    else if (av.excesso > 0) sol = `sol demais: ~${horas(av.media)} h${pior}, o ideal é até ${max} h`;
+    else if (max !== null && av.maior > max) sol = `~${horas(av.media)} h em média${pior}, mas parte do canteiro passa de ${max} h`;
+    else if (av.falta > 0) sol = `falta ~${horas(Math.max(av.falta, 0.5))} h: ~${horas(av.media)} h${pior}, precisa de ${min} h`;
+    else if (av.minimo < min) sol = `~${horas(av.media)} h em média${pior}, mas parte do canteiro fica abaixo de ${min} h`;
+    else sol = `~${horas(av.media)} h${pior}`;
     let texto = `${sol} · ${descreverLugar(celulasDe(r), mapa, terreno)}`;
     // Nem o melhor lugar serve? Diz quanto ele tem
     const melhor = sugestoes[id];
@@ -550,8 +609,8 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
         selo.textContent = `${NIVEIS[av.nivel].icone} ${NIVEIS[av.nivel].texto}`;
         li.append(selo);
       }
-      // Tocar na linha destaca o canteiro no mapa (e tocar no canteiro destaca a linha)
-      li.addEventListener("click", () => { selecionada = id; mostrarLista(); aoMudar({}); });
+      // Tocar na linha destaca o canteiro (e o traz para a tela no Mapa); tocar no canteiro destaca a linha
+      li.addEventListener("click", () => { selecionada = id; mostrarLista(); aoMudar({}); aoTocarNaLista(id); });
       return li;
     }));
   }

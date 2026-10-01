@@ -62,11 +62,78 @@ export function metrosParaForma(e, n, angulo) {
   return { a: e * c - n * s, b: e * s + n * c };
 }
 
+// =====================================================================
+//  UMA HORTA, DUAS VISTAS
+//  A horta é um modelo só, em METROS no sistema do terreno (o mesmo do
+//  sol.js e do Desenho): largura, comprimento, norte, latitude e longitude
+//  do centro e os obstáculos (x, y, tamanho, ângulo, altura).
+//  O mapa guarda as formas em latitude/longitude; estas duas funções
+//  convertem de um para o outro.
+// =====================================================================
+
+// Ponto do mapa -> metros no terreno (x para a direita, y para baixo, a partir do canto de cima à esquerda)
+function noTerrenoDe(terreno, latlng) {
+  const m = paraMetros(latlng, terreno.centro);
+  const { a, b } = metrosParaForma(m.e, m.n, terreno.angulo || 0);
+  return { x: a + terreno.largura / 2, y: terreno.comprimento / 2 - b };
+}
+
+// Formas do mapa -> modelo (null se não há terreno no mapa).
+// O giro do terreno no mapa vira o "ângulo do norte" no Desenho, e cada
+// obstáculo leva o giro dele em relação ao terreno.
+export function estadoParaModelo({ terreno, obstaculos = [] }) {
+  if (!terreno) return null;
+  const giro = terreno.angulo || 0;
+  const obs = obstaculos.map((ob) => {
+    const c = noTerrenoDe(terreno, ob.centro);
+    if (ob.tipo === "circulo") return { tipo: "circulo", nome: ob.nome, x: c.x, y: c.y, raio: ob.raio, altura: ob.altura };
+    return {
+      tipo: "retangulo", nome: ob.nome, altura: ob.altura,
+      x: c.x - ob.largura / 2, y: c.y - ob.profundidade / 2,
+      largura: ob.largura, profundidade: ob.profundidade,
+      angulo: (((ob.angulo || 0) - giro) % 360 + 360) % 360
+    };
+  });
+  return {
+    largura: terreno.largura,
+    comprimento: terreno.comprimento,
+    norte: (360 - giro) % 360,          // no plano do terreno, o norte fica girado ao contrário
+    latitude: terreno.centro[0],        // o cálculo usa o centro do terreno
+    longitude: terreno.centro[1],
+    obstaculos: obs
+  };
+}
+
+// Modelo -> formas do mapa (o terreno centrado na latitude/longitude do modelo)
+export function modeloParaEstado(modelo) {
+  const centro = [modelo.latitude, modelo.longitude];
+  const giro = (360 - (modelo.norte || 0)) % 360;
+  const terreno = { centro, largura: modelo.largura, comprimento: modelo.comprimento, angulo: giro };
+  const L = modelo.largura;
+  const C = modelo.comprimento;
+  // Metros no terreno -> latitude/longitude
+  const paraLatLng = (x, y) => {
+    const { e, n } = formaParaMetros(x - L / 2, C / 2 - y, giro);
+    return deMetros(e, n, centro);
+  };
+  const obstaculos = (modelo.obstaculos || []).map((ob) => (ob.tipo === "circulo"
+    ? { tipo: "circulo", nome: ob.nome, centro: paraLatLng(ob.x, ob.y), raio: ob.raio, altura: ob.altura }
+    : {
+      tipo: "retangulo", nome: ob.nome, altura: ob.altura,
+      centro: paraLatLng(ob.x + ob.largura / 2, ob.y + ob.profundidade / 2),
+      largura: ob.largura, profundidade: ob.profundidade,
+      angulo: ((ob.angulo || 0) + giro) % 360
+    }));
+  return { terreno, obstaculos };
+}
+
 export function iniciarModoMapa(opcoes) {
   const {
     elemento, busca, buscaTexto, buscaStatus, botaoLocalizacao, camadaNomes,
     lista, editor, ferramentaStatus, aoMudar, textoDoPonto, aoMudarVista, pegarToque,
-    rotulosOcupados = () => []
+    rotulosOcupados = () => [],
+    aoEscolherLugar = () => {},   // a busca ou "minha localização" acharam um lugar: [lat, lng]
+    aoTirarDoMapa = () => {}      // "Tirar do mapa": a horta perde a posição (o desenho fica)
   } = opcoes;
 
   let mapa = null;          // o mapa do Leaflet (criado na primeira vez que aparece)
@@ -138,11 +205,7 @@ export function iniciarModoMapa(opcoes) {
   let dica = null;
   let esconderDica = null;
   // Ponto do mapa -> metros no terreno (x para a direita, y para baixo, a partir do canto de cima à esquerda)
-  function noTerreno(latlng) {
-    const m = paraMetros(latlng, terreno.centro);
-    const { a, b } = metrosParaForma(m.e, m.n, terreno.angulo || 0);
-    return { x: a + terreno.largura / 2, y: terreno.comprimento / 2 - b };
-  }
+  const noTerreno = (latlng) => noTerrenoDe(terreno, latlng);
   function mostrarDica(evento) {
     if (!terreno || gesto || ferramenta) { dica.hidden = true; return; }
     const p = pontoDoEvento(evento);
@@ -163,28 +226,7 @@ export function iniciarModoMapa(opcoes) {
   // (a grade segue o terreno, mesmo girado). O giro do terreno vira o
   // "ângulo do norte" desse plano, e cada obstáculo leva o giro dele
   // em relação ao terreno.
-  function terrenoParaCalculo() {
-    if (!terreno) return null;
-    const giro = terreno.angulo || 0;
-    const obs = obstaculos.map((ob) => {
-      const c = noTerreno(ob.centro);
-      if (ob.tipo === "circulo") return { tipo: "circulo", nome: ob.nome, x: c.x, y: c.y, raio: ob.raio, altura: ob.altura };
-      return {
-        tipo: "retangulo", nome: ob.nome, altura: ob.altura,
-        x: c.x - ob.largura / 2, y: c.y - ob.profundidade / 2,
-        largura: ob.largura, profundidade: ob.profundidade,
-        angulo: (((ob.angulo || 0) - giro) % 360 + 360) % 360
-      };
-    });
-    return {
-      largura: terreno.largura,
-      comprimento: terreno.comprimento,
-      norte: (360 - giro) % 360,          // no plano do terreno, o norte fica girado ao contrário
-      latitude: terreno.centro[0],        // o cálculo usa o centro do terreno
-      longitude: terreno.centro[1],
-      obstaculos: obs
-    };
-  }
+  const terrenoParaCalculo = () => estadoParaModelo({ terreno, obstaculos });
 
   function medirCanvas() {
     const tamanho = mapa.getSize();
@@ -572,6 +614,13 @@ export function iniciarModoMapa(opcoes) {
     circulo: "Toque no centro da árvore e arraste até a borda da copa."
   };
   function usarFerramenta(qual) {
+    if ((qual === "retangulo" || qual === "circulo") && !terreno) {
+      ferramenta = null;
+      ferramentaStatus.textContent = "Posicione a horta no mapa primeiro (busca ou minha localização).";
+      ferramentaStatus.hidden = false;
+      setTimeout(() => { if (!ferramenta) ferramentaStatus.hidden = true; }, 3500);
+      return;
+    }
     ferramenta = ferramenta === qual ? null : qual;
     ferramentaStatus.textContent = ferramenta ? AJUDA_FERRAMENTA[ferramenta] : "";
     ferramentaStatus.hidden = !ferramenta;
@@ -688,10 +737,10 @@ export function iniciarModoMapa(opcoes) {
     const excluir = document.createElement("button");
     excluir.type = "button";
     excluir.className = "planejar-botao planejar-botao-perigo";
-    excluir.textContent = forma === terreno ? "Apagar o terreno" : "Excluir";
+    excluir.textContent = forma === terreno ? "Tirar do mapa" : "Excluir";
     excluir.addEventListener("click", () => {
-      if (forma === terreno) terreno = null;
-      else obstaculos.splice(selecionado, 1);
+      if (forma === terreno) { selecionado = null; aoTirarDoMapa(); return; }
+      obstaculos.splice(selecionado, 1);
       selecionado = null;
       aoEditar();
       mostrarPainel();
@@ -734,8 +783,10 @@ export function iniciarModoMapa(opcoes) {
         buscaStatus.textContent = "Não encontrei esse endereço. Tente escrever de outro jeito (rua, bairro, cidade).";
         return;
       }
-      mapa.setView([Number(lugares[0].lat), Number(lugares[0].lon)], 19);
+      const lugar = [Number(lugares[0].lat), Number(lugares[0].lon)];
+      mapa.setView(lugar, 19);
       buscaStatus.textContent = `Encontrado: ${lugares[0].display_name}`;
+      aoEscolherLugar(lugar);
     } catch (erro) {
       buscaStatus.textContent = `Não consegui buscar agora (${erro.message}). Confira a internet.`;
     }
@@ -751,8 +802,10 @@ export function iniciarModoMapa(opcoes) {
     buscaStatus.textContent = "Procurando sua localização…";
     navigator.geolocation.getCurrentPosition(
       (posicao) => {
-        mapa.setView([posicao.coords.latitude, posicao.coords.longitude], 19);
+        const lugar = [posicao.coords.latitude, posicao.coords.longitude];
+        mapa.setView(lugar, 19);
         buscaStatus.textContent = `Localização encontrada (precisão de ~${Math.round(posicao.coords.accuracy)} m).`;
+        aoEscolherLugar(lugar);
       },
       (erro) => {
         buscaStatus.textContent = erro.code === erro.PERMISSION_DENIED
@@ -793,30 +846,33 @@ export function iniciarModoMapa(opcoes) {
     if (mapa) mostrarPainel();
   }
 
-  // Exemplo: terreno de 6 × 4 m no meio do mapa, muro de 2 m no lado norte e
-  // árvore de 5 m no canto leste
-  function carregarExemplo() {
-    const c = mapa ? mapa.getCenter() : { lat: vista.centro[0], lng: vista.centro[1] };
-    const centro = [c.lat, c.lng];
-    terreno = { centro, largura: 6, comprimento: 4, angulo: 0 };
-    obstaculos = [
-      { tipo: "retangulo", nome: "Muro", centro: deMetros(0, 1.9, centro), largura: 6, profundidade: 0.2, angulo: 0, altura: 2 },
-      { tipo: "circulo", nome: "Árvore", centro: deMetros(2.3, -1.2, centro), raio: 0.8, altura: 5 }
-    ];
-    selecionado = null;
-    // Enquadra o terreno (6 × 4 m precisa de bem perto para as plantas caberem)
-    if (mapa) mapa.fitBounds([deMetros(-4, -3, centro), deMetros(4, 3, centro)], { maxZoom: 23 });
-    redesenhar();
-    mostrarPainel();
-    aoMudar({});
+  // Enquadra o terreno na tela (uma horta pequena precisa de bem perto)
+  function enquadrarTerreno() {
+    if (!mapa || !terreno) return;
+    const r = Math.max(terreno.largura, terreno.comprimento) * 0.75;
+    mapa.fitBounds([deMetros(-r, -r, terreno.centro), deMetros(r, r, terreno.centro)], { maxZoom: 23 });
+  }
+
+  // Metros no terreno -> latitude/longitude (para centralizar um canteiro)
+  function latLngDoTerreno(x, y) {
+    if (!terreno) return null;
+    const { e, n } = formaParaMetros(x - terreno.largura / 2, terreno.comprimento / 2 - y, terreno.angulo || 0);
+    return deMetros(e, n, terreno.centro);
   }
 
   return {
     disponivel,
     obterEstado,
     aplicarEstado,
-    carregarExemplo,
     mostrar,
+    enquadrarTerreno,
+    // Leva o ponto (metros no terreno) para a tela, sem mudar o zoom; se já está à vista, não mexe
+    centralizarSeFora(x, y) {
+      const latlng = latLngDoTerreno(x, y);
+      if (!mapa || !latlng) return;
+      if (!mapa.getBounds().pad(-0.1).contains(latlng)) mapa.panTo(latlng);
+    },
+    centroDaVista: () => (mapa ? [mapa.getCenter().lat, mapa.getCenter().lng] : vista.centro),
     mostrarPainel,
     redesenhar,
     usarFerramenta,

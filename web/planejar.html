@@ -44,6 +44,14 @@
         <button type="button" id="conflito-continuar" class="planejar-botao">Continuar com a minha</button>
       </div>
     </div>
+    <!-- Horta antiga com dois desenhos (um no Mapa, outro no Desenho): o segundo vira cópia -->
+    <div id="aviso-segundo" class="planejar-faixa planejar-faixa-conflito" role="status" hidden>
+      <strong>Esta horta tinha um segundo desenho. Abrir como cópia?</strong>
+      <div class="planejar-botoes">
+        <button type="button" id="segundo-copia" class="planejar-botao planejar-botao-forte">Abrir como cópia</button>
+        <button type="button" id="segundo-depois" class="planejar-botao">Agora não</button>
+      </div>
+    </div>
     <div id="faixa-arquivada" class="planejar-faixa planejar-faixa-arquivada" hidden>
       <strong>🗄 Horta arquivada.</strong> Dá para ver, imprimir e copiar; para mudar, desarquive.
       <button type="button" id="desarquivar-faixa" class="planejar-botao">Desarquivar</button>
@@ -85,6 +93,15 @@
             <p id="ferramenta-status" class="planejar-ferramenta-ajuda" aria-live="polite" hidden></p>
             <!-- Rosa dos ventos fixa: no mapa o norte é sempre para cima -->
             <div class="planejar-rosa" aria-hidden="true"><span>N</span>▲</div>
+            <!-- A horta ainda não tem lugar no mapa (foi feita no Desenho) -->
+            <div id="faixa-posicionar" class="planejar-posicionar" hidden>
+              <strong>Posicione sua horta no mapa</strong>
+              <span>Busque o endereço ou use a sua localização: a horta aparece ali, com o norte do Desenho.</span>
+              <div class="planejar-botoes">
+                <button type="button" id="posicionar-buscar" class="planejar-botao planejar-botao-forte">🔎 Buscar endereço</button>
+                <button type="button" id="posicionar-localizar" class="planejar-botao">📍 Usar minha localização</button>
+              </div>
+            </div>
           </div>
           <!-- Modo "Desenho" -->
           <div class="so-livre planejar-canvas-caixa">
@@ -132,6 +149,7 @@
             <p id="busca-status" class="planejar-nota" aria-live="polite"></p>
             <div class="planejar-botoes planejar-ferramentas" role="group" aria-label="Desenhar no mapa">
               <button type="button" class="planejar-botao" data-ferramenta="terreno" aria-pressed="false">▭ Desenhar terreno</button>
+              <button type="button" id="tirar-do-mapa" class="planejar-botao" hidden>Tirar do mapa</button>
             </div>
             <p id="centro-terreno" class="planejar-nota">O cálculo usa o centro do terreno desenhado no mapa.</p>
             <p class="planejar-nota">Toque em uma forma para selecionar; arraste os quadradinhos para mudar o tamanho e a bolinha ↻ para girar.</p>
@@ -154,6 +172,7 @@
             <legend>Local</legend>
             <label>Latitude <input type="number" id="latitude" min="-90" max="90" step="0.01"></label>
             <label>Longitude <input type="number" id="longitude" min="-180" max="180" step="0.01"></label>
+            <p id="nota-posicao" class="planejar-nota" hidden>Posição definida pelo mapa.</p>
           </fieldset>
 
           <p class="planejar-nota planejar-nota-norte"><strong>No hemisfério sul, o lado norte recebe mais sol.</strong></p>

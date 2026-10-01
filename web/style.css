@@ -1820,3 +1820,25 @@ body.imprimindo { overflow: hidden; }
 /* Unidades (%, °C, mm) pequenas, mas não abaixo de 14 px */
 .numero small, .clima-valores dd small { font-size: max(0.45em, 0.875rem); }
 @media (min-width: 1024px) { .painel main { padding-bottom: 12px; } }
+
+/* ================= Planeje: uma horta, duas vistas ================= */
+/* "Posicione sua horta no mapa" (horta feita no Desenho, ainda sem lugar) */
+.planejar-posicionar {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 950;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100% - 24px));
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+.planejar-posicionar span { font-size: var(--fs-nota); color: var(--texto-suave); }
+.planejar-posicionar .planejar-botoes { justify-content: center; }
+.planejar-grupo-duplo .planejar-nota { grid-column: 1 / -1; margin: 0; }
+input[readonly] { background: #f1f4f0; color: var(--texto-suave); }
