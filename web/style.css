@@ -1666,7 +1666,7 @@ body.imprimindo { overflow: hidden; }
   border-radius: 50%;
   background: var(--borda);
   color: var(--texto);
-  font-size: 0.8em;
+  font-size: var(--fs-nota);
 }
 .planejar-abas [aria-selected="true"] .planejar-aba-num { background: var(--verde); color: #fff; }
 .planejar-etapa { padding: var(--espaco-cartao) var(--espaco-cartao) 0; }
