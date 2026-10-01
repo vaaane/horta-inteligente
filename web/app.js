@@ -16,6 +16,7 @@ import { TELEGRAM_CANAL, arrobaDoCanal, ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
 import { iniciarAbas } from "./abas.js";
 import { iniciarProjetor } from "./projetor.js";
+import { haQuanto, semSinal, quandoFoi } from "./tempo.js";
 
 iniciarCabecalho();
 
@@ -118,17 +119,13 @@ function atualizarTempo() {
   if (ultimoTs === null) return;
 
   const agora = Date.now() + diferencaRelogio;
-  const segundos = Math.max(0, Math.round((agora - ultimoTs) / 1000));
+  elAtualizacao.textContent = `Última atualização: ${haQuanto(ultimoTs, agora)}`;
 
-  let texto;
-  if (segundos < 60) texto = `há ${segundos} s`;
-  else if (segundos < 3600) texto = `há ${Math.floor(segundos / 60)} min`;
-  else texto = `há ${Math.floor(segundos / 3600)} h`;
-  elAtualizacao.textContent = `Última atualização: ${texto}`;
-
+  // O limite (20 s no modo teste, 2 min no normal) decide QUANDO o aviso
+  // aparece; o texto diz o tempo de verdade, igual ao rodapé
   const limite = modoTeste ? LIMITE_OFFLINE_TESTE_MS : LIMITE_OFFLINE_MS;
   const online = agora - ultimoTs < limite;
-  elOffline.textContent = `⚠️ ESP32 offline — nenhum dado novo há mais de ${modoTeste ? "20 segundos" : "2 minutos"}.`;
+  elOffline.textContent = `⚠️ ESP32 sem sinal ${semSinal(ultimoTs, agora)}.`;
   elOffline.hidden = online;
   controle.definirOffline(!online);  // sem ESP32, os botões ficam desativados
   demo.definirOffline(!online);
@@ -168,9 +165,11 @@ agua.aoResumo((resumo) => {
   if (!resumo.comecou) {
     valor.textContent = "--";
     coisas.textContent = "começa a contar na primeira rega";
+    elEconomia.querySelector(".economia-mais").textContent = "comparado a um timer fixo · ver detalhes ›";
     return;
   }
   valor.textContent = `${numero(resumo.economia, 1)} L`;
+  elEconomia.querySelector(".economia-mais").textContent = `desde ${quandoFoi(resumo.inicio)} · ver detalhes ›`;
   valor.classList.toggle("agua-negativa", resumo.economia < 0);
   coisas.textContent = resumo.economia < 0
     ? "a horta usou mais água que o timer"

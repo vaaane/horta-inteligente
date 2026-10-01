@@ -13,6 +13,7 @@ import {
   ref, onValue
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 import { numero, contaDaCota } from "./agua.js";
+import { semSinal } from "./tempo.js";
 
 // Iguais ao firmware (só para os textos e as cores dos chips).
 // Exportados: o cartão de umidade e o gráfico do histórico marcam os mesmos limites.
@@ -51,6 +52,11 @@ export function iniciarPodeRegar(db, raiz, acoes) {
   let ajuste = {};
   let offline = true;     // até o painel dizer o contrário
   let chipAberto = null;  // chip com a explicação aberta
+  let diferencaRelogio = 0;
+
+  onValue(ref(db, ".info/serverTimeOffset"), (snap) => { diferencaRelogio = snap.val() || 0; });
+  // Sem sinal: o "há 3 min" da faixa continua andando
+  setInterval(() => { if (offline) mostrar(); }, 1000);
 
   onValue(ref(db, "horta/estado"), (snap) => { estado = snap.val(); mostrar(); });
   onValue(ref(db, "clima"), (snap) => { clima = snap.val() || {}; mostrar(); });
@@ -193,10 +199,12 @@ export function iniciarPodeRegar(db, raiz, acoes) {
   function mostrar() {
     const temDecisao = estado && typeof estado.decisao === "string";
 
-    // Sem ESP32 (offline ou ainda sem dado): faixa cinza
+    // Sem ESP32 (offline ou ainda sem dado): faixa cinza, uma linha só
     if (offline || !temDecisao) {
       raiz.dataset.cor = "cinza";
-      $("resposta").textContent = "Sem dados do ESP32";
+      $("resposta").textContent = typeof estado?.ts === "number"
+        ? `Sem sinal do ESP32 ${semSinal(estado.ts, Date.now() + diferencaRelogio)}: a decisão volta quando ele reconectar.`
+        : "Sem dados do ESP32: a decisão aparece quando ele mandar o primeiro dado.";
       $("chips").replaceChildren();
       $("chips").hidden = true;
       $("explica").hidden = true;

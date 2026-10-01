@@ -13,7 +13,7 @@
 import {
   ref, onValue, query, orderByChild, orderByKey, startAt, limitToLast, set, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
-import { quando } from "./decisao.js";
+import { quandoFoi } from "./tempo.js";
 
 // Irrigação por timer fixo que usamos para comparar (uma horta comum):
 const TIMER_REGAS_POR_DIA = 2;      // manhã e tarde
@@ -346,7 +346,7 @@ export function iniciarAgua(db, raiz, opcoes = {}) {
         return span;
       }));
       $("coisas").hidden = linhas.length === 0;
-      avisarResumo({ comecou: true, economia, porcento, coisas: linhas });
+      avisarResumo({ comecou: true, economia, porcento, coisas: linhas, inicio });
     }
 
     // Regando agora (a rega já está somando na "Água usada")
@@ -395,7 +395,7 @@ export function iniciarAgua(db, raiz, opcoes = {}) {
     // O Kc que a horta aprendeu
     const kc = typeof ajuste.kc === "number" ? ajuste.kc : KC;
     if (typeof ajuste.kc === "number" && ajuste.motivo) {
-      const em = typeof ajuste.atualizadoEm === "number" ? ` ${quando(ajuste.atualizadoEm)}` : "";
+      const em = typeof ajuste.atualizadoEm === "number" ? ` ${quandoFoi(ajuste.atualizadoEm)}` : "";
       $("cota-kc").textContent = `Kc ${umaCasa(ajuste.kc)} — ajustado${em}: ${ajuste.motivo}`;
     } else {
       $("cota-kc").textContent = `Kc ${umaCasa(kc)} (inicial)`;
@@ -586,7 +586,7 @@ export function iniciarAgua(db, raiz, opcoes = {}) {
       const li = document.createElement("li");
       const hora = document.createElement("span");
       hora.className = "decisao-hora";
-      hora.textContent = quando(rega.fim);
+      hora.textContent = quandoFoi(rega.fim);
       const texto = document.createElement("span");
       texto.textContent = `${duracao(rega.segundos)} · ${numero(rega.litros, 2)} L`;
       li.append(hora, texto);

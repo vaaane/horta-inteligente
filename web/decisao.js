@@ -11,6 +11,7 @@
 import {
   ref, onValue, query, orderByChild, limitToLast
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+import { quandoFoi, hora as horaDe } from "./tempo.js";
 
 // Um ícone para cada código de decisão
 const ICONES = {
@@ -29,21 +30,6 @@ const ICONES = {
 };
 const icone = (codigo) => ICONES[codigo] || "🌱";
 
-// "hoje 17:05", "ontem 06:40" ou "27/09 09:15"
-export function quando(ts) {
-  const data = new Date(ts);
-  const hora = data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-
-  const hoje = new Date();
-  const ontem = new Date();
-  ontem.setDate(hoje.getDate() - 1);
-  const mesmoDia = (a, b) => a.toDateString() === b.toDateString();
-
-  if (mesmoDia(data, hoje)) return `hoje ${hora}`;
-  if (mesmoDia(data, ontem)) return `ontem ${hora}`;
-  const dia = data.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-  return `${dia} ${hora}`;
-}
 
 export function iniciarDecisao(db, raiz, opcoes = {}) {
   // Monta o conteúdo do cartão
@@ -78,7 +64,7 @@ export function iniciarDecisao(db, raiz, opcoes = {}) {
 
       const hora = document.createElement("span");
       hora.className = "decisao-hora";
-      hora.textContent = quando(item.ts);
+      hora.textContent = quandoFoi(item.ts);
 
       const simbolo = document.createElement("span");
       simbolo.className = "decisao-lista-icone";
@@ -99,9 +85,8 @@ export function iniciarDecisao(db, raiz, opcoes = {}) {
     if (!linha) return;
     linha.hidden = !item;
     if (!item) return;
-    const data = new Date(item.ts);
-    const hoje = data.toDateString() === new Date().toDateString();
-    const hora = hoje ? data.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : quando(item.ts);
+    const hoje = new Date(item.ts).toDateString() === new Date().toDateString();
+    const hora = hoje ? horaDe(item.ts) : quandoFoi(item.ts);
     linha.replaceChildren();
     const texto = document.createElement("span");
     texto.textContent = `${icone(item.decisao)} Última decisão, ${hora}: ${item.motivo} `;

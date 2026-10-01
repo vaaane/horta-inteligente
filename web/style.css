@@ -1553,3 +1553,11 @@ body.imprimindo { overflow: hidden; }
   .telegram-texto { max-width: 13rem; }
   .telegram-texto .botao-telegram { display: none; }
 }
+
+/* ================= Sem sinal do ESP32 ================= */
+/* A faixa encolhe para uma linha (sem os chips) */
+.pode-regar[data-cor="cinza"] { align-self: start; }  /* não estica até a altura do cartão ao lado */
+.pode-regar[data-cor="cinza"] .pode-resposta { font-size: var(--fs-texto); font-weight: 700; }
+/* Botões da bomba desativados ficam mais baixos */
+.controle-modo:disabled { min-height: 32px; padding-top: 2px; padding-bottom: 2px; }
+.controle-bomba:disabled { min-height: 36px; }

@@ -5,6 +5,7 @@
 //   iniciarClima(db, document.getElementById("clima"), { textoSemDados: "..." });
 // O elemento raiz já deve ter o título do cartão; o resto é criado aqui.
 import { ref, onValue } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+import { semSinal, quandoFoi } from "./tempo.js";
 
 const LIMITE_CLIMA_ANTIGO_MS = 90 * 60 * 1000;  // 90 minutos
 const LIMITE_CHUVA_ALTA = 60;                    // % de chance de chuva
@@ -71,15 +72,14 @@ export function iniciarClima(db, raiz, opcoes = {}) {
     $("explica").textContent =
       `A planta de referência perde cerca de ${numero(c.et0, 1)} litros de água por m² hoje.`;
 
-    // Faixa só informativa: a decisão da rega aparece no cartão "Por que regou (ou não)"
+    // Faixa só informativa: a decisão da rega aparece na faixa "Pode regar agora?"
     $("faixa-chuva").hidden = !(mostrarFaixaChuva && c.chanceChuva6h >= LIMITE_CHUVA_ALTA);
 
-    // "Atualizado às HH:MM": usa a hora do Firebase; se não tiver, a da previsão
+    // "Atualizado hoje 14:38" / "ontem 14:38": usa a hora do Firebase; se não tiver, a da previsão
     atualizadoEm = typeof c.atualizadoEm === "number" ? c.atualizadoEm : null;
-    const hhmm = atualizadoEm !== null
-      ? new Date(atualizadoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-      : String(c.horaPrevisao || "").slice(11, 16);
-    $("atualizado").textContent = `Atualizado às ${hhmm}`;
+    $("atualizado").textContent = atualizadoEm !== null
+      ? `Atualizado ${quandoFoi(atualizadoEm)}`
+      : `Atualizado às ${String(c.horaPrevisao || "").slice(11, 16)}`;
 
     verificarClimaAntigo();
   });
@@ -90,12 +90,10 @@ export function iniciarClima(db, raiz, opcoes = {}) {
       $("aviso").hidden = true;
       return;
     }
-    const idade = Date.now() + diferencaRelogio - atualizadoEm;
-    const antigo = idade > LIMITE_CLIMA_ANTIGO_MS;
+    const agora = Date.now() + diferencaRelogio;
+    const antigo = agora - atualizadoEm > LIMITE_CLIMA_ANTIGO_MS;
     $("aviso").hidden = !antigo;
-    if (antigo) {
-      $("aviso").textContent = `ESP32 sem atualizar o clima há ${Math.floor(idade / 60000)} min`;
-    }
+    if (antigo) $("aviso").textContent = `Clima sem atualizar ${semSinal(atualizadoEm, agora)}`;
   }
   setInterval(verificarClimaAntigo, 30000);
 }

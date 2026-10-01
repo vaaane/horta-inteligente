@@ -152,8 +152,8 @@ export function iniciarControle(db, raiz) {
 
     // Por que os botões estão desativados
     const bloqueio = $("bloqueio");
-    if (semDados) bloqueio.textContent = "Os botões funcionam quando o ESP32 mandar o primeiro dado.";
-    else if (offline) bloqueio.textContent = "Botões desativados: o ESP32 está offline, o pedido não teria efeito.";
+    if (semDados) bloqueio.textContent = "Sem dados: controle pausado";
+    else if (offline) bloqueio.textContent = "Sem sinal: controle pausado";
     else bloqueio.textContent = "";
     bloqueio.hidden = bloqueio.textContent === "";
 
