@@ -836,17 +836,6 @@ adicionarCamada((ctx2, { paraPxX: px, paraPxY: py }) => {
   plantas.desenhar(ctx2, (x, y) => ({ x: px(x), y: py(y) }));
 }, true);
 
-// Tabela "Umidade e sol por cultura"
-$("tabela-culturas").replaceChildren(...CULTURAS.map((cultura) => {
-  const tr = document.createElement("tr");
-  for (const texto of [cultura.nome, NECESSIDADE[cultura.sol].texto, `${cultura.umidade[0]}–${cultura.umidade[1]}%`]) {
-    const td = document.createElement("td");
-    td.textContent = texto;
-    tr.append(td);
-  }
-  return tr;
-}));
-
 montarEscolha();
 quandoMapaPronto(() => calcularSugestoes());
 

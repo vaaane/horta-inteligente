@@ -3,6 +3,7 @@
 import { desenharQR } from "./qr.js";
 import { TELEGRAM_CANAL, ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
+import { CULTURAS, NECESSIDADE } from "./culturas.js";
 
 iniciarCabecalho();
 
@@ -93,6 +94,41 @@ for (const grupo of grupos) {
 
   elFuncionalidades.append(lista);
 }
+
+// ---------- Umidade e sol por cultura (os mesmos dados do Planeje sua horta) ----------
+// Uma "linha" por planta; no celular cada uma vira um cartãozinho (sem rolar para o lado)
+const tabelaCulturas = document.getElementById("tabela-culturas");
+const linhaCultura = (celulas, cabecalho = false) => {
+  const linha = document.createElement("div");
+  linha.className = cabecalho ? "culturas-linha culturas-cabecalho" : "culturas-linha";
+  linha.setAttribute("role", "row");
+  for (const [rotulo, conteudo] of celulas) {
+    const celula = document.createElement("div");
+    celula.setAttribute("role", cabecalho ? "columnheader" : "cell");
+    celula.className = "culturas-celula";
+    if (!cabecalho) celula.dataset.rotulo = rotulo;  // no celular, o rótulo aparece antes do valor
+    celula.append(conteudo);
+    linha.append(celula);
+  }
+  return linha;
+};
+tabelaCulturas.append(
+  linhaCultura([["", "Planta"], ["", "Sol"], ["", "Umidade do solo ideal"]], true),
+  ...CULTURAS.map((cultura) => {
+    const nome = document.createElement("span");
+    nome.className = "culturas-nome";
+    const cor = document.createElement("span");
+    cor.className = "planejar-cor";
+    cor.style.background = cultura.cor;
+    cor.setAttribute("aria-hidden", "true");
+    nome.append(cor, cultura.nome);
+    return linhaCultura([
+      ["Planta", nome],
+      ["Sol", NECESSIDADE[cultura.sol].texto],
+      ["Umidade", `${cultura.umidade[0]}–${cultura.umidade[1]}%`]
+    ]);
+  })
+);
 
 // ---------- QR code no fim da página ----------
 desenharQR(document.getElementById("qr"));

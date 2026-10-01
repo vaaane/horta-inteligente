@@ -921,8 +921,6 @@ main {
 .planejar-sugestoes li { display: flex; align-items: baseline; gap: 8px; line-height: 1.4; font-size: var(--fs-texto); }
 .planejar-sugestoes li .planejar-cor { flex: none; transform: translateY(2px); }
 .planejar-sugestoes li.sem-lugar { color: var(--aviso-texto); font-weight: 600; }
-.planejar-explica { margin: 0 0 12px; padding-left: 20px; line-height: 1.6; }
-.tabela-culturas { min-width: 420px; }
 /* Modo "Sobre o mapa" × "Desenho livre" */
 .modo-mapa .so-livre, .modo-livre .so-mapa { display: none !important; }
 .planejar-modos { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
@@ -1611,4 +1609,24 @@ body.imprimindo { overflow: hidden; }
   #painel-historico #decisao { height: 0; min-height: 100%; overflow-y: auto; }
   /* O título fica à vista enquanto a lista rola */
   #painel-historico #decisao h2 { position: sticky; top: calc(-1 * var(--espaco-cartao)); z-index: 1; margin-top: calc(-1 * var(--espaco-cartao)); padding: var(--espaco-cartao) 0 8px; background: var(--cartao); }
+}
+
+/* ================= Sobre: Umidade e sol por cultura ================= */
+.culturas-explica { margin: 0 0 12px; padding-left: 20px; line-height: 1.6; }
+.culturas-lista { background: var(--cartao); border: 1px solid var(--borda); border-radius: 16px; overflow: hidden; }
+.culturas-linha { display: grid; grid-template-columns: 1.2fr 1.4fr 1fr; gap: 8px 16px; padding: 10px 16px; border-top: 1px solid var(--borda); }
+.culturas-linha:first-child { border-top: none; }
+.culturas-cabecalho { font-size: var(--fs-nota); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--texto-suave); }
+.culturas-nome { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+/* Celular: cada planta vira um cartãozinho de duas linhas, sem rolar para o lado */
+@media (max-width: 600px) {
+  .culturas-cabecalho { display: none; }
+  .culturas-linha { grid-template-columns: 1fr auto; gap: 4px 12px; }
+  .culturas-celula:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }  /* sol embaixo */
+  .culturas-celula:nth-child(3) { grid-column: 2; grid-row: 1; }      /* umidade ao lado do nome */
+  .culturas-celula:not(:first-child)::before {
+    content: attr(data-rotulo) ": ";
+    font-size: var(--fs-nota);
+    color: var(--texto-suave);
+  }
 }
