@@ -23,84 +23,132 @@
     </nav>
   </header>
 
+  <!-- Abas do painel (abas.js): cada uma tem endereço próprio (#agora, #agua, #historico, #demo) -->
+  <nav class="abas" role="tablist" aria-label="Partes do painel">
+    <button type="button" role="tab" id="aba-agora" aria-controls="painel-agora" data-aba="agora">Agora</button>
+    <button type="button" role="tab" id="aba-agua" aria-controls="painel-agua" data-aba="agua">Água</button>
+    <button type="button" role="tab" id="aba-historico" aria-controls="painel-historico" data-aba="historico">Histórico</button>
+    <button type="button" role="tab" id="aba-demo" aria-controls="painel-demo" data-aba="demo" class="aba-demo">Demonstração</button>
+  </nav>
+
   <main>
-    <!-- Falha: regou e a umidade não subiu (código em falha.js) -->
-    <div id="falha" class="falha" role="alert" hidden></div>
+    <!-- ================= Aba Agora ================= -->
+    <section id="painel-agora" class="painel-aba" role="tabpanel" aria-labelledby="aba-agora">
+      <!-- Falha: regou e a umidade não subiu (código em falha.js) -->
+      <div id="falha" class="falha" role="alert" hidden></div>
 
-    <div id="offline" class="aviso" hidden>
-      ⚠️ ESP32 offline — nenhum dado novo há mais de 2 minutos.
-    </div>
+      <div id="offline" class="aviso" hidden>
+        ⚠️ ESP32 offline — nenhum dado novo há mais de 2 minutos.
+      </div>
 
-    <div class="cartoes">
-      <section class="cartao">
-        <h2>Umidade do solo</h2>
-        <p class="espera-esp32" data-espera>Aguardando o ESP32…</p>
-        <div data-com-dados hidden>
-          <p class="numero"><span id="umidade">--</span><small>%</small></p>
-          <div class="trilho"><div id="barra" class="barra"></div></div>
-          <div class="escala"><span>Seco</span><span>Molhado</span></div>
+      <div class="agora-topo">
+        <!-- "Pode regar agora?": a resposta e os semáforos da decisão (código em podeRegar.js) -->
+        <section id="pode-regar" class="pode-regar" aria-label="Pode regar agora?"></section>
+
+        <!-- Só aparece na tela grande (no celular o visitante já está no site):
+             um QR para o painel e outro para o canal de alertas no Telegram -->
+        <section class="cartao cartao-qr">
+          <h2>Abra no seu celular</h2>
+          <div class="qr-par">
+            <figure class="qr-item">
+              <figcaption class="qr-titulo"><span aria-hidden="true">📱</span> Abrir o painel</figcaption>
+              <div id="qr" class="qr"></div>
+            </figure>
+            <figure class="qr-item">
+              <figcaption class="qr-titulo"><span aria-hidden="true">🔔</span> Receber alertas</figcaption>
+              <div id="qr-telegram" class="qr"></div>
+            </figure>
+          </div>
+        </section>
+
+        <!-- Só no celular (na tela grande o QR do canal fica no cartão "Abra no seu celular") -->
+        <div class="alertas-celular">
+          <a class="botao-telegram" data-canal-telegram>🔔 Receber alertas no Telegram</a>
+          <p class="alertas-nota">Canal só de leitura. A horta avisa quando rega, quando adia e quando há falha.</p>
         </div>
-      </section>
+      </div>
 
+      <div class="cartoes">
+        <section class="cartao">
+          <h2>Umidade do solo</h2>
+          <p class="espera-esp32" data-espera>Aguardando o ESP32…</p>
+          <div data-com-dados hidden>
+            <p class="numero"><span id="umidade">--</span><small>%</small></p>
+            <!-- Tracinhos nos limites: liga e desliga (posição vem do app.js) -->
+            <div class="trilho-limites">
+              <div class="trilho"><div id="barra" class="barra"></div></div>
+              <span class="marca-limite" data-marca="ligar" aria-hidden="true"></span>
+              <span class="marca-limite" data-marca="desligar" aria-hidden="true"></span>
+            </div>
+            <div class="escala"><span>Seco</span><span>Molhado</span></div>
+            <p class="escala-limites" data-limites></p>
+          </div>
+        </section>
+
+        <section class="cartao">
+          <h2>Bomba d'água</h2>
+          <p class="espera-esp32" data-espera>Aguardando o ESP32…</p>
+          <p id="bomba" class="bomba" data-com-dados hidden>--</p>
+          <div id="falha-bomba" class="falha falha-cartao" hidden></div>
+          <!-- Automático | Manual e Ligar/Desligar (código em controle.js) -->
+          <div id="controle" class="controle"></div>
+          <p id="nota-demo" class="nota-demo" hidden>Controles liberados por <code>?demo=1</code>: o que você mudar aparece para todos.</p>
+        </section>
+
+        <section id="clima" class="cartao clima">
+          <h2>Clima agora</h2>
+        </section>
+
+        <!-- Resumo do cartão Água (o número vem do agua.js); tocar abre a aba Água -->
+        <a href="#agua" id="cartao-economia" class="cartao cartao-economia">
+          <h2>Água economizada</h2>
+          <p data-economia="valor" class="economia-valor">--</p>
+          <p data-economia="coisas" class="economia-coisas">começa a contar na primeira rega</p>
+          <p class="economia-mais">comparado a um timer fixo · ver detalhes ›</p>
+        </a>
+      </div>
+
+      <!-- "Última decisão, 11:31: …" (código em decisao.js) -->
+      <p id="ultima-decisao" class="ultima-decisao" hidden></p>
+
+      <p id="atualizacao" class="atualizacao">Conectando ao Firebase...</p>
+    </section>
+
+    <!-- ================= Aba Água ================= -->
+    <section id="painel-agua" class="painel-aba" role="tabpanel" aria-labelledby="aba-agua" hidden>
+      <!-- Água usada e economizada, estimada pelo tempo de bomba ligada (código em agua.js) -->
+      <section id="agua" class="cartao agua">
+        <h2>Água</h2>
+      </section>
+    </section>
+
+    <!-- ================= Aba Histórico ================= -->
+    <section id="painel-historico" class="painel-aba" role="tabpanel" aria-labelledby="aba-historico" hidden>
       <section class="cartao">
-        <h2>Bomba d'água</h2>
-        <p class="espera-esp32" data-espera>Aguardando o ESP32…</p>
-        <p id="bomba" class="bomba" data-com-dados hidden>--</p>
-        <div id="falha-bomba" class="falha falha-cartao" hidden></div>
-        <!-- Automático | Manual e Ligar/Desligar (código em controle.js) -->
-        <div id="controle" class="controle"></div>
+        <h2>Umidade nas últimas leituras</h2>
+        <div class="area-grafico"><canvas id="grafico" aria-label="Gráfico da umidade do solo nas últimas leituras, com as regas marcadas"></canvas></div>
       </section>
 
-      <section id="clima" class="cartao clima">
-        <h2>Clima agora</h2>
+      <!-- Lista das últimas decisões do ESP32 (escondida se o firmware ainda não manda) -->
+      <section id="decisao" class="cartao decisao" hidden>
+        <h2>Últimas decisões</h2>
+      </section>
+    </section>
+
+    <!-- ================= Aba Demonstração (tela grande ou ?demo=1) ================= -->
+    <section id="painel-demo" class="painel-aba" role="tabpanel" aria-labelledby="aba-demo" hidden>
+      <p class="demo-aviso" role="note">🎛️ Controles da apresentação: o que você mudar aqui aparece para todos.</p>
+
+      <!-- Modo demonstração: simular chuva e horário, cota, fim do dia e falha (código em demo.js) -->
+      <section id="demo" class="cartao demo">
+        <h2>Modo demonstração</h2>
       </section>
 
-      <!-- Só aparece na tela grande (no celular o visitante já está no site):
-           um QR para o painel e outro para o canal de alertas no Telegram -->
-      <section class="cartao cartao-qr">
-        <h2>Abra no seu celular</h2>
-        <div class="qr-par">
-          <figure class="qr-item">
-            <figcaption class="qr-titulo"><span aria-hidden="true">📱</span> Abrir o painel</figcaption>
-            <div id="qr" class="qr"></div>
-          </figure>
-          <figure class="qr-item">
-            <figcaption class="qr-titulo"><span aria-hidden="true">🔔</span> Receber alertas</figcaption>
-            <div id="qr-telegram" class="qr"></div>
-          </figure>
-        </div>
+      <!-- "Zerar contagem" do cartão Água (código em agua.js) -->
+      <section id="zerar-contagem" class="cartao">
+        <h2>Contagem de água</h2>
+        <p class="demo-explica">Zera a "Água usada" e o timer de comparação da aba Água: a medição começa de agora.</p>
       </section>
-    </div>
-
-    <!-- "Pode regar agora?": a resposta e os semáforos da decisão (código em podeRegar.js) -->
-    <section id="pode-regar" class="pode-regar" aria-label="Pode regar agora?"></section>
-
-    <!-- Só no celular (na tela grande o QR do canal fica no cartão "Abra no seu celular") -->
-    <div class="alertas-celular">
-      <a class="botao-telegram" data-canal-telegram>🔔 Receber alertas no Telegram</a>
-      <p class="alertas-nota">Canal só de leitura. A horta avisa quando rega, quando adia e quando há falha.</p>
-    </div>
-
-    <p id="atualizacao" class="atualizacao">Conectando ao Firebase...</p>
-
-    <!-- Modo demonstração: simular a chance de chuva (código em demo.js) -->
-    <section id="demo" class="cartao demo">
-      <h2>Modo demonstração</h2>
-    </section>
-
-    <!-- Motivo da última decisão do ESP32 (escondido se o firmware ainda não manda) -->
-    <section id="decisao" class="cartao decisao" hidden>
-      <h2>Por que regou (ou não)</h2>
-    </section>
-
-    <section class="cartao">
-      <h2>Umidade nas últimas leituras</h2>
-      <div class="area-grafico"><canvas id="grafico"></canvas></div>
-    </section>
-
-    <!-- Água usada e economizada, estimada pelo tempo de bomba ligada (código em agua.js) -->
-    <section id="agua" class="cartao agua">
-      <h2>Água</h2>
     </section>
   </main>
 

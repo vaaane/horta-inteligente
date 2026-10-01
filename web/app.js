@@ -8,14 +8,34 @@ import { iniciarClima } from "./clima.js";
 import { iniciarDecisao } from "./decisao.js";
 import { iniciarControle } from "./controle.js";
 import { iniciarDemo } from "./demo.js";
-import { iniciarAgua } from "./agua.js";
+import { iniciarAgua, numero } from "./agua.js";
 import { iniciarFalha } from "./falha.js";
-import { iniciarPodeRegar } from "./podeRegar.js";
+import { iniciarPodeRegar, LIMITE_LIGAR, LIMITE_DESLIGAR, LIMITE_CRITICO } from "./podeRegar.js";
 import { desenharQR } from "./qr.js";
 import { CANAL_TELEGRAM, ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
+import { iniciarAbas } from "./abas.js";
 
 iniciarCabecalho();
+
+// ---------- Quem pode mexer nos controles ----------
+// Tela grande (o computador do projetor) ou ?demo=1 na URL (a professora no
+// celular). No celular do visitante, nada que escreva no Firebase aparece:
+// sem aba Demonstração, sem Manual/Ligar, sem "Já resolvi" e sem os botões da
+// faixa (a classe "so-leitura" no <body> esconde tudo isso pelo CSS).
+const demoNaUrl = new URLSearchParams(location.search).get("demo") === "1";
+const telaGrande = matchMedia("(min-width: 1024px)");
+const podeControlar = () => telaGrande.matches || demoNaUrl;
+function aplicarPermissao() {
+  document.body.classList.toggle("so-leitura", !podeControlar());
+  document.getElementById("nota-demo").hidden = !(demoNaUrl && !telaGrande.matches);
+}
+aplicarPermissao();
+
+// Gráficos: letras de pelo menos 14 px na tela grande (no projetor, ~10 px não dá para ler)
+if (typeof Chart !== "undefined") {
+  Chart.defaults.font.size = matchMedia("(min-width: 1400px)").matches ? 16 : telaGrande.matches ? 14 : 12;
+}
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -121,8 +141,8 @@ iniciarClima(db, document.getElementById("clima"), {
   mostrarFaixaChuva: true
 });
 
-// ---------- Cartão "Por que regou (ou não)" (código em decisao.js) ----------
-iniciarDecisao(db, document.getElementById("decisao"));
+// ---------- "Últimas decisões" (Histórico) e "Última decisão" (Agora) (código em decisao.js) ----------
+iniciarDecisao(db, document.getElementById("decisao"), { ultima: document.getElementById("ultima-decisao") });
 
 // ---------- Faixa vermelha de falha, no topo e no cartão da bomba (código em falha.js) ----------
 const falha = iniciarFalha(db, [document.getElementById("falha"), document.getElementById("falha-bomba")]);
@@ -136,7 +156,30 @@ const podeRegar = iniciarPodeRegar(db, document.getElementById("pode-regar"), {
 });
 
 // ---------- Cartão "Água" (código em agua.js) ----------
-iniciarAgua(db, document.getElementById("agua"));
+// O "Zerar contagem" fica na aba Demonstração
+const agua = iniciarAgua(db, document.getElementById("agua"), { raizZerar: document.getElementById("zerar-contagem") });
+
+// ---------- Cartão "Água economizada" (aba Agora): o mesmo número da aba Água ----------
+const elEconomia = document.getElementById("cartao-economia");
+agua.aoResumo((resumo) => {
+  const valor = elEconomia.querySelector('[data-economia="valor"]');
+  const coisas = elEconomia.querySelector('[data-economia="coisas"]');
+  if (!resumo.comecou) {
+    valor.textContent = "--";
+    coisas.textContent = "começa a contar na primeira rega";
+    return;
+  }
+  valor.textContent = `${numero(resumo.economia, 1)} L`;
+  valor.classList.toggle("agua-negativa", resumo.economia < 0);
+  coisas.textContent = resumo.economia < 0
+    ? "a horta usou mais água que o timer"
+    : resumo.coisas.find((linha) => linha.includes("garraf")) || resumo.coisas[0] || "";
+});
+
+// ---------- Tracinhos de liga/desliga na barra de umidade ----------
+document.querySelector('[data-marca="ligar"]').style.left = `${LIMITE_LIGAR}%`;
+document.querySelector('[data-marca="desligar"]').style.left = `${LIMITE_DESLIGAR}%`;
+document.querySelector("[data-limites]").textContent = `liga ${LIMITE_LIGAR}% · desliga ${LIMITE_DESLIGAR}%`;
 
 // ---------- QR codes "Abra no seu celular" (só aparecem na tela grande) ----------
 desenharQR(document.getElementById("qr"));                           // o painel
@@ -145,7 +188,32 @@ desenharQR(document.getElementById("qr-telegram"), CANAL_TELEGRAM);  // o canal 
 // Botão "Receber alertas no Telegram" (celular) e link do rodapé
 ligarLinksTelegram();
 
-// ---------- Gráfico com as últimas 50 leituras ----------
+// ---------- Gráfico com as últimas 50 leituras (aba Histórico) ----------
+// Faixas de fundo com os limites da rega, desenhadas antes da curva
+const faixasUmidade = {
+  id: "faixasUmidade",
+  beforeDraw(chart) {
+    const { ctx, chartArea: area, scales: { y } } = chart;
+    if (!area) return;
+    const faixa = (de, ate, fundo, rotulo, corTexto) => {
+      const topo = y.getPixelForValue(ate);
+      const base = y.getPixelForValue(de);
+      ctx.fillStyle = fundo;
+      ctx.fillRect(area.left, topo, area.right - area.left, base - topo);
+      ctx.fillStyle = corTexto;
+      ctx.fillText(rotulo, area.right - 8, (topo + base) / 2);
+    };
+    ctx.save();
+    ctx.font = `600 ${Chart.defaults.font.size}px ${Chart.defaults.font.family}`;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    faixa(LIMITE_DESLIGAR, 100, "rgba(46, 125, 50, 0.12)", `desliga (acima de ${LIMITE_DESLIGAR}%)`, "#1b5e20");
+    faixa(LIMITE_CRITICO, LIMITE_LIGAR, "rgba(249, 168, 37, 0.18)", `liga (abaixo de ${LIMITE_LIGAR}%)`, "#7a4f00");
+    faixa(0, LIMITE_CRITICO, "rgba(229, 57, 53, 0.14)", `crítico (abaixo de ${LIMITE_CRITICO}%)`, "#b71c1c");
+    ctx.restore();
+  }
+};
+
 const grafico = new Chart(document.getElementById("grafico"), {
   type: "line",
   data: {
@@ -154,39 +222,99 @@ const grafico = new Chart(document.getElementById("grafico"), {
       label: "Umidade do solo (%)",
       data: [],
       borderColor: "#2e7d32",
-      backgroundColor: "rgba(46, 125, 50, 0.12)",
-      fill: true,
       tension: 0.3,
       pointRadius: 0,
       borderWidth: 3
+    }, {
+      // Regas: pontos azuis sobre a curva (sem linha)
+      label: "Rega",
+      data: [],
+      showLine: false,
+      pointRadius: 7,
+      pointHoverRadius: 9,
+      pointBackgroundColor: "#1565c0",
+      pointBorderColor: "#fff",
+      pointBorderWidth: 2
     }]
   },
   options: {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
-    plugins: { legend: { display: false } },
+    plugins: {
+      legend: {
+        position: "bottom",
+        labels: { filter: (item) => item.datasetIndex === 1, usePointStyle: true }
+      }
+    },
     scales: {
       y: { min: 0, max: 100, ticks: { callback: (v) => v + "%" } },
       x: { ticks: { maxTicksLimit: 6 } }
     }
-  }
+  },
+  plugins: [faixasUmidade]
 });
 
-const ultimasLeituras = query(ref(db, "horta/leituras"), orderByChild("ts"), limitToLast(50));
+let leiturasGrafico = [];   // [{ ts, umidade }]
+let regasGrafico = [];      // [{ inicio, fim }] de /horta/regas
 
-onValue(ultimasLeituras, (snap) => {
-  const horarios = [];
-  const valores = [];
+// Marca as leituras que caíram durante cada rega. Rega curta, sem leitura
+// no meio, marca a leitura mais perto do fim dela.
+function desenharUmidade() {
+  const marcadas = new Set();
+  const primeira = leiturasGrafico[0]?.ts;
+  const ultima = leiturasGrafico[leiturasGrafico.length - 1]?.ts;
+  for (const rega of regasGrafico) {
+    if (primeira === undefined || rega.fim < primeira || rega.inicio > ultima) continue;
+    let achou = false;
+    leiturasGrafico.forEach((l, i) => {
+      if (l.ts >= rega.inicio && l.ts <= rega.fim) { marcadas.add(i); achou = true; }
+    });
+    if (!achou) {
+      let perto = 0;
+      leiturasGrafico.forEach((l, i) => {
+        if (Math.abs(l.ts - rega.fim) < Math.abs(leiturasGrafico[perto].ts - rega.fim)) perto = i;
+      });
+      marcadas.add(perto);
+    }
+  }
+  grafico.data.labels = leiturasGrafico.map((l) =>
+    new Date(l.ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
+  grafico.data.datasets[0].data = leiturasGrafico.map((l) => l.umidade);
+  grafico.data.datasets[1].data = leiturasGrafico.map((l, i) => (marcadas.has(i) ? l.umidade : null));
+  grafico.update();
+}
 
+onValue(query(ref(db, "horta/leituras"), orderByChild("ts"), limitToLast(50)), (snap) => {
+  leiturasGrafico = [];
   snap.forEach((filho) => {
     const leitura = filho.val();
-    const hora = new Date(leitura.ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    horarios.push(hora);
-    valores.push(leitura.umidade);
+    leiturasGrafico.push({ ts: leitura.ts, umidade: leitura.umidade });
   });
+  desenharUmidade();
+});
 
-  grafico.data.labels = horarios;
-  grafico.data.datasets[0].data = valores;
-  grafico.update();
+onValue(query(ref(db, "horta/regas"), orderByChild("fim"), limitToLast(30)), (snap) => {
+  regasGrafico = [];
+  snap.forEach((filho) => {
+    const rega = filho.val();
+    const inicio = typeof rega.inicio === "number" ? rega.inicio : rega.fim - (Number(rega.segundos) || 0) * 1000;
+    regasGrafico.push({ inicio, fim: rega.fim });
+  });
+  desenharUmidade();
+});
+
+// ---------- Abas (código em abas.js) ----------
+// Gráfico criado com a aba escondida fica com tamanho zero: acerta quando ela aparece
+const abas = iniciarAbas({
+  padrao: "agora",
+  permitida: (nome) => nome !== "demo" || podeControlar(),
+  aoMostrar: (nome) => {
+    if (nome === "historico") grafico.resize();
+    if (nome === "agua") agua.redimensionar();
+  }
+});
+telaGrande.addEventListener("change", () => {
+  aplicarPermissao();
+  abas.atualizar();
 });

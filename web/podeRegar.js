@@ -14,10 +14,11 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 import { numero, contaDaCota } from "./agua.js";
 
-// Iguais ao firmware (só para os textos e as cores dos chips)
-const LIMITE_LIGAR = 35;
-const LIMITE_DESLIGAR = 60;
-const LIMITE_CRITICO = 20;
+// Iguais ao firmware (só para os textos e as cores dos chips).
+// Exportados: o cartão de umidade e o gráfico do histórico marcam os mesmos limites.
+export const LIMITE_LIGAR = 35;
+export const LIMITE_DESLIGAR = 60;
+export const LIMITE_CRITICO = 20;
 const LIMITE_SAIR_CRITICO = 25;
 const LIMITE_CHUVA = 60;
 const CHUVA_ATENCAO = 40;        // de 40% a 59%: amarelo

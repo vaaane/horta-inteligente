@@ -4,7 +4,11 @@
 // resumo de cada dia em horta/agua/dias/{AAAA-MM-DD} (gráfico "Água por dia").
 //
 // Como usar:
-//   iniciarAgua(db, document.getElementById("agua"));
+//   const agua = iniciarAgua(db, document.getElementById("agua"), {
+//     raizZerar: document.getElementById("zerar-contagem")  // onde fica o "Zerar contagem" (opcional)
+//   });
+//   agua.aoResumo((r) => …);   // economia, garrafões… (cartão "Água economizada" da aba Agora)
+//   agua.redimensionar();      // o gráfico apareceu (aba Água): acerta o tamanho
 // O elemento raiz já deve ter o título do cartão; o resto é criado aqui.
 import {
   ref, onValue, query, orderByChild, orderByKey, startAt, limitToLast, set, serverTimestamp
@@ -40,6 +44,25 @@ function rotuloDia(chave, hoje) {
   return `${SEMANA[data.getUTCDay()]} ${data.getUTCDate()}`;
 }
 
+// Mostra os litros de meio em meio litro, arredondando para baixo:
+// 0 L, 0,5 L, 1 L, 1,5 L… (no Firebase eles continuam com 2 casas)
+const meio = (litros) => Math.floor(litros * 2) / 2;
+
+// "Em coisas do dia a dia": garrafões de 20 L e banhos de 5 min, cada um
+// numa linha. Nada de "≈ 0,5 banho": abaixo de 1 é "meio banho"; abaixo de
+// meio, só os garrafões (ou os litros, se nem meio garrafão).
+export function emCoisas(litros) {
+  const garrafoes = litros / LITROS_GARRAFAO;
+  const banhos = litros / LITROS_BANHO_5MIN;
+  const linhas = [];
+  if (garrafoes >= 1) linhas.push(`≈ ${numero(meio(garrafoes), 1)} ${meio(garrafoes) >= 2 ? "garrafões" : "garrafão"} de 20 L`);
+  else if (garrafoes >= 0.5) linhas.push("≈ meio garrafão de 20 L");
+  else if (litros >= 0.5) linhas.push(`≈ ${numero(meio(litros), 1)} L (menos de meio garrafão)`);
+  if (banhos >= 1) linhas.push(`≈ ${numero(meio(banhos), 1)} ${meio(banhos) >= 2 ? "banhos" : "banho"} de 5 minutos`);
+  else if (banhos >= 0.5) linhas.push("≈ meio banho de 5 minutos");
+  return linhas;
+}
+
 // Números no jeito brasileiro: 1,5
 export const numero = (valor, casas = 1) =>
   Number(valor).toLocaleString("pt-BR", { maximumFractionDigits: casas });
@@ -66,7 +89,7 @@ function duracao(segundos) {
   return `${Math.floor(min / 60)} h ${min % 60} min`;
 }
 
-export function iniciarAgua(db, raiz) {
+export function iniciarAgua(db, raiz, opcoes = {}) {
   // Selo "Estimativa" no título
   raiz.querySelector("h2")?.insertAdjacentHTML("beforeend", ` <span class="selo selo-estimativa">Estimativa</span>`);
 
@@ -77,12 +100,15 @@ export function iniciarAgua(db, raiz) {
       <div><dt>Um timer fixo teria usado</dt><dd data-agua="timer">--</dd><p data-agua="timer-sub" class="agua-sub"></p></div>
       <div><dt>Economia</dt><dd data-agua="economia">--</dd><p data-agua="economia-sub" class="agua-sub"></p></div>
     </dl>
-    <p data-agua="traducao" class="agua-traducao" hidden></p>
+    <div data-agua="coisas" class="agua-coisas" hidden>
+      <h3 class="decisao-subtitulo">Em coisas do dia a dia</h3>
+      <p data-agua="traducao" class="agua-traducao"></p>
+    </div>
 
     <!-- Cota de hoje: quanto a planta perdeu pela ET₀ (o ESP32 para de regar quando enche) -->
     <div data-agua="cota" class="agua-cota" hidden>
       <div class="agua-cota-topo">
-        <span class="agua-cota-titulo">Cota de hoje pela ET₀</span>
+        <span class="agua-cota-titulo">Cota de hoje (ET₀ × Kc − chuva)</span>
         <span data-agua="cota-valor" class="agua-cota-valor"></span>
       </div>
       <!-- A barra vai até 150% da cota: até 100% verde, depois a margem extra listrada -->
@@ -121,7 +147,11 @@ export function iniciarAgua(db, raiz) {
       <p data-agua="vazio" class="decisao-vazio">Nenhuma rega registrada ainda.</p>
       <ol data-agua="lista" class="decisao-lista"></ol>
     </details>
+  `);
 
+  // "Zerar contagem": no próprio cartão ou onde o painel pedir (aba Demonstração)
+  const raizZerar = opcoes.raizZerar || raiz;
+  raizZerar.insertAdjacentHTML("beforeend", `
     <div class="agua-zerar">
       <button type="button" data-agua="zerar" class="agua-botao">Zerar contagem</button>
       <div data-agua="confirmar" class="agua-confirmar" hidden>
@@ -133,8 +163,18 @@ export function iniciarAgua(db, raiz) {
     </div>
   `);
 
-  // Procura só dentro deste cartão
-  const $ = (nome) => raiz.querySelector(`[data-agua="${nome}"]`);
+  // Procura só dentro deste cartão (e no bloco do "Zerar contagem")
+  const $ = (nome) => raiz.querySelector(`[data-agua="${nome}"]`) || raizZerar.querySelector(`[data-agua="${nome}"]`);
+
+  // Quem quer saber do resumo (cartão "Água economizada" da aba Agora)
+  const ouvintesResumo = [];
+  let ultimoResumo = null;
+  function avisarResumo(resumo) {
+    const texto = JSON.stringify(resumo);
+    if (texto === ultimoResumo) return;  // mostrar() roda a cada segundo
+    ultimoResumo = texto;
+    for (const ouvinte of ouvintesResumo) ouvinte(resumo);
+  }
 
   let diferencaRelogio = 0;   // relógio do servidor - relógio do celular
   let inicioMedicao = null;   // horta/config/inicioMedicao (null = medir tudo)
@@ -243,9 +283,6 @@ export function iniciarAgua(db, raiz) {
     mostrar();
   });
 
-  // Mostra os litros de meio em meio litro, arredondando para baixo:
-  // 0 L, 0,5 L, 1 L, 1,5 L… (no Firebase eles continuam com 2 casas)
-  const meio = (litros) => Math.floor(litros * 2) / 2;
   const litrosTela = (litros) => `${numero(meio(litros), 1)} L`;
 
   function mostrar() {
@@ -276,7 +313,8 @@ export function iniciarAgua(db, raiz) {
       $("timer-sub").textContent = "começa a contar na primeira rega";
       $("economia").textContent = "--";
       $("economia-sub").textContent = "";
-      $("traducao").hidden = true;
+      $("coisas").hidden = true;
+      avisarResumo({ comecou: false });
     } else {
       const dias = Math.max(0, agora() - inicio) / DIA_MS;
       const timer = dias * TIMER_REGAS_POR_DIA * TIMER_MINUTOS_POR_REGA * VAZAO_L_MIN;
@@ -295,18 +333,15 @@ export function iniciarAgua(db, raiz) {
       else if (economia >= 0) $("economia-sub").textContent = `${porcento}% menos que o timer`;
       else $("economia-sub").textContent = `${-porcento}% a mais que o timer`;
 
-      // Tradução em banhos e garrafões, também de meio em meio
-      const banhos = meio(economia / LITROS_BANHO_5MIN);
-      const garrafoes = meio(economia / LITROS_GARRAFAO);
-      const partes = [];
-      if (banhos > 0) partes.push(`≈ ${numero(banhos, 1)} ${banhos >= 2 ? "banhos" : "banho"} de 5 minutos`);
-      if (garrafoes > 0) partes.push(`≈ ${numero(garrafoes, 1)} ${garrafoes >= 2 ? "garrafões" : "garrafão"} de 20 L`);
-      if (economia < 0) {
-        $("traducao").textContent = "Nesta medição a horta usou mais água que o timer.";
-      } else {
-        $("traducao").textContent = partes.join(" · ");
-      }
-      $("traducao").hidden = $("traducao").textContent === "";
+      // Em coisas do dia a dia: garrafões e banhos, um por linha
+      const linhas = economia < 0 ? ["Nesta medição a horta usou mais água que o timer."] : emCoisas(economia);
+      $("traducao").replaceChildren(...linhas.map((linha) => {
+        const span = document.createElement("span");
+        span.textContent = linha;
+        return span;
+      }));
+      $("coisas").hidden = linhas.length === 0;
+      avisarResumo({ comecou: true, economia, porcento, coisas: linhas });
     }
 
     // Regando agora (a rega já está somando na "Água usada")
@@ -338,7 +373,7 @@ export function iniciarAgua(db, raiz) {
     if (cota <= 0) {
       $("cota-valor").textContent = "🎯 hoje não precisa regar";
     } else if (litros < cota) {
-      $("cota-valor").textContent = `${litrosTela(litros)} de ${numero(cota, 2)} L`;
+      $("cota-valor").textContent = `${litrosTela(litros)} de ${numero(cota, 1)} L recomendados`;
     } else if (litros < limite) {
       $("cota-valor").textContent = `🎯 ${numero(cota, 2)} L + ${numero(litros - cota, 2)} L extra`;
     } else {
@@ -578,4 +613,14 @@ export function iniciarAgua(db, raiz) {
 
   setInterval(mostrar, 1000);  // o tempo da rega e o timer correm
   mostrar();
+
+  return {
+    aoResumo(ouvinte) {
+      ouvintesResumo.push(ouvinte);
+      if (ultimoResumo) ouvinte(JSON.parse(ultimoResumo));
+    },
+    redimensionar() {
+      grafico?.resize();
+    }
+  };
 }

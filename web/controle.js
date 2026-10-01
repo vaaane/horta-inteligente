@@ -5,6 +5,8 @@
 // Como usar:
 //   const controle = iniciarControle(db, document.getElementById("controle"));
 //   controle.definirOffline(true);  // o painel avisa quando o ESP32 está offline
+// No celular sem ?demo=1 o painel põe a classe "so-leitura" no <body>: os
+// botões somem (CSS) e fica só a linha "Modo: Automático" (data-controle="modo-texto").
 import {
   ref, onValue, update, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
@@ -15,6 +17,7 @@ const ESPERA_RESPOSTA_MS = 5 * 1000;          // tempo para o ESP32 confirmar um
 export function iniciarControle(db, raiz) {
   // Monta o conteúdo
   raiz.insertAdjacentHTML("beforeend", `
+    <p data-controle="modo-texto" class="controle-modo-texto"></p>
     <div class="controle-modos" role="group" aria-label="Modo da bomba">
       <button type="button" data-controle="auto" class="controle-modo" aria-pressed="false">Automático</button>
       <button type="button" data-controle="manual" class="controle-modo" aria-pressed="false">Manual</button>
@@ -120,6 +123,9 @@ export function iniciarControle(db, raiz) {
   function mostrar() {
     const manual = comandos !== null && comandos.modo === "manual";
     const bloqueado = offline || semDados || comandos === null;
+
+    // Só leitura (celular): o modo em texto, sem botões
+    $("modo-texto").textContent = comandos === null ? "" : `Modo: ${manual ? "Manual" : "Automático"}`;
 
     // Seletor de modo: o atual fica destacado
     for (const modo of ["auto", "manual"]) {
