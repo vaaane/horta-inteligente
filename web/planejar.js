@@ -740,58 +740,83 @@ function salvarPlantas() {
 }
 
 
-// Lista para marcar as plantas
+// Lista para marcar as plantas, agrupada pela necessidade de sol (ensina o
+// conceito sem repetir "pleno sol (6 h ou mais)" em cada linha). A área só
+// aparece com a planta marcada, junto da umidade ideal do solo dela.
+const GRUPOS_SOL = [
+  { sol: "pleno", titulo: "Pleno sol (6 h ou mais)" },
+  { sol: "quatro", titulo: "4 h de sol ou mais" },
+  { sol: "meia", titulo: "Meia-sombra (3 a 6 h)" }
+];
+// "0,5" e "0.5" valem (vírgula, como se escreve no Brasil)
+const lerArea = (texto) => parseFloat(String(texto).trim().replace(",", "."));
+
 function montarEscolha() {
-  $("escolha-plantas").replaceChildren(...CULTURAS.map((cultura) => {
-    const linha = document.createElement("div");
-    linha.className = "planejar-planta";
-    const marcada = cultura.id in escolhidas;
+  const partes = [];
+  for (const grupo of GRUPOS_SOL) {
+    const titulo = document.createElement("h4");
+    titulo.className = "planejar-grupo-sol";
+    titulo.textContent = grupo.titulo;
+    partes.push(titulo);
+    for (const cultura of CULTURAS.filter((c) => c.sol === grupo.sol)) partes.push(linhaDaPlanta(cultura));
+  }
+  $("escolha-plantas").replaceChildren(...partes);
+}
 
-    const rotulo = document.createElement("label");
-    rotulo.className = "planejar-planta-nome";
-    const caixaMarcar = document.createElement("input");
-    caixaMarcar.type = "checkbox";
-    caixaMarcar.checked = marcada;
-    const cor = document.createElement("span");
-    cor.className = "planejar-cor";
-    cor.style.background = cultura.cor;
-    const texto = document.createElement("span");
-    texto.innerHTML = `<strong></strong> <small></small>`;
-    texto.querySelector("strong").textContent = cultura.nome;
-    texto.querySelector("small").textContent = NECESSIDADE[cultura.sol].texto;
-    rotulo.append(caixaMarcar, cor, texto);
+function linhaDaPlanta(cultura) {
+  const linha = document.createElement("div");
+  linha.className = "planejar-planta";
+  const marcada = cultura.id in escolhidas;
+  linha.classList.toggle("marcada", marcada);
 
-    const rotuloArea = document.createElement("label");
-    rotuloArea.className = "planejar-planta-area";
-    rotuloArea.textContent = "m² ";
-    const area = document.createElement("input");
-    area.type = "number";
-    area.min = "0.1";
-    area.max = "50";
-    area.step = "0.1";
-    area.value = escolhidas[cultura.id] ?? AREA_PADRAO;
-    area.disabled = !marcada;
-    area.setAttribute("aria-label", `Área de ${cultura.nome} em metros quadrados`);
-    rotuloArea.prepend(area);
+  // A linha inteira marca e desmarca (é um <label>)
+  const rotulo = document.createElement("label");
+  rotulo.className = "planejar-planta-nome";
+  const caixaMarcar = document.createElement("input");
+  caixaMarcar.type = "checkbox";
+  caixaMarcar.checked = marcada;
+  const cor = document.createElement("span");
+  cor.className = "planejar-cor";
+  cor.style.background = cultura.cor;
+  const nome = document.createElement("strong");
+  nome.textContent = cultura.nome;
+  rotulo.append(caixaMarcar, cor, nome);
 
-    caixaMarcar.addEventListener("change", () => {
-      if (caixaMarcar.checked) escolhidas[cultura.id] = Number(area.value) || AREA_PADRAO;
-      else delete escolhidas[cultura.id];
-      area.disabled = !caixaMarcar.checked;
-      salvarPlantas();
-      calcularSugestoes();
-    });
-    area.addEventListener("input", () => {
-      const valor = parseFloat(area.value);
-      if (Number.isNaN(valor) || !(cultura.id in escolhidas)) return;
-      escolhidas[cultura.id] = Math.min(Math.max(valor, 0.1), 50);
-      salvarPlantas();
-      calcularSugestoes();
-    });
+  // Área (m²) e a umidade ideal: só com a planta marcada
+  const detalhe = document.createElement("div");
+  detalhe.className = "planejar-planta-area";
+  detalhe.hidden = !marcada;
+  const area = document.createElement("input");
+  area.type = "text";
+  area.inputMode = "decimal";
+  area.autocomplete = "off";
+  area.value = numero(escolhidas[cultura.id] ?? AREA_PADRAO);
+  area.setAttribute("aria-label", `Área de ${cultura.nome} em metros quadrados`);
+  const texto = document.createElement("span");
+  texto.textContent = `m² · solo ${cultura.umidade[0]}–${cultura.umidade[1]}%`;
+  detalhe.append(area, texto);
 
-    linha.append(rotulo, rotuloArea);
-    return linha;
-  }));
+  caixaMarcar.addEventListener("change", () => {
+    const valor = lerArea(area.value);
+    if (caixaMarcar.checked) escolhidas[cultura.id] = Number.isNaN(valor) ? AREA_PADRAO : Math.min(Math.max(valor, 0.1), 50);
+    else delete escolhidas[cultura.id];
+    detalhe.hidden = !caixaMarcar.checked;
+    linha.classList.toggle("marcada", caixaMarcar.checked);
+    salvarPlantas();
+    calcularSugestoes();
+  });
+  area.addEventListener("input", () => {
+    const valor = lerArea(area.value);
+    if (Number.isNaN(valor) || !(cultura.id in escolhidas)) return;
+    escolhidas[cultura.id] = Math.min(Math.max(valor, 0.1), 50);
+    salvarPlantas();
+    calcularSugestoes();
+  });
+  // Ao sair do campo, mostra o número do jeito brasileiro ("0.5" vira "0,5")
+  area.addEventListener("change", () => { area.value = numero(escolhidas[cultura.id] ?? AREA_PADRAO); });
+
+  linha.append(rotulo, detalhe);
+  return linha;
 }
 
 // ---------- Canteiros das plantas (arrastar e girar: plantas.js) ----------

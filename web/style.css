@@ -882,25 +882,6 @@ main {
 .cor-meia { background: var(--sol-meia); }
 .cor-pleno { background: var(--sol-pleno); }
 /* Plantas: escolha, sugestões e tabela */
-.planejar-escolha { display: grid; gap: 6px; margin-bottom: 16px; }
-.planejar-planta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-  padding: 6px 8px;
-  border: 1px solid var(--borda);
-  border-radius: 10px;
-}
-.planejar-planta-nome { display: flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; }
-.planejar-planta-nome input { width: 22px; height: 22px; accent-color: var(--verde); }
-.planejar-planta-nome small { color: var(--texto-suave); }
-.planejar-planta-area { display: flex; align-items: center; gap: 6px; font-size: var(--fs-nota); color: var(--texto-suave); }
-.planejar-planta-area input { width: 5.5em; min-height: 40px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
-.planejar-sugestoes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.planejar-sugestoes li { display: flex; align-items: baseline; gap: 8px; line-height: 1.4; font-size: var(--fs-texto); }
-.planejar-sugestoes li .planejar-cor { flex: none; transform: translateY(2px); }
 .planejar-sugestoes li.sem-lugar { color: var(--aviso-texto); font-weight: 600; }
 /* Modo "Sobre o mapa" × "Desenho livre" */
 .modo-mapa .so-livre, .modo-livre .so-mapa { display: none !important; }
@@ -965,8 +946,6 @@ main {
 .planejar-opacidade input { flex: 0 1 120px; min-height: 32px; accent-color: var(--verde); }
 .planejar-opacidade output { min-width: 3em; text-align: right; font-variant-numeric: tabular-nums; }
 .planejar-link { width: 100%; min-height: 40px; margin-top: 6px; padding: 6px 8px; font: inherit; font-size: var(--fs-nota); border: 1px solid var(--borda); border-radius: 8px; }
-.planejar-sugestoes li { cursor: pointer; border-radius: 8px; padding: 4px 6px; }
-.planejar-sugestoes li.ativo { background: #fff3e0; outline: 2px solid #d84315; }
 /* Selo da avaliação da planta: cor + ícone + palavra (não depende só da cor) */
 .planejar-selo-avaliacao {
   flex: none;
@@ -979,7 +958,6 @@ main {
 .planejar-selo-avaliacao.nivel-recomendado { background: #2e7d32; color: #fff; }
 .planejar-selo-avaliacao.nivel-aceitavel { background: #f9a825; color: #1b2a1c; }
 .planejar-selo-avaliacao.nivel-nao { background: #c62828; color: #fff; }
-.planejar-sugestoes li { flex-wrap: wrap; }
 /* Convivência entre plantas */
 .planejar-avisos { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
 .planejar-avisos li { padding: 8px 10px; border-radius: 10px; line-height: 1.4; font-size: var(--fs-nota); }
@@ -1743,3 +1721,46 @@ body.imprimindo { overflow: hidden; }
   .planejar-mapa-cartao.recolhido .planejar-legenda-linha { display: none; }
   .planejar-abas { top: var(--altura-mapa, 0px); border-radius: 0; }
 }
+
+/* ================= Planeje: escolha das plantas e "Onde plantar" ================= */
+/* Escolha, agrupada pela necessidade de sol */
+.planejar-escolha { display: grid; gap: 6px; margin-bottom: 8px; }
+.planejar-grupo-sol { margin: 10px 0 2px; font-size: var(--fs-nota); font-weight: 700; color: var(--texto-suave); }
+.planejar-grupo-sol:first-child { margin-top: 0; }
+.planejar-planta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 0 8px; border: 1px solid var(--borda); border-radius: 10px; }
+.planejar-planta.marcada { border-color: var(--verde); background: var(--verde-claro); }
+/* A linha inteira é clicável (área de toque de 44 px) */
+.planejar-planta-nome { flex: 1 1 10em; display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.planejar-planta-nome input { flex: none; width: 22px; height: 22px; accent-color: var(--verde); cursor: pointer; }
+.planejar-planta-area { display: flex; align-items: center; gap: 6px; padding-bottom: 4px; font-size: var(--fs-nota); color: var(--texto-suave); }
+.planejar-planta-area input { width: 4.5em; min-height: 36px; padding: 4px 8px; font: inherit; color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; background: var(--cartao); }
+
+/* Onde plantar: uma linha por planta (número, cor, nome, horas e lugar, selo) */
+.planejar-sugestoes { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 4px; }
+.planejar-sugestoes li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.planejar-sugestoes li:hover { background: var(--fundo); }
+.planejar-sugestoes li.ativo { background: #fff3e0; outline: 2px solid #d84315; }
+.planejar-sugestoes li .planejar-cor { flex: none; }
+.planejar-num {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid;
+  border-radius: 50%;
+  background: #fff;
+  font-size: var(--fs-nota);
+  font-weight: 700;
+}
+.planejar-sugestao-texto { flex: 1; min-width: 0; }
+.planejar-sugestao-info { color: var(--texto-suave); font-size: var(--fs-nota); }
+.planejar-sugestoes .planejar-selo-avaliacao { margin-left: auto; }

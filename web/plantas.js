@@ -491,42 +491,66 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
     aoMudar({});
   });
 
+  // Meio em meio: "~6,5 h"
+  const horas = (h) => numero(Math.round(h * 2) / 2);
+
+  // "~6,5 h · canto noroeste" e, quando não é recomendado, o porquê:
+  // "~5 h em média, mas parte do canteiro passa de 6 h" ou "~4,5 h, falta ~1,5 h"
+  function infoDoLugar(id, r, av) {
+    const cultura = culturaDe(id);
+    const max = NECESSIDADE[cultura.sol].maximo;
+    const pior = anoTodo ? " no pior mês" : "";
+    let sol;
+    if (av.nivel === "recomendado") sol = `~${horas(av.media)} h${pior}`;
+    else if (max !== null && av.maior > max && av.falta < 1) sol = `~${horas(av.media)} h em média${pior}, mas parte do canteiro passa de ${max} h`;
+    else sol = `~${horas(av.media)} h${pior}, falta ~${horas(Math.max(av.falta, 0.5))} h`;
+    let texto = `${sol} · ${descreverLugar(celulasDe(r), mapa, terreno)}`;
+    // Nem o melhor lugar serve? Diz quanto ele tem
+    const melhor = sugestoes[id];
+    if (av.nivel === "nao" && (!melhor || avaliar(id, melhor).nivel === "nao")) {
+      texto += ` · o melhor lugar do terreno tem ~${horas(melhor ? avaliar(id, melhor).media : 0)} h (tente tirar ou baixar um obstáculo)`;
+    }
+    return texto;
+  }
+
+  // Uma linha por planta: número, cor, nome, horas e lugar, selo no fim
   function mostrarLista() {
     mostrarAvisos();
-    const idsEscolhidos = CULTURAS.filter((c) => c.id in escolhidas).map((c) => c.id);
-    mostrarResumo(idsEscolhidos);
-    mostrarControles(idsEscolhidos);
-    const ids = CULTURAS.filter((c) => c.id in escolhidas).map((c) => c.id);
+    const ids = ordemDasPlantas(escolhidas);
+    mostrarResumo(ids);
+    mostrarControles(ids);
     vazio.hidden = ids.length > 0;
-    lista.replaceChildren(...ids.map((id) => {
+    lista.replaceChildren(...ids.map((id, i) => {
       const cultura = culturaDe(id);
       const r = posicoes[id];
       const li = document.createElement("li");
       li.className = id === selecionada ? "ativo" : "";
+      const num = document.createElement("span");
+      num.className = "planejar-num";
+      num.textContent = String(i + 1);
+      num.style.borderColor = cultura.cor;
       const cor = document.createElement("span");
       cor.className = "planejar-cor";
       cor.style.background = cultura.cor;
       const texto = document.createElement("span");
+      texto.className = "planejar-sugestao-texto";
+      const nome = document.createElement("strong");
+      nome.textContent = cultura.nome;
+      const info = document.createElement("span");
+      info.className = "planejar-sugestao-info";
+      texto.append(nome, " ", info);
+      li.append(num, cor, texto);
       if (!mapa || !r) {
-        texto.textContent = mapa ? `Não há lugar livre para ${cultura.nome.toLowerCase()} neste terreno.` : cultura.nome;
-        li.append(cor, texto);
+        info.textContent = mapa ? "não há lugar livre para ela neste terreno" : "";
       } else {
-        // Selo da avaliação (ícone + palavra) e as horas de sol
         const av = avaliar(id, r);
+        info.textContent = infoDoLugar(id, r, av);
         const selo = document.createElement("span");
         selo.className = `planejar-selo-avaliacao nivel-${av.nivel}`;
         selo.textContent = `${NIVEIS[av.nivel].icone} ${NIVEIS[av.nivel].texto}`;
-        const quando = anoTodo ? " no pior mês" : "";
-        let frase = `${cultura.nome}: ~${numero(Math.round(av.media * 2) / 2)} h de sol${quando}, ${descreverLugar(celulasDe(r), mapa, terreno)}.`;
-        // Nem o melhor lugar serve? Explica o que dá para fazer
-        const melhor = sugestoes[id];
-        if (av.nivel === "nao" && (!melhor || avaliar(id, melhor).nivel === "nao")) {
-          frase += ` Não há sol suficiente para ${cultura.nome.toLowerCase()} neste terreno: o melhor lugar tem ` +
-            `${numero(Math.round((melhor ? avaliar(id, melhor).media : 0) * 2) / 2)} h. Tente tirar ou baixar um obstáculo.`;
-        }
-        texto.textContent = frase;
-        li.append(cor, selo, texto);
+        li.append(selo);
       }
+      // Tocar na linha destaca o canteiro no mapa (e tocar no canteiro destaca a linha)
       li.addEventListener("click", () => { selecionada = id; mostrarLista(); aoMudar({}); });
       return li;
     }));
