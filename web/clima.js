@@ -37,8 +37,7 @@ export function iniciarClima(db, raiz, opcoes = {}) {
         <div><dt>ET₀ hoje</dt><dd data-clima="et0">--</dd></div>
       </dl>
       <p data-clima="explica" class="clima-explica"></p>
-      <p data-clima="atualizado" class="clima-rodape"></p>
-      <p data-clima="aviso" class="clima-aviso" hidden></p>
+      <p class="clima-rodape"><span data-clima="atualizado"></span><span data-clima="aviso" class="clima-aviso" hidden></span></p>
     </div>
   `);
 
@@ -93,7 +92,7 @@ export function iniciarClima(db, raiz, opcoes = {}) {
     const agora = Date.now() + diferencaRelogio;
     const antigo = agora - atualizadoEm > LIMITE_CLIMA_ANTIGO_MS;
     $("aviso").hidden = !antigo;
-    if (antigo) $("aviso").textContent = `Clima sem atualizar ${semSinal(atualizadoEm, agora)}`;
+    if (antigo) $("aviso").textContent = ` · sem atualizar ${semSinal(atualizadoEm, agora)}`;
   }
   setInterval(verificarClimaAntigo, 30000);
 }

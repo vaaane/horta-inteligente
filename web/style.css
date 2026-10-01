@@ -12,14 +12,15 @@
 
   /* Tamanhos (todas as páginas). Os grandes crescem no projetor de 1920 e
      encolhem em 1280 (clamp); o texto pequeno nunca fica abaixo de 14 px. */
-  --fs-gigante: clamp(2.5rem, 1.2rem + 2.6vw, 4.25rem);  /* número da umidade */
-  --fs-numero: clamp(1.6rem, 1rem + 1.4vw, 2.6rem);      /* litros, temperatura */
-  --fs-bomba: clamp(1.2rem, 0.85rem + 0.8vw, 1.75rem);   /* pílula "Desligada" */
+  --fs-gigante: clamp(1.75rem, 2.6vw, 2.5rem);           /* número da umidade */
+  --fs-numero: clamp(1.75rem, 2.6vw, 2.5rem);            /* litros, temperatura */
+  --fs-medio: clamp(1.2rem, 1.6vw, 1.5rem);              /* números do clima (2 × 2) */
+  --fs-bomba: clamp(1rem, 0.9rem + 0.25vw, 1.15rem);     /* pílula "Desligada": tamanho de botão */
   --fs-titulo: clamp(1.3rem, 0.95rem + 1vw, 2rem);       /* respostas ("Não precisa regar") e títulos */
   --fs-texto: clamp(1rem, 0.9rem + 0.2vw, 1.15rem);
   --fs-nota: clamp(0.875rem, 0.8rem + 0.15vw, 1rem);     /* rótulos e notas: 14 px ou mais */
-  --espaco-cartao: clamp(12px, 0.35rem + 0.7vw, 20px);   /* espaço dentro dos cartões */
-  --gap: clamp(10px, 0.3rem + 0.55vw, 16px);             /* espaço entre os cartões */
+  --espaco-cartao: clamp(12px, 0.5rem + 0.3vw, 14px);    /* espaço dentro dos cartões */
+  --gap: 12px;                                           /* espaço entre os cartões */
   --altura-botao: 44px;
 }
 
@@ -1774,3 +1775,48 @@ body.imprimindo { overflow: hidden; }
 .planejar-grupo-duplo legend { grid-column: 1 / -1; }
 .planejar-grupo-duplo label { flex-direction: column; align-items: stretch; gap: 4px; }
 .planejar-grupo-duplo input[type="number"] { width: 100%; }
+
+/* ================= Aba Agora mais densa (cabe a 100% em 1536×730 e 1280×650) ================= */
+/* Primeira fileira: faixa ~70% e o QR ~30%, com a altura definida pela faixa */
+@media (min-width: 1024px) {
+  .agora-topo { grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); align-items: stretch; }
+  .agora-topo .pode-regar[data-cor="cinza"] { align-self: stretch; }
+  /* height 0 + min-height 100%: o cartão do QR não aumenta a fileira */
+  .agora-topo .cartao-telegram { height: 0; min-height: 100%; overflow: hidden; padding: 10px 12px; }
+  .cartao-telegram .telegram-corpo { height: 100%; gap: 12px; }
+  .cartao-telegram .qr-telegram { height: 100%; max-height: 96px; width: auto; aspect-ratio: 1; }
+  .cartao-telegram .qr-telegram svg { width: 100%; height: 100%; }
+  .cartao-telegram .telegram-texto { max-width: none; min-width: 0; }
+}
+.telegram-titulo { margin: 0; font-weight: 700; }
+.telegram-frase { font-weight: 400; font-size: var(--fs-nota); color: var(--texto-suave); }
+.telegram-arroba { margin-top: 2px; font-size: var(--fs-nota); }
+
+/* Fileira dos 4 cartões */
+.painel .cartoes { gap: var(--gap); }
+.painel .numero { font-size: var(--fs-gigante); }
+.economia-valor { font-size: var(--fs-numero); }
+/* Pílula da bomba e Automático/Manual: altura de botão médio */
+.painel .bomba { margin-top: 4px; padding: 4px 14px; font-size: var(--fs-bomba); }
+.painel .controle { margin-top: 8px; }
+.painel .controle-modo { min-height: 36px; padding: 4px 6px; }
+/* Clima: 2 × 2 compacto (rótulo pequeno em cima, número médio embaixo); 4 numa linha se couber */
+.painel .clima { container-type: inline-size; }
+.painel .clima-valores { gap: 4px 12px; margin: 4px 0 6px; }
+.painel .clima-valores dd { font-size: var(--fs-medio); }
+@container (min-width: 420px) {
+  .painel .clima-valores { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.clima-rodape { margin: 0; }
+.clima-aviso { color: var(--aviso-texto); }
+/* Notas com no máximo 2 linhas: nenhuma nota longa estica a fileira (texto inteiro no title) */
+.cartoes .nota-curta {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+/* Unidades (%, °C, mm) pequenas, mas não abaixo de 14 px */
+.numero small, .clima-valores dd small { font-size: max(0.45em, 0.875rem); }
+@media (min-width: 1024px) { .painel main { padding-bottom: 12px; } }

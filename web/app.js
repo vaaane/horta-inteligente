@@ -16,7 +16,7 @@ import { TELEGRAM_CANAL, arrobaDoCanal, ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
 import { iniciarAbas } from "./abas.js";
 import { iniciarProjetor } from "./projetor.js";
-import { haQuanto, semSinal, quandoFoi, hora as horaDe } from "./tempo.js";
+import { haQuanto, quandoFoi, hora as horaDe } from "./tempo.js";
 
 iniciarCabecalho();
 
@@ -125,8 +125,9 @@ function atualizarTempo() {
   // aparece; o texto diz o tempo de verdade, igual ao rodapé
   const limite = modoTeste ? LIMITE_OFFLINE_TESTE_MS : LIMITE_OFFLINE_MS;
   const online = agora - ultimoTs < limite;
-  elOffline.textContent = `⚠️ ESP32 sem sinal ${semSinal(ultimoTs, agora)}.`;
-  elOffline.hidden = online;
+  // Sem sinal: quem avisa é a faixa "Pode regar agora?" (e o rodapé, discreto).
+  // O aviso amarelo do topo não repete (o #falha continua para as falhas).
+  elOffline.hidden = true;
   controle.definirOffline(!online);  // sem ESP32, os botões ficam desativados
   demo.definirOffline(!online);
   podeRegar.definirOffline(!online);
@@ -175,6 +176,20 @@ agua.aoResumo((resumo) => {
     ? "a horta usou mais água que o timer"
     : resumo.coisas.find((linha) => linha.includes("garraf")) || resumo.coisas[0] || "";
 });
+
+// ---------- Notas dos 4 cartões: no máximo 2 linhas (CSS), com o texto inteiro no title ----------
+// Assim nenhuma nota longa ("Clima sem atualizar…", "Pedido enviado…") estica a fileira
+const NOTAS_CURTAS = ".escala-limites, .controle-status, .controle-contagem, .controle-pedido, .nota-demo, " +
+  ".clima-rodape, .clima-faixa-chuva, .economia-coisas, .economia-mais";
+function marcarNotas() {
+  for (const nota of document.querySelectorAll(`.cartoes :is(${NOTAS_CURTAS})`)) {
+    nota.classList.add("nota-curta");
+    const texto = nota.textContent.trim();
+    if (nota.title !== texto) nota.title = texto;
+  }
+}
+new MutationObserver(marcarNotas).observe(document.querySelector(".cartoes"), { subtree: true, childList: true, characterData: true });
+marcarNotas();
 
 // ---------- Tracinhos de liga/desliga na barra de umidade ----------
 document.querySelector('[data-marca="ligar"]').style.left = `${LIMITE_LIGAR}%`;
@@ -353,6 +368,7 @@ onValue(query(ref(db, "horta/regas"), orderByChild("fim"), limitToLast(30)), (sn
 });
 
 // ---------- Abas (código em abas.js) ----------
+let projetor = null;  // (criado logo abaixo; a aba mudou -> encaixar de novo)
 // Gráfico criado com a aba escondida fica com tamanho zero: acerta quando ela aparece
 const abas = iniciarAbas({
   padrao: "agora",
@@ -360,6 +376,7 @@ const abas = iniciarAbas({
   aoMostrar: (nome) => {
     if (nome === "historico") grafico.resize();
     if (nome === "agua") agua.redimensionar();
+    projetor?.encaixar();
   }
 });
 telaGrande.addEventListener("change", () => {
@@ -368,4 +385,7 @@ telaGrande.addEventListener("change", () => {
 });
 
 // ---------- Modo projetor: alterna as abas sozinho (código em projetor.js) ----------
-iniciarProjetor(db, abas, document.getElementById("chave-projetor"));
+projetor = iniciarProjetor(db, abas, document.getElementById("chave-projetor"), {
+  // Depois do zoom, os gráficos precisam medir de novo
+  aoEncaixar: () => { grafico.resize(); agua.redimensionar(); }
+});

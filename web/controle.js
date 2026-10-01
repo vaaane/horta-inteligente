@@ -152,9 +152,8 @@ export function iniciarControle(db, raiz) {
 
     // Por que os botões estão desativados
     const bloqueio = $("bloqueio");
-    if (semDados) bloqueio.textContent = "Sem dados: controle pausado";
-    else if (offline) bloqueio.textContent = "Sem sinal: controle pausado";
-    else bloqueio.textContent = "";
+    // Sem sinal: só os botões desativados (o motivo já está na faixa "Pode regar agora?")
+    bloqueio.textContent = "";
     bloqueio.hidden = bloqueio.textContent === "";
 
     mostrarContagem(manual);
