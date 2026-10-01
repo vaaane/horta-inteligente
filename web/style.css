@@ -800,15 +800,6 @@ main {
 .equipe { margin: 0; font-size: var(--fs-texto); font-weight: 600; }
 
 /* ================= Página "Planeje sua horta" ================= */
-.planejar main { max-width: 1280px; }
-.planejar .abertura { margin-bottom: 16px; }
-.planejar-area { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
-.planejar-area > * { min-width: 0; }  /* a tabela larga rola dentro do cartão, sem alargar a página */
-@media (min-width: 900px) {
-  .planejar-area { grid-template-columns: minmax(0, 1fr) 320px; }
-}
-.planejar-desenho, .planejar-painel { margin-bottom: 0; }
-.planejar-canvas-caixa { position: relative; width: 100%; }
 /* touch-action: none deixa o dedo arrastar os obstáculos sem rolar a página */
 #terreno { display: block; max-width: 100%; touch-action: none; cursor: grab; }
 .planejar-ajuda, .planejar-nota { margin: 8px 0 0; font-size: var(--fs-nota); color: var(--texto-suave); }
@@ -884,12 +875,6 @@ main {
 /* Mapa de horas de sol: cores que funcionam para daltônicos (azul-escuro,
    azul-claro e amarelo, que variam também no claro/escuro) */
 :root { --sol-sombra: #253b6e; --sol-meia: #6fa8dc; --sol-pleno: #f4c430; }
-.planejar-mapa { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--borda); }
-.planejar-datas { display: grid; gap: 8px; }
-.planejar-datas label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-.planejar-datas input[type="date"] { min-height: 44px; padding: 6px 8px; font: inherit; border: 1px solid var(--borda); border-radius: 8px; }
-.planejar-data.ativo { background: var(--verde); color: #fff; }
-.planejar-status { margin: 10px 0; font-weight: 600; line-height: 1.4; }
 .planejar-legenda { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: var(--fs-nota); }
 .planejar-legenda li { display: flex; align-items: center; gap: 6px; }
 .planejar-cor { display: inline-block; width: 22px; height: 16px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, 0.3); }
@@ -897,10 +882,6 @@ main {
 .cor-meia { background: var(--sol-meia); }
 .cor-pleno { background: var(--sol-pleno); }
 /* Plantas: escolha, sugestões e tabela */
-.planejar-area-plantas { margin-top: 16px; }
-@media (min-width: 900px) {
-  .planejar-area-plantas { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-}
 .planejar-escolha { display: grid; gap: 6px; margin-bottom: 16px; }
 .planejar-planta {
   display: flex;
@@ -923,21 +904,6 @@ main {
 .planejar-sugestoes li.sem-lugar { color: var(--aviso-texto); font-weight: 600; }
 /* Modo "Sobre o mapa" × "Desenho livre" */
 .modo-mapa .so-livre, .modo-livre .so-mapa { display: none !important; }
-.planejar-modos { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
-.planejar-modo {
-  flex: 1 1 12em;
-  min-height: 48px;
-  padding: 10px 16px;
-  border-radius: 12px;
-  font: inherit;
-  font-size: var(--fs-texto);
-  font-weight: 700;
-  cursor: pointer;
-  background: var(--cartao);
-  color: var(--verde);
-  border: 2px solid var(--verde);
-}
-.planejar-modo[aria-pressed="true"] { background: var(--verde); color: #fff; }
 .planejar-mapa-barra { display: grid; gap: 8px; margin-bottom: 10px; }
 .planejar-busca { display: flex; gap: 8px; }
 .planejar-busca input {
@@ -951,7 +917,7 @@ main {
 }
 .planejar-camada { display: flex; align-items: center; gap: 6px; min-height: 44px; font-weight: 600; }
 .planejar-mapa-caixa { position: relative; }
-.planejar-mapa-sat { height: max(360px, 62vh); border-radius: 12px; overflow: hidden; background: #cfd8dc; }
+.planejar-mapa-sat { height: 100%; min-height: 200px; border-radius: 12px; overflow: hidden; background: #cfd8dc; }
 /* Desenho por cima do mapa (mapa.js): não pega os toques (quem decide é o mapa.js) */
 .planejar-mapa-desenho { position: absolute; top: 0; left: 0; z-index: 450; pointer-events: none; }
 .planejar-mapa-sat.desenhando { cursor: crosshair; }
@@ -995,8 +961,8 @@ main {
   pointer-events: none;
 }
 .planejar-dica-mapa { z-index: 950; }
-.planejar-opacidade { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; font-weight: 600; }
-.planejar-opacidade input { flex: 1 1 160px; min-height: 40px; accent-color: var(--verde); }
+.planejar-opacidade { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-nota); font-weight: 600; }
+.planejar-opacidade input { flex: 0 1 120px; min-height: 32px; accent-color: var(--verde); }
 .planejar-opacidade output { min-width: 3em; text-align: right; font-variant-numeric: tabular-nums; }
 .planejar-link { width: 100%; min-height: 40px; margin-top: 6px; padding: 6px 8px; font: inherit; font-size: var(--fs-nota); border: 1px solid var(--borda); border-radius: 8px; }
 .planejar-sugestoes li { cursor: pointer; border-radius: 8px; padding: 4px 6px; }
@@ -1629,4 +1595,150 @@ body.imprimindo { overflow: hidden; }
     font-size: var(--fs-nota);
     color: var(--texto-suave);
   }
+}
+
+/* ================= Planeje: mapa fixo + painel de etapas ================= */
+.planejar main { max-width: 1500px; }
+.planejar-abertura { margin-bottom: var(--gap); padding: var(--espaco-cartao) calc(var(--espaco-cartao) + 4px); }
+.planejar-abertura p { margin: 6px 0 0; }
+.planejar-como summary { margin-top: 6px; cursor: pointer; font-size: var(--fs-nota); font-weight: 700; color: var(--verde); }
+.planejar-como p { color: var(--texto-suave); font-size: var(--fs-nota); line-height: 1.5; }
+.planejar-layout { display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr); align-items: start; }
+.planejar-layout > * { min-width: 0; }
+
+/* Cartão do mapa: barra (modo e dia), o mapa, o status e a legenda */
+.planejar-mapa-cartao { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 10px; }
+.planejar-barra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+/* Chaves pequenas, uma ao lado da outra (segmented control) */
+.planejar-segmentado { display: inline-flex; flex: none; border: 2px solid var(--verde); border-radius: 10px; overflow: hidden; background: var(--cartao); }
+.planejar-segmentado button {
+  min-height: 36px;
+  padding: 4px 11px;
+  border: none;
+  border-left: 1px solid #a5d6a7;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-nota);
+  font-weight: 700;
+  color: var(--verde);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.planejar-segmentado button:first-child { border-left: none; }
+.planejar-segmentado button[aria-pressed="true"], .planejar-segmentado button.ativo { background: var(--verde); color: #fff; }
+.planejar-datas { display: flex; align-items: center; gap: 6px; }
+/* Outro dia: o calendário abre pelo ícone */
+.planejar-calendario {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--verde);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.planejar-calendario input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.planejar-recolher { display: none; }
+.planejar-mapa-corpo { position: relative; flex: 1 1 0; min-height: 0; }
+.planejar-mapa-caixa, .planejar-canvas-caixa { position: relative; height: 100%; }
+.planejar-canvas-caixa { overflow: hidden; }
+.planejar-status { margin: 0; font-size: var(--fs-nota); font-weight: 600; line-height: 1.35; }
+.planejar-legenda-linha { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; }
+
+/* Painel de etapas: 1 Terreno · 2 Sombras · 3 Plantas · 4 Salvar */
+.planejar-etapas { margin: 0; padding: 0 0 var(--espaco-cartao); }
+.planejar-abas {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  background: var(--cartao);
+  border-bottom: 1px solid var(--borda);
+  border-radius: 16px 16px 0 0;
+}
+.planejar-abas [role="tab"] {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 6px 4px;
+  border: none;
+  border-bottom: 4px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-texto);
+  font-weight: 700;
+  color: var(--texto-suave);
+  cursor: pointer;
+}
+.planejar-abas [role="tab"][aria-selected="true"] { color: var(--verde); border-bottom-color: var(--verde); }
+.planejar-aba-num {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--borda);
+  color: var(--texto);
+  font-size: 0.8em;
+}
+.planejar-abas [aria-selected="true"] .planejar-aba-num { background: var(--verde); color: #fff; }
+.planejar-etapa { padding: var(--espaco-cartao) var(--espaco-cartao) 0; }
+.planejar-etapa > :first-child { margin-top: 0; }
+.planejar-nota-norte { margin: 4px 0 10px; }
+.planejar-credito { margin-top: 12px; }
+.planejar-escolha-titulo { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--borda); }
+.planejar-botao-largo { width: 100%; margin: 4px 0 8px; }
+.planejar-botoes-par { display: grid; grid-template-columns: 1fr 1fr; }
+.planejar-botoes-par .planejar-menu summary { width: 100%; justify-content: center; }
+.planejar-botoes-par .planejar-menu-opcoes { left: auto; right: 0; }
+
+/* Computador: mapa fixo à esquerda (~58%), etapas à direita (~42%) rolando sozinhas */
+@media (min-width: 900px) {
+  .planejar-layout { grid-template-columns: minmax(0, 58fr) minmax(0, 42fr); }
+  .planejar-mapa-cartao { position: sticky; top: 8px; height: calc(100dvh - 16px); }
+  .planejar-etapas { position: sticky; top: 8px; max-height: calc(100dvh - 16px); overflow-y: auto; }
+}
+/* Celular: mapa preso no topo (~40% da tela); as abas logo abaixo dele, também presas */
+@media (max-width: 899px) {
+  .planejar-mapa-cartao {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    margin: 0 -16px;
+    padding: 6px 8px;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  }
+  .planejar-barra { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding-bottom: 2px; }
+  .planejar-recolher {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    min-height: 36px;
+    padding: 4px 10px;
+    border: 2px solid var(--borda);
+    border-radius: 10px;
+    background: var(--cartao);
+    font: inherit;
+    font-size: var(--fs-nota);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .planejar-mapa-corpo { flex: none; height: max(220px, 40dvh); }
+  .planejar-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Legenda e transparência numa linha só ("menos de 3 h · 3 a 6 h · 6 h ou mais") */
+  .planejar-legenda-linha { flex-wrap: nowrap; gap: 8px; }
+  .planejar-legenda { flex-wrap: nowrap; gap: 4px 10px; white-space: nowrap; }
+  .planejar-legenda .planejar-cor { width: 16px; height: 12px; }
+  .planejar-legenda-nome, .planejar-opacidade-nome { display: none; }
+  .planejar-opacidade input { flex: 0 1 70px; }
+  .planejar-mapa-cartao.recolhido .planejar-mapa-corpo,
+  .planejar-mapa-cartao.recolhido .planejar-status,
+  .planejar-mapa-cartao.recolhido .planejar-legenda-linha { display: none; }
+  .planejar-abas { top: var(--altura-mapa, 0px); border-radius: 0; }
 }

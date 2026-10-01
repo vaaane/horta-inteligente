@@ -25,13 +25,15 @@
   </header>
 
   <main>
-    <section class="abertura">
+    <section class="abertura planejar-abertura">
       <h2>Planeje sua horta</h2>
-      <p>Encontre o lugar no mapa de satélite (ou desenhe à mão), marque o terreno e os
-        obstáculos (casas, muros, árvores) e veja o melhor lugar para cada planta.</p>
-      <p class="abertura-info">O site calcula, pela posição do sol a cada 30 minutos, quantas horas de sol
-        cada pedacinho do terreno recebe. Os obstáculos fazem sombra conforme a altura deles.
-        A imagem de satélite serve para desenhar no lugar certo; a altura você informa.</p>
+      <p>Desenhe o terreno, marque o que faz sombra e veja onde cada planta cresce melhor.</p>
+      <details class="planejar-como">
+        <summary>Como o cálculo funciona</summary>
+        <p>O site calcula, pela posição do sol a cada 30 minutos, quantas horas de sol
+          cada pedacinho do terreno recebe. Os obstáculos fazem sombra conforme a altura deles.
+          A imagem de satélite serve para desenhar no lugar certo; a altura você informa.</p>
+      </details>
     </section>
 
     <!-- Avisos da horta na nuvem (ficam presos no topo da tela) -->
@@ -47,227 +49,238 @@
       <button type="button" id="desarquivar-faixa" class="planejar-botao">Desarquivar</button>
     </div>
 
-    <!-- Como desenhar: sobre a imagem de satélite ou à mão -->
-    <div class="planejar-modos" role="group" aria-label="Como desenhar o terreno">
-      <button type="button" class="planejar-modo" data-modo="mapa" aria-pressed="true">🛰️ Sobre o mapa</button>
-      <button type="button" class="planejar-modo" data-modo="livre" aria-pressed="false">✏️ Desenho livre</button>
-    </div>
-
-    <div class="planejar-area">
-      <!-- Desenho do terreno (planejar.js) -->
-      <section class="cartao planejar-desenho">
-        <h2>Terreno</h2>
-
-        <!-- Modo "Sobre o mapa" (mapa.js) -->
-        <div class="so-mapa planejar-mapa-barra">
-          <form id="busca" class="planejar-busca" role="search">
-            <input type="search" id="busca-texto" placeholder="Endereço, escola, bairro…" aria-label="Endereço">
-            <button type="submit" class="planejar-botao planejar-botao-forte">Buscar</button>
-          </form>
-          <div class="planejar-botoes">
-            <button type="button" id="minha-localizacao" class="planejar-botao">📍 Usar minha localização</button>
-            <label class="planejar-camada"><input type="checkbox" id="camada-nomes"> Nomes de ruas</label>
+    <!-- Computador: o mapa fica fixo à esquerda e as etapas à direita.
+         Celular: o mapa fica preso no topo e as etapas embaixo dele. -->
+    <div class="planejar-layout">
+      <section id="cartao-mapa" class="cartao planejar-mapa-cartao" aria-label="Mapa da horta">
+        <div class="planejar-barra">
+          <!-- Como desenhar: sobre a imagem de satélite ou à mão -->
+          <div class="planejar-segmentado planejar-modos" role="group" aria-label="Como desenhar o terreno">
+            <button type="button" class="planejar-modo" data-modo="mapa" aria-pressed="true">🛰️ Mapa</button>
+            <button type="button" class="planejar-modo" data-modo="livre" aria-pressed="false">✏️ Desenho</button>
           </div>
-          <p id="busca-status" class="planejar-nota" aria-live="polite"></p>
-          <div class="planejar-botoes planejar-ferramentas" role="group" aria-label="Desenhar no mapa">
-            <button type="button" class="planejar-botao" data-ferramenta="terreno" aria-pressed="false">▭ Desenhar terreno</button>
-            <button type="button" class="planejar-botao" data-ferramenta="retangulo" aria-pressed="false">🏠 Casa ou muro</button>
-            <button type="button" class="planejar-botao" data-ferramenta="circulo" aria-pressed="false">🌳 Árvore</button>
-          </div>
-        </div>
-        <div class="so-mapa planejar-mapa-caixa">
-          <div id="mapa-satelite" class="planejar-mapa-sat"></div>
-          <!-- Ajuda da ferramenta: por cima do mapa, para a página não "pular" -->
-          <p id="ferramenta-status" class="planejar-ferramenta-ajuda" aria-live="polite" hidden></p>
-          <!-- Rosa dos ventos fixa: no mapa o norte é sempre para cima -->
-          <div class="planejar-rosa" aria-hidden="true"><span>N</span>▲</div>
-        </div>
-        <p class="so-mapa planejar-nota"><strong>No hemisfério sul, o lado norte recebe mais sol.</strong>
-          Toque em uma forma para selecionar; arraste os quadradinhos para mudar o tamanho e a bolinha ↻ para girar.</p>
-        <p class="so-mapa planejar-nota">Busca de endereços: © colaboradores do
-          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (Nominatim).</p>
-
-        <!-- Modo "Desenho livre" -->
-        <div class="so-livre planejar-canvas-caixa">
-          <canvas id="terreno" aria-label="Desenho do terreno com os obstáculos"></canvas>
-          <p id="dica-ponto" class="planejar-dica" hidden></p>
-        </div>
-        <p class="so-livre planejar-ajuda">Arraste os obstáculos para mudar de lugar. Toque em um para editar.
-          Toque no chão para ver as horas de sol daquele ponto.</p>
-
-        <!-- Mapa de horas de sol (cálculo em sol.js) -->
-        <div class="planejar-mapa">
-          <h3 class="decisao-subtitulo">Mapa de horas de sol</h3>
+          <!-- Dia do cálculo das horas de sol -->
           <div class="planejar-datas">
-            <label>Dia <input type="date" id="data"></label>
-            <div class="planejar-botoes" role="group" aria-label="Datas rápidas">
-              <button type="button" class="planejar-botao planejar-data" data-data="hoje">Hoje</button>
-              <button type="button" class="planejar-botao planejar-data" data-data="verao">Verão (21/12)</button>
-              <button type="button" class="planejar-botao planejar-data" data-data="inverno">Inverno (21/06)</button>
-              <button type="button" class="planejar-botao planejar-data" data-data="equinocio">Equinócio (21/03)</button>
-              <button type="button" class="planejar-botao planejar-data" data-data="ano">Ano todo (pior caso)</button>
+            <div class="planejar-segmentado" role="group" aria-label="Dia do cálculo das horas de sol">
+              <button type="button" class="planejar-data" data-data="hoje" title="Hoje">Hoje</button>
+              <button type="button" class="planejar-data" data-data="verao" title="Verão (21/12)">Verão</button>
+              <button type="button" class="planejar-data" data-data="inverno" title="Inverno (21/06)">Inverno</button>
+              <button type="button" class="planejar-data" data-data="equinocio" title="Equinócio (21/03)">Equinócio</button>
+              <button type="button" class="planejar-data" data-data="ano" title="Ano todo (pior caso)">Ano</button>
             </div>
+            <label class="planejar-calendario" title="Escolher outro dia">
+              <span aria-hidden="true">📅</span>
+              <input type="date" id="data" aria-label="Outro dia para o cálculo">
+            </label>
           </div>
-          <p id="mapa-status" class="planejar-status" aria-live="polite"></p>
-          <label class="so-mapa planejar-opacidade">Transparência do mapa de sol
-            <input type="range" id="opacidade" min="30" max="90" step="5" value="65">
+          <!-- Celular: recolher o mapa (para preencher o nome ou o código com o teclado aberto) -->
+          <button type="button" id="recolher-mapa" class="planejar-recolher" aria-expanded="true" aria-controls="corpo-mapa">Recolher mapa</button>
+        </div>
+
+        <div id="corpo-mapa" class="planejar-mapa-corpo">
+          <!-- Modo "Mapa": satélite (mapa.js) -->
+          <div class="so-mapa planejar-mapa-caixa">
+            <div id="mapa-satelite" class="planejar-mapa-sat"></div>
+            <!-- Ajuda da ferramenta: por cima do mapa, para a página não "pular" -->
+            <p id="ferramenta-status" class="planejar-ferramenta-ajuda" aria-live="polite" hidden></p>
+            <!-- Rosa dos ventos fixa: no mapa o norte é sempre para cima -->
+            <div class="planejar-rosa" aria-hidden="true"><span>N</span>▲</div>
+          </div>
+          <!-- Modo "Desenho" -->
+          <div class="so-livre planejar-canvas-caixa">
+            <canvas id="terreno" aria-label="Desenho do terreno com os obstáculos"></canvas>
+            <p id="dica-ponto" class="planejar-dica" hidden></p>
+          </div>
+        </div>
+
+        <!-- Mapa de horas de sol (cálculo em sol.js): status e legenda -->
+        <p id="mapa-status" class="planejar-status" aria-live="polite"></p>
+        <div class="planejar-legenda-linha">
+          <ul class="planejar-legenda" aria-label="Legenda do mapa">
+            <li><span class="planejar-cor cor-sombra"></span> <span class="planejar-legenda-nome">Sombra: </span>menos de 3 h</li>
+            <li><span class="planejar-cor cor-meia"></span> <span class="planejar-legenda-nome">Meia-sombra: </span>3 a 6 h</li>
+            <li><span class="planejar-cor cor-pleno"></span> <span class="planejar-legenda-nome">Pleno sol: </span>6 h ou mais</li>
+          </ul>
+          <label class="so-mapa planejar-opacidade"><span class="planejar-opacidade-nome">Transparência</span>
+            <input type="range" id="opacidade" min="30" max="90" step="5" value="65" aria-label="Transparência do mapa de sol">
             <output id="opacidade-valor">65%</output>
           </label>
-          <ul class="planejar-legenda" aria-label="Legenda do mapa">
-            <li><span class="planejar-cor cor-sombra"></span> Sombra: menos de 3 h</li>
-            <li><span class="planejar-cor cor-meia"></span> Meia-sombra: 3 a 6 h</li>
-            <li><span class="planejar-cor cor-pleno"></span> Pleno sol: 6 h ou mais</li>
-          </ul>
         </div>
       </section>
 
-      <!-- Painel lateral (embaixo no celular) -->
-      <aside class="cartao planejar-painel" aria-label="Configurações do terreno">
-        <h2>Configurar</h2>
+      <!-- As etapas: 1 Terreno · 2 Sombras · 3 Plantas · 4 Salvar (o endereço guarda a aba: #terreno, #sombras…) -->
+      <section class="cartao planejar-etapas" aria-label="Etapas do planejamento">
+        <div class="planejar-abas" role="tablist" aria-label="Etapas">
+          <button type="button" role="tab" id="aba-terreno" aria-controls="etapa-terreno" data-aba="terreno"><span class="planejar-aba-num">1</span> Terreno</button>
+          <button type="button" role="tab" id="aba-sombras" aria-controls="etapa-sombras" data-aba="sombras"><span class="planejar-aba-num">2</span> Sombras</button>
+          <button type="button" role="tab" id="aba-plantas" aria-controls="etapa-plantas" data-aba="plantas"><span class="planejar-aba-num">3</span> Plantas</button>
+          <button type="button" role="tab" id="aba-salvar" aria-controls="etapa-salvar" data-aba="salvar"><span class="planejar-aba-num">4</span> Salvar</button>
+        </div>
 
-        <fieldset class="planejar-grupo so-livre">
-          <legend>Tamanho do terreno (m)</legend>
-          <label>Largura <input type="number" id="largura" min="1" max="100" step="0.5"></label>
-          <label>Comprimento <input type="number" id="comprimento" min="1" max="100" step="0.5"></label>
-        </fieldset>
+        <!-- ===== 1 Terreno ===== -->
+        <div id="etapa-terreno" class="planejar-etapa" role="tabpanel" aria-labelledby="aba-terreno" hidden>
+          <!-- Modo Mapa (mapa.js) -->
+          <div class="so-mapa planejar-mapa-barra">
+            <form id="busca" class="planejar-busca" role="search">
+              <input type="search" id="busca-texto" placeholder="Endereço, escola, bairro…" aria-label="Endereço">
+              <button type="submit" class="planejar-botao planejar-botao-forte">Buscar</button>
+            </form>
+            <div class="planejar-botoes">
+              <button type="button" id="minha-localizacao" class="planejar-botao">📍 Usar minha localização</button>
+              <label class="planejar-camada"><input type="checkbox" id="camada-nomes"> Nomes de ruas</label>
+            </div>
+            <p id="busca-status" class="planejar-nota" aria-live="polite"></p>
+            <div class="planejar-botoes planejar-ferramentas" role="group" aria-label="Desenhar no mapa">
+              <button type="button" class="planejar-botao" data-ferramenta="terreno" aria-pressed="false">▭ Desenhar terreno</button>
+            </div>
+            <p id="centro-terreno" class="planejar-nota">O cálculo usa o centro do terreno desenhado no mapa.</p>
+            <p class="planejar-nota">Toque em uma forma para selecionar; arraste os quadradinhos para mudar o tamanho e a bolinha ↻ para girar.</p>
+          </div>
 
-        <fieldset class="planejar-grupo so-livre">
-          <legend>Norte</legend>
-          <label class="planejar-norte">Ângulo do norte
-            <input type="range" id="norte" min="0" max="359" step="1">
-            <output id="norte-valor">0°</output>
-          </label>
-          <p class="planejar-nota">No hemisfério sul, o lado norte é o que recebe mais sol.</p>
-        </fieldset>
+          <!-- Modo Desenho -->
+          <fieldset class="planejar-grupo planejar-grupo-duplo so-livre">
+            <legend>Tamanho do terreno (m)</legend>
+            <label>Largura <input type="number" id="largura" min="1" max="100" step="0.5"></label>
+            <label>Comprimento <input type="number" id="comprimento" min="1" max="100" step="0.5"></label>
+          </fieldset>
+          <fieldset class="planejar-grupo so-livre">
+            <legend>Norte</legend>
+            <label class="planejar-norte">Ângulo do norte
+              <input type="range" id="norte" min="0" max="359" step="1">
+              <output id="norte-valor">0°</output>
+            </label>
+          </fieldset>
+          <fieldset class="planejar-grupo planejar-grupo-duplo so-livre">
+            <legend>Local</legend>
+            <label>Latitude <input type="number" id="latitude" min="-90" max="90" step="0.01"></label>
+            <label>Longitude <input type="number" id="longitude" min="-180" max="180" step="0.01"></label>
+          </fieldset>
 
-        <fieldset class="planejar-grupo">
-          <legend>Local</legend>
-          <label class="so-livre">Latitude <input type="number" id="latitude" min="-90" max="90" step="0.01"></label>
-          <label class="so-livre">Longitude <input type="number" id="longitude" min="-180" max="180" step="0.01"></label>
-          <p id="centro-terreno" class="so-mapa planejar-nota">O cálculo usa o centro do terreno desenhado no mapa.</p>
-        </fieldset>
-
-        <fieldset class="planejar-grupo">
-          <legend>Obstáculos</legend>
+          <p class="planejar-nota planejar-nota-norte"><strong>No hemisfério sul, o lado norte recebe mais sol.</strong></p>
           <div class="planejar-botoes">
-            <button type="button" id="add-retangulo" class="planejar-botao">＋ Muro ou casa</button>
-            <button type="button" id="add-circulo" class="planejar-botao">＋ Árvore</button>
+            <button type="button" id="exemplo" class="planejar-botao planejar-botao-forte">Carregar exemplo</button>
+            <button type="button" id="zerar" class="planejar-botao">Começar do zero</button>
+          </div>
+          <p class="so-mapa planejar-nota planejar-credito">Busca de endereços: © colaboradores do
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (Nominatim).</p>
+        </div>
+
+        <!-- ===== 2 Sombras ===== -->
+        <div id="etapa-sombras" class="planejar-etapa" role="tabpanel" aria-labelledby="aba-sombras" hidden>
+          <p class="planejar-nota">O que faz sombra no terreno: casas, muros e árvores. A sombra depende da altura.</p>
+          <!-- No Mapa, desenham por cima do satélite; no Desenho, entram no terreno -->
+          <div class="planejar-botoes">
+            <button type="button" id="add-retangulo" class="planejar-botao" data-ferramenta="retangulo" aria-pressed="false">🏠 Casa ou muro</button>
+            <button type="button" id="add-circulo" class="planejar-botao" data-ferramenta="circulo" aria-pressed="false">🌳 Árvore</button>
           </div>
           <ul id="lista-obstaculos" class="planejar-lista"></ul>
           <div id="editor" class="planejar-editor" hidden></div>
-        </fieldset>
-
-        <div class="planejar-botoes">
-          <button type="button" id="exemplo" class="planejar-botao planejar-botao-forte">Carregar exemplo</button>
-          <button type="button" id="zerar" class="planejar-botao">Começar do zero</button>
-          <button type="button" id="copiar-link" class="planejar-botao">🔗 Copiar link</button>
+          <p class="planejar-nota">Toque num ponto do mapa para ver as horas de sol dele.
+            <span class="so-livre">Arraste os obstáculos para mudar de lugar; toque em um para editar.</span></p>
         </div>
-        <p id="link-status" class="planejar-nota" aria-live="polite"></p>
-        <input type="text" id="link-texto" class="planejar-link" readonly hidden aria-label="Link da horta">
-      </aside>
-    </div>
 
-    <div class="planejar-area planejar-area-plantas">
-      <!-- Escolha das plantas e sugestão de lugar (culturas.js) -->
-      <section class="cartao planejar-plantas">
-        <h2>O que você quer plantar?</h2>
-        <p class="planejar-nota">Marque as plantas e a área de cada uma. As que precisam de mais sol
-          escolhem o lugar primeiro. O mapa mostra onde plantar cada uma.</p>
-        <div id="escolha-plantas" class="planejar-escolha"></div>
-        <h3 class="decisao-subtitulo">Onde plantar</h3>
-        <p class="planejar-nota">Arraste cada planta no mapa para mudar o lugar (a cor mostra se o lugar é bom);
-          toque numa planta para ver o motivo e o botão ↻, que gira o canteiro.</p>
-        <p id="resumo-plantas" class="planejar-resumo" hidden></p>
-        <div class="planejar-botoes">
-          <button type="button" id="sugerir-de-novo" class="planejar-botao">✨ Sugerir de novo</button>
-          <button type="button" id="voltar-sugestao" class="planejar-botao" disabled>↩ Voltar à sugestão</button>
-        </div>
-        <label class="planejar-filtro">Mostrar só as áreas boas para
-          <select id="filtro-planta"><option value="">(mapa de sol normal)</option></select>
-        </label>
-        <p id="filtro-nota" class="planejar-nota" hidden></p>
-        <p id="sugestoes-vazio" class="planejar-nota">Marque pelo menos uma planta.</p>
-        <ul id="sugestoes" class="planejar-sugestoes"></ul>
-        <ul id="avisos-plantas" class="planejar-avisos" aria-live="polite" hidden></ul>
-      </section>
-
-      <!-- Salvar a planta: imagem, impressão e arquivo (planta.js) -->
-      <section class="cartao planejar-salvar">
-        <h2>Salvar e compartilhar</h2>
-        <label class="planejar-nome-projeto">Nome do projeto
-          <input type="text" id="nome-projeto" maxlength="60" autocomplete="off" placeholder="Minha horta" aria-describedby="nome-privacidade">
-        </label>
-        <p id="nome-privacidade" class="planejar-nota planejar-privacidade">🔒 Não coloque nome completo, telefone ou outros
-          dados pessoais no nome da horta.</p>
-        <div id="aviso-nome" class="planejar-aviso-nome" role="status" hidden>
-          <p id="aviso-nome-texto"></p>
+        <!-- ===== 3 Plantas ===== -->
+        <div id="etapa-plantas" class="planejar-etapa" role="tabpanel" aria-labelledby="aba-plantas" hidden>
+          <p id="resumo-plantas" class="planejar-resumo" hidden></p>
+          <h3 class="decisao-subtitulo">Onde plantar</h3>
+          <p id="sugestoes-vazio" class="planejar-nota">Marque pelo menos uma planta abaixo.</p>
+          <ol id="sugestoes" class="planejar-sugestoes"></ol>
+          <ul id="avisos-plantas" class="planejar-avisos" aria-live="polite" hidden></ul>
+          <p class="planejar-nota">Arraste cada planta no mapa para mudar o lugar; toque numa planta (no mapa ou na lista)
+            para ver o motivo e o botão ↻, que gira o canteiro.</p>
           <div class="planejar-botoes">
-            <button type="button" id="aviso-nome-usar" class="planejar-botao planejar-botao-pequeno planejar-botao-forte"></button>
-            <button type="button" id="aviso-nome-manter" class="planejar-botao planejar-botao-pequeno">Manter o nome</button>
+            <button type="button" id="sugerir-de-novo" class="planejar-botao">✨ Sugerir de novo</button>
+            <button type="button" id="voltar-sugestao" class="planejar-botao" disabled>↩ Voltar à sugestão</button>
           </div>
+          <label class="planejar-filtro">Mostrar só as áreas boas para
+            <select id="filtro-planta"><option value="">(mapa de sol normal)</option></select>
+          </label>
+          <p id="filtro-nota" class="planejar-nota" hidden></p>
+
+          <h3 class="decisao-subtitulo planejar-escolha-titulo">O que você quer plantar?</h3>
+          <p class="planejar-nota">Marque as plantas e a área de cada uma. As que precisam de mais sol escolhem o lugar primeiro.</p>
+          <div id="escolha-plantas" class="planejar-escolha"></div>
         </div>
-        <p class="planejar-nota">"Salvar planta" faz um desenho limpo da horta (sem a foto de satélite),
-          com o norte para cima, as horas de sol e as plantas, para imprimir ou mostrar na feira.</p>
-        <p id="nuvem-status" class="planejar-nuvem-status" aria-live="polite" hidden></p>
-        <div class="planejar-botoes">
-          <button type="button" id="salvar-nuvem" class="planejar-botao planejar-botao-forte">☁ Salvar na nuvem</button>
-          <button type="button" id="abrir-pelo-codigo" class="planejar-botao" aria-expanded="false" aria-controls="form-codigo">🔑 Abrir pelo código</button>
-          <details id="menu-salvar" class="planejar-menu">
-            <summary class="planejar-botao">🖨 Salvar planta</summary>
-            <div class="planejar-menu-opcoes">
-              <button type="button" id="salvar-png" class="planejar-botao">🖼 Imagem (PNG)</button>
-              <button type="button" id="salvar-impressao" class="planejar-botao">🖨 Imprimir / PDF</button>
-              <p class="planejar-menu-titulo">Backup</p>
-              <button type="button" id="salvar-arquivo" class="planejar-botao">⬇ Baixar backup (.json)</button>
-              <button type="button" id="abrir-arquivo" class="planejar-botao">📂 Abrir backup (.json)</button>
-              <p class="planejar-menu-ajuda">Backup é uma cópia da horta no seu computador. Para abrir em outro aparelho, use o código.</p>
+
+        <!-- ===== 4 Salvar ===== -->
+        <div id="etapa-salvar" class="planejar-etapa" role="tabpanel" aria-labelledby="aba-salvar" hidden>
+          <label class="planejar-nome-projeto">Nome do projeto
+            <input type="text" id="nome-projeto" maxlength="60" autocomplete="off" placeholder="Minha horta" aria-describedby="nome-privacidade">
+          </label>
+          <p id="nome-privacidade" class="planejar-nota planejar-privacidade">🔒 Não coloque nome completo, telefone ou outros
+            dados pessoais no nome da horta.</p>
+          <div id="aviso-nome" class="planejar-aviso-nome" role="status" hidden>
+            <p id="aviso-nome-texto"></p>
+            <div class="planejar-botoes">
+              <button type="button" id="aviso-nome-usar" class="planejar-botao planejar-botao-pequeno planejar-botao-forte"></button>
+              <button type="button" id="aviso-nome-manter" class="planejar-botao planejar-botao-pequeno">Manter o nome</button>
             </div>
-          </details>
-          <input type="file" id="arquivo-projeto" accept=".json,application/json" hidden>
-        </div>
-        <!-- Abrir pelo código: aparece ao tocar em "Abrir pelo código" (ou quando há um recado) -->
-        <form id="form-codigo" class="planejar-codigo" hidden>
-          <label for="codigo-digitado">Código da horta</label>
-          <div class="planejar-botoes">
-            <input type="text" id="codigo-digitado" placeholder="HX7K-2Q9M" maxlength="12" autocomplete="off"
-              autocapitalize="characters" spellcheck="false">
-            <button type="submit" class="planejar-botao planejar-botao-forte">Abrir horta</button>
           </div>
-          <p class="planejar-nota">Com ou sem hífen, maiúsculas ou minúsculas.</p>
-          <p id="codigo-status" class="planejar-nota" aria-live="polite"></p>
-        </form>
-        <p id="salvar-status" class="planejar-nota" aria-live="polite"></p>
+          <p id="nuvem-status" class="planejar-nuvem-status" aria-live="polite" hidden></p>
+          <button type="button" id="salvar-nuvem" class="planejar-botao planejar-botao-forte planejar-botao-largo">☁ Salvar na nuvem</button>
+          <div class="planejar-botoes planejar-botoes-par">
+            <button type="button" id="abrir-pelo-codigo" class="planejar-botao" aria-expanded="false" aria-controls="form-codigo">🔑 Abrir pelo código</button>
+            <details id="menu-salvar" class="planejar-menu">
+              <summary class="planejar-botao">🖨 Salvar planta</summary>
+              <div class="planejar-menu-opcoes">
+                <p class="planejar-menu-ajuda">Um desenho limpo da horta (sem a foto de satélite), com o norte para cima,
+                  as horas de sol e as plantas, para imprimir ou mostrar na feira.</p>
+                <button type="button" id="salvar-png" class="planejar-botao">🖼 Imagem (PNG)</button>
+                <button type="button" id="salvar-impressao" class="planejar-botao">🖨 Imprimir / PDF</button>
+                <p class="planejar-menu-titulo">Compartilhar o desenho</p>
+                <button type="button" id="copiar-link" class="planejar-botao">🔗 Copiar link</button>
+                <p class="planejar-menu-titulo">Backup</p>
+                <button type="button" id="salvar-arquivo" class="planejar-botao">⬇ Baixar backup (.json)</button>
+                <button type="button" id="abrir-arquivo" class="planejar-botao">📂 Abrir backup (.json)</button>
+                <p class="planejar-menu-ajuda">Backup é uma cópia da horta no seu computador. Para abrir em outro aparelho, use o código.</p>
+              </div>
+            </details>
+            <input type="file" id="arquivo-projeto" accept=".json,application/json" hidden>
+          </div>
+          <p id="link-status" class="planejar-nota" aria-live="polite"></p>
+          <input type="text" id="link-texto" class="planejar-link" readonly hidden aria-label="Link da horta">
+          <!-- Abrir pelo código: aparece ao tocar em "Abrir pelo código" (ou quando há um recado) -->
+          <form id="form-codigo" class="planejar-codigo" hidden>
+            <label for="codigo-digitado">Código da horta</label>
+            <div class="planejar-botoes">
+              <input type="text" id="codigo-digitado" placeholder="HX7K-2Q9M" maxlength="12" autocomplete="off"
+                autocapitalize="characters" spellcheck="false">
+              <button type="submit" class="planejar-botao planejar-botao-forte">Abrir horta</button>
+            </div>
+            <p class="planejar-nota">Com ou sem hífen, maiúsculas ou minúsculas.</p>
+            <p id="codigo-status" class="planejar-nota" aria-live="polite"></p>
+          </form>
+          <p id="salvar-status" class="planejar-nota" aria-live="polite"></p>
 
-        <!-- Só aparece com uma horta da nuvem aberta -->
-        <div id="nuvem-acoes" class="planejar-botoes" hidden>
-          <button type="button" id="mostrar-codigo" class="planejar-botao">🔑 Ver código e link</button>
-          <button type="button" id="fazer-copia" class="planejar-botao">📑 Fazer uma cópia</button>
-          <button type="button" id="ver-historico" class="planejar-botao" aria-expanded="false" aria-controls="historico">🕘 Histórico</button>
-          <button type="button" id="arquivar" class="planejar-botao">🗄 Arquivar</button>
-          <button type="button" id="sair-horta" class="planejar-botao">Sair desta horta</button>
-        </div>
-        <div id="historico" class="planejar-historico" hidden>
-          <h3 class="decisao-subtitulo">Versões desta horta</h3>
-          <p class="planejar-nota">Todas as versões são da mesma horta (código <strong id="historico-codigo"></strong>).
-            Restaurar volta a horta para aquele momento.</p>
-          <p class="planejar-nota">Guardamos as 10 últimas: uma a cada "Salvar na nuvem" (no máximo uma por minuto)
-            e uma a cada 5 minutos de edição. Versões iguais não se repetem.</p>
-          <p id="historico-status" class="planejar-nota" aria-live="polite"></p>
-          <ul id="lista-versoes" class="planejar-versoes"></ul>
-        </div>
+          <!-- Só aparece com uma horta da nuvem aberta -->
+          <div id="nuvem-acoes" class="planejar-botoes" hidden>
+            <button type="button" id="mostrar-codigo" class="planejar-botao">🔑 Ver código e link</button>
+            <button type="button" id="fazer-copia" class="planejar-botao">📑 Fazer uma cópia</button>
+            <button type="button" id="ver-historico" class="planejar-botao" aria-expanded="false" aria-controls="historico">🕘 Histórico</button>
+            <button type="button" id="arquivar" class="planejar-botao">🗄 Arquivar</button>
+            <button type="button" id="sair-horta" class="planejar-botao">Sair desta horta</button>
+          </div>
+          <div id="historico" class="planejar-historico" hidden>
+            <h3 class="decisao-subtitulo">Versões desta horta</h3>
+            <p class="planejar-nota">Todas as versões são da mesma horta (código <strong id="historico-codigo"></strong>).
+              Restaurar volta a horta para aquele momento.</p>
+            <p class="planejar-nota">Guardamos as 10 últimas: uma a cada "Salvar na nuvem" (no máximo uma por minuto)
+              e uma a cada 5 minutos de edição. Versões iguais não se repetem.</p>
+            <p id="historico-status" class="planejar-nota" aria-live="polite"></p>
+            <ul id="lista-versoes" class="planejar-versoes"></ul>
+          </div>
 
-
-        <h3 class="decisao-subtitulo">Minhas hortas</h3>
-        <p class="planejar-nota">Esta lista fica só neste aparelho. Em outro aparelho, abra pelo código ou link.</p>
-        <p id="minhas-hortas-vazio" class="planejar-nota">Nenhuma horta ainda. Dê um nome e toque em "Salvar na nuvem".</p>
-        <ul id="minhas-hortas" class="planejar-projetos"></ul>
-        <div id="hortas-antigas" hidden>
-          <h3 class="decisao-subtitulo">Salvas só neste aparelho</h3>
-          <p class="planejar-nota">Projetos de antes da nuvem. "Enviar para a nuvem" cria um código para cada um.</p>
-          <ul id="lista-antigas" class="planejar-projetos"></ul>
+          <h3 class="decisao-subtitulo">Minhas hortas</h3>
+          <p class="planejar-nota">Esta lista fica só neste aparelho. Em outro aparelho, abra pelo código ou link.</p>
+          <p id="minhas-hortas-vazio" class="planejar-nota">Nenhuma horta ainda. Dê um nome e toque em "Salvar na nuvem".</p>
+          <ul id="minhas-hortas" class="planejar-projetos"></ul>
+          <div id="hortas-antigas" hidden>
+            <h3 class="decisao-subtitulo">Salvas só neste aparelho</h3>
+            <p class="planejar-nota">Projetos de antes da nuvem. "Enviar para a nuvem" cria um código para cada um.</p>
+            <ul id="lista-antigas" class="planejar-projetos"></ul>
+          </div>
         </div>
       </section>
-
     </div>
   </main>
 

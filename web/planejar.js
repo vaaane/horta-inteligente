@@ -23,6 +23,7 @@ import {
 import { desenharQR } from "./qr.js";
 import { ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
+import { iniciarAbas } from "./abas.js";
 
 iniciarCabecalho();
 ligarLinksTelegram();  // link "Alertas no Telegram" do rodapé
@@ -103,7 +104,8 @@ const centroBussola = () => ({ x: larguraTela - RAIO_BUSSOLA - 6, y: MARGEM + RA
 function medir() {
   const largura = caixa.clientWidth;
   if (largura === 0) return false;  // escondido (modo mapa): mede quando aparecer
-  const alturaMax = Math.max(260, window.innerHeight * 0.7);
+  // A altura é a do cartão do mapa (fixo na tela); sem ela, 70% da janela
+  const alturaMax = caixa.clientHeight > 100 ? caixa.clientHeight : Math.max(260, window.innerHeight * 0.7);
   escala = Math.min(
     (largura - MARGEM - 12 - ESPACO_BUSSOLA) / terreno.largura,
     (alturaMax - MARGEM - 12) / terreno.comprimento
@@ -870,7 +872,7 @@ const modoMapa = iniciarModoMapa({
     };
   }
 });
-for (const botao of document.querySelectorAll("[data-ferramenta]")) {
+for (const botao of document.querySelectorAll('[data-ferramenta="terreno"]')) {
   botao.addEventListener("click", () => modoMapa.usarFerramenta(botao.dataset.ferramenta));
 }
 
@@ -1292,6 +1294,29 @@ function iniciarModo() {
 iniciarModo();
 
 // =====================================================================
+//  ETAPAS (abas.js): 1 Terreno · 2 Sombras · 3 Plantas · 4 Salvar
+//  A aba vai no endereço (#terreno, #sombras, #plantas, #salvar). O link
+//  antigo com o desenho (#p=…) já foi lido e tirado do endereço acima, e o
+//  ?h=CODIGO da horta na nuvem fica na busca (não no #): não se misturam.
+// =====================================================================
+const temTerreno = () => modo === "livre" || !!modoMapa.obterTerreno();
+iniciarAbas({ padrao: temTerreno() ? "plantas" : "terreno" });
+
+// ---------- Cartão do mapa: recolher (celular) e a altura dele (para as abas presas logo abaixo) ----------
+$("recolher-mapa").addEventListener("click", () => {
+  const recolher = $("recolher-mapa").getAttribute("aria-expanded") === "true";
+  $("cartao-mapa").classList.toggle("recolhido", recolher);
+  $("recolher-mapa").setAttribute("aria-expanded", String(!recolher));
+  $("recolher-mapa").textContent = recolher ? "Mostrar mapa" : "Recolher mapa";
+});
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty("--altura-mapa", `${$("cartao-mapa").offsetHeight}px`);
+}).observe($("cartao-mapa"));
+
+// "📅": abre o calendário do navegador (o campo fica invisível em cima do ícone)
+$("data").addEventListener("click", () => { try { $("data").showPicker(); } catch { /* navegador antigo: abre sozinho */ } });
+
+// =====================================================================
 //  HORTAS NA NUVEM, SEM LOGIN (o banco fica em nuvem.js)
 // =====================================================================
 // A horta salva ganha um código. Quem tem o código abre e altera.
@@ -1379,7 +1404,7 @@ function aplicarArquivada() {
   const arquivada = !!(horta && horta.arquivada);
   $("faixa-arquivada").hidden = !arquivada;
   $("arquivar").textContent = arquivada ? "📂 Desarquivar" : "🗄 Arquivar";
-  for (const parte of document.querySelectorAll(".planejar-modos, .planejar-area:not(.planejar-area-plantas), .planejar-plantas")) {
+  for (const parte of document.querySelectorAll("#cartao-mapa, #etapa-terreno, #etapa-sombras, #etapa-plantas")) {
     parte.inert = arquivada;
     parte.classList.toggle("planejar-travado", arquivada);
   }
@@ -1950,7 +1975,7 @@ function mostrarHortas(excluindo = null) {
       botoes: [
         botaoPequeno("Abrir", () => {
           abrirPorCodigo(h.codigo);
-          document.querySelector(".planejar-modos")?.scrollIntoView({ behavior: "smooth" });
+          window.scrollTo({ top: 0, behavior: "smooth" });
         }, "planejar-botao-forte"),
         botaoPequeno("Tirar da lista", () => {
           gravarHortas(lerHortas().filter((o) => o.codigo !== h.codigo));

@@ -109,6 +109,11 @@ export function iniciarModoMapa(opcoes) {
     ctx = canvas.getContext("2d");
     mapa.on("move zoom resize viewreset", redesenhar);
     mapa.on("resize", medirCanvas);
+    // O cartão do mapa muda de tamanho (troca de modo, recolher no celular, girar a tela):
+    // o Leaflet precisa saber (invalidateSize), senão as imagens ficam cortadas
+    new ResizeObserver(() => {
+      if (elemento.clientWidth > 0) mapa.invalidateSize();
+    }).observe(elemento);
     mapa.on("moveend", () => aoMudarVista());  // salva onde o mapa está
     medirCanvas();
 
