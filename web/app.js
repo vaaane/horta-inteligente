@@ -13,6 +13,9 @@ import { iniciarFalha } from "./falha.js";
 import { iniciarPodeRegar } from "./podeRegar.js";
 import { desenharQR } from "./qr.js";
 import { CANAL_TELEGRAM, ligarLinksTelegram } from "./config.js";
+import { iniciarCabecalho } from "./cabecalho.js";
+
+iniciarCabecalho();
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -85,7 +88,8 @@ function mostrarHoraHorta() {
   elHoraHorta.hidden = horaHorta === null;
   // "(simulada)" só quando o ESP32 já está usando a hora simulada
   const simulada = horaSimulada >= 0 && horaHorta === horaSimulada;
-  elHoraHorta.textContent = `Hora da horta: ${horaHorta}h${simulada ? " (simulada)" : ""}`;
+  elHoraHorta.textContent = `🕐 ${horaHorta}h${simulada ? " (simulada)" : ""}`;
+  elHoraHorta.title = "Hora que a horta está usando na decisão";
 }
 
 // ---------- "Última atualização: há X s" ----------

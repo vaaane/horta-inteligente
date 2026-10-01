@@ -22,7 +22,9 @@ import {
 } from "./nuvem.js";
 import { desenharQR } from "./qr.js";
 import { ligarLinksTelegram } from "./config.js";
+import { iniciarCabecalho } from "./cabecalho.js";
 
+iniciarCabecalho();
 ligarLinksTelegram();  // link "Alertas no Telegram" do rodapé
 
 // ---------- Terreno padrão ----------

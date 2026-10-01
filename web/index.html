@@ -8,11 +8,15 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="painel">
-  <header>
-    <h1>🌱 Horta Inteligente</h1>
-    <p class="subtitulo">CED São Bartolomeu · Feira de Ciências</p>
-    <p id="hora-horta" class="hora-horta" hidden></p>
-    <nav class="navegacao" aria-label="Páginas do site">
+  <header class="topo">
+    <div class="topo-marca">
+      <h1 class="topo-nome"><a href="index.html"><span aria-hidden="true">🌱</span> Horta Inteligente</a></h1>
+      <span class="topo-escola">CED São Bartolomeu · Feira de Ciências</span>
+      <span id="hora-horta" class="hora-horta" hidden></span>
+    </div>
+    <!-- No celular a navegação vira este botão (cabecalho.js) -->
+    <button type="button" class="menu-botao" aria-expanded="false" aria-controls="menu-paginas" aria-label="Menu de páginas">☰</button>
+    <nav id="menu-paginas" class="navegacao" aria-label="Páginas do site">
       <a href="index.html" aria-current="page">Painel</a>
       <a href="planejar.html">Planeje sua horta</a>
       <a href="sobre.html">Sobre o projeto</a>

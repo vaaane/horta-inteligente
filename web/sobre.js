@@ -2,6 +2,9 @@
 // Para mudar o status de um item, troque "proxima" por "funcionando" (ou o contrário).
 import { desenharQR } from "./qr.js";
 import { CANAL_TELEGRAM, ligarLinksTelegram } from "./config.js";
+import { iniciarCabecalho } from "./cabecalho.js";
+
+iniciarCabecalho();
 
 const STATUS = {
   funcionando: { texto: "Funcionando", classe: "selo-funcionando" },
