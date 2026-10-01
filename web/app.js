@@ -16,7 +16,7 @@ import { TELEGRAM_CANAL, arrobaDoCanal, ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
 import { iniciarAbas } from "./abas.js";
 import { iniciarProjetor } from "./projetor.js";
-import { haQuanto, semSinal, quandoFoi } from "./tempo.js";
+import { haQuanto, semSinal, quandoFoi, hora as horaDe } from "./tempo.js";
 
 iniciarCabecalho();
 
@@ -192,27 +192,60 @@ if (TELEGRAM_CANAL) {
 ligarLinksTelegram();  // botão do cartão e link do rodapé
 
 // ---------- Gráfico com as últimas 50 leituras (aba Histórico) ----------
-// Faixas de fundo com os limites da rega, desenhadas antes da curva
+// Faixas de fundo com os limites da rega: a cor vai antes da curva; o
+// rótulo vai por cima, no canto da faixa mais longe da linha (com fundo claro)
+const FAIXAS = [
+  { de: LIMITE_DESLIGAR, ate: 100, fundo: "rgba(46, 125, 50, 0.12)", texto: `desliga (acima de ${LIMITE_DESLIGAR}%)`, cor: "#1b5e20" },
+  { de: LIMITE_CRITICO, ate: LIMITE_LIGAR, fundo: "rgba(249, 168, 37, 0.18)", texto: `liga (abaixo de ${LIMITE_LIGAR}%)`, cor: "#7a4f00" },
+  { de: 0, ate: LIMITE_CRITICO, fundo: "rgba(229, 57, 53, 0.14)", texto: `crítico (abaixo de ${LIMITE_CRITICO}%)`, cor: "#b71c1c" }
+];
 const faixasUmidade = {
   id: "faixasUmidade",
   beforeDraw(chart) {
     const { ctx, chartArea: area, scales: { y } } = chart;
     if (!area) return;
-    const faixa = (de, ate, fundo, rotulo, corTexto) => {
-      const topo = y.getPixelForValue(ate);
-      const base = y.getPixelForValue(de);
-      ctx.fillStyle = fundo;
-      ctx.fillRect(area.left, topo, area.right - area.left, base - topo);
-      ctx.fillStyle = corTexto;
-      ctx.fillText(rotulo, area.right - 8, (topo + base) / 2);
-    };
     ctx.save();
-    ctx.font = `600 ${Chart.defaults.font.size}px ${Chart.defaults.font.family}`;
-    ctx.textAlign = "right";
+    for (const f of FAIXAS) {
+      const topo = y.getPixelForValue(f.ate);
+      ctx.fillStyle = f.fundo;
+      ctx.fillRect(area.left, topo, area.right - area.left, y.getPixelForValue(f.de) - topo);
+    }
+    ctx.restore();
+  },
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea: area, scales: { y } } = chart;
+    if (!area) return;
+    // Pontos da linha (e o meio de cada trecho) para saber onde ela passa
+    const pontos = [];
+    const dados = chart.getDatasetMeta(0).data;
+    dados.forEach((p, i) => {
+      pontos.push(p);
+      if (dados[i + 1]) pontos.push({ x: (p.x + dados[i + 1].x) / 2, y: (p.y + dados[i + 1].y) / 2 });
+    });
+    const colide = (r) => pontos.some((p) => p.x >= r.x - 6 && p.x <= r.x + r.w + 6 && p.y >= r.y - 6 && p.y <= r.y + r.h + 6);
+
+    ctx.save();
+    const tamanho = Chart.defaults.font.size;
+    ctx.font = `600 ${tamanho}px ${Chart.defaults.font.family}`;
     ctx.textBaseline = "middle";
-    faixa(LIMITE_DESLIGAR, 100, "rgba(46, 125, 50, 0.12)", `desliga (acima de ${LIMITE_DESLIGAR}%)`, "#1b5e20");
-    faixa(LIMITE_CRITICO, LIMITE_LIGAR, "rgba(249, 168, 37, 0.18)", `liga (abaixo de ${LIMITE_LIGAR}%)`, "#7a4f00");
-    faixa(0, LIMITE_CRITICO, "rgba(229, 57, 53, 0.14)", `crítico (abaixo de ${LIMITE_CRITICO}%)`, "#b71c1c");
+    for (const f of FAIXAS) {
+      const topo = y.getPixelForValue(f.ate);
+      const base = y.getPixelForValue(f.de);
+      const w = ctx.measureText(f.texto).width + 12;
+      const h = Math.min(tamanho + 8, base - topo);
+      const direita = area.right - w - 6;
+      const esquerda = area.left + 6;
+      // Tenta os quatro cantos; se todos colidirem, fica no canto de cima à direita
+      const cantos = [
+        { x: direita, y: topo + 3 }, { x: direita, y: base - h - 3 },
+        { x: esquerda, y: topo + 3 }, { x: esquerda, y: base - h - 3 }
+      ].map((c) => ({ ...c, w, h }));
+      const lugar = cantos.find((c) => !colide(c)) || cantos[0];
+      ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
+      ctx.fillRect(lugar.x, lugar.y, w, h);
+      ctx.fillStyle = f.cor;
+      ctx.fillText(f.texto, lugar.x + 6, lugar.y + h / 2);
+    }
     ctx.restore();
   }
 };
@@ -281,11 +314,23 @@ function desenharUmidade() {
       marcadas.add(perto);
     }
   }
-  grafico.data.labels = leiturasGrafico.map((l) =>
-    new Date(l.ts).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
+  grafico.data.labels = leiturasGrafico.map((l) => horaDe(l.ts));
   grafico.data.datasets[0].data = leiturasGrafico.map((l) => l.umidade);
   grafico.data.datasets[1].data = leiturasGrafico.map((l, i) => (marcadas.has(i) ? l.umidade : null));
+  // A legenda "Rega" só aparece se houver rega no intervalo do gráfico
+  grafico.options.plugins.legend.display = marcadas.size > 0;
   grafico.update();
+
+  // "ontem, 14:41–14:48 · 50 leituras · uma a cada 30 s (10 s no modo teste)"
+  const info = document.getElementById("grafico-info");
+  if (primeira === undefined) {
+    info.textContent = "Nenhuma leitura ainda.";
+    return;
+  }
+  const dia = quandoFoi(ultima).split(" ").slice(0, -1).join(" ");  // "hoje", "ontem", "seg 28"
+  const n = leiturasGrafico.length;
+  info.textContent = `${dia}, ${horaDe(primeira)}–${horaDe(ultima)} · ${n} ${n === 1 ? "leitura" : "leituras"} · ` +
+    "uma a cada 30 s (10 s no modo teste)";
 }
 
 onValue(query(ref(db, "horta/leituras"), orderByChild("ts"), limitToLast(50)), (snap) => {

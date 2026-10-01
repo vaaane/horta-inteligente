@@ -1575,3 +1575,40 @@ body.imprimindo { overflow: hidden; }
 .agua-detalhe[open] > summary::before { transform: rotate(90deg); }
 .agua-detalhe .tabela-rolagem, .agua-detalhe .decisao-lista { margin-bottom: 12px; }
 .agua-calculo { margin: 0 0 12px; padding-left: 22px; font-size: var(--fs-nota); color: var(--texto-suave); line-height: 1.5; }
+
+/* ================= Aba Histórico ================= */
+/* "ontem, 14:41–14:48 · 50 leituras · uma a cada 30 s" embaixo do título do gráfico */
+.grafico-info { margin: -4px 0 8px; font-size: var(--fs-nota); color: var(--texto-suave); }
+/* Últimas decisões: etiqueta "simulado", repetidas agrupadas e "Ver mais" */
+.decisao-texto { min-width: 0; }
+.etiqueta-simulado {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #8a4b00;
+  border: 1px solid #f5c98b;
+  font-size: var(--fs-nota);
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.decisao-repeticao { color: var(--texto-suave); font-size: var(--fs-nota); font-weight: 600; white-space: nowrap; }
+.decisao-mais {
+  margin-top: 8px;
+  min-height: 40px;
+  padding: 6px 16px;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--cartao);
+  color: var(--verde);
+  border: 2px solid var(--verde);
+}
+/* No computador, a lista não passa da altura do gráfico ao lado: rola por dentro */
+@media (min-width: 1024px) {
+  #painel-historico:not([hidden]) { align-items: stretch; }
+  #painel-historico #decisao { height: 0; min-height: 100%; overflow-y: auto; }
+  /* O título fica à vista enquanto a lista rola */
+  #painel-historico #decisao h2 { position: sticky; top: calc(-1 * var(--espaco-cartao)); z-index: 1; margin-top: calc(-1 * var(--espaco-cartao)); padding: var(--espaco-cartao) 0 8px; background: var(--cartao); }
+}
