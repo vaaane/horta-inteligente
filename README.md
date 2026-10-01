@@ -25,16 +25,19 @@ Arquivos do site (`web/`):
 - `falha.js`: a faixa vermelha de falha e o botão "Já resolvi".
 - `cabecalho.js`: o cabeçalho das 3 páginas (no celular, a navegação vira o botão ☰).
 - `config.js`: configurações públicas do site, como o link do canal do Telegram (`TELEGRAM_CANAL`). Nada de senha aqui.
-- `sobre.html` + `sobre.js`: a página "Sobre o projeto" para a feira (funcionalidades, materiais, evolução). Para mudar o status de uma funcionalidade, edite a lista no `sobre.js`.
+- `sobre.html` + `sobre.js`: a página "Sobre o projeto" para a feira (funcionalidades, a tabela "Umidade e sol por cultura", materiais, evolução). Para mudar o status de uma funcionalidade, edite a lista no `sobre.js`. A tabela das culturas é gerada com os dados do `culturas.js` (os mesmos do Planeje).
 - `clima.js`: o cartão "Clima agora", usado no painel e na `teste.html` (o mesmo código nas duas páginas).
 - `controle.js`: o controle da bomba no cartão "Bomba d'água" (Automático | Manual e Ligar/Desligar). Veja "Controle pelo site" no final.
 - `demo.js`: o cartão "Modo demonstração": simular a chance de chuva pelo site. Veja "Modo demonstração" no final.
-- `agua.js`: o cartão "Água": água usada e economizada (estimativa). Veja "Água (estimativa)" no final.
-- `planejar.html` + `planejar.js`: a página "Planeje sua horta" (desenho do terreno, mapa de sol e sugestão de lugar para cada planta).
+- `agua.js`: a aba "Água": água usada e economizada (estimativa), com um período só para a aba inteira. Veja "Água (estimativa)" no final.
+- `planejar.html` + `planejar.js`: a página "Planeje sua horta" (mapa fixo + etapas em abas: terreno, sombras, plantas e salvar). Veja "Planeje sua horta" no final.
+- `plantas.js`: os canteiros das plantas no Planeje (cor da planta, selo da avaliação, número ou nome, arrastar e girar) e a lista "Onde plantar".
+- `rotulos.js`: os rótulos dos obstáculos no Planeje, desviando dos das plantas.
+- `tempo.js`: os tempos escritos de um jeito só no site inteiro ("há 5 min", "há 18 h", "ontem às 14:48", "seg 28 13:54").
 - `mapa.js`: o modo "Sobre o mapa" da página Planeje sua horta (imagem de satélite, busca de endereço e desenho por cima).
 - `sol.js`: o cálculo das horas de sol (sem mexer na página). Testes: `node web/sol.test.mjs` (precisa de internet para baixar o SunCalc).
 - `culturas.js`: sol e umidade de referência de cada planta e a escolha do melhor lugar.
-- `decisao.js`: a lista "Últimas decisões" (aba Histórico) e a linha "Última decisão, 11:31: …" (aba Agora), de `/horta/decisoes`. Fica escondida se o firmware ainda não manda a decisão.
+- `decisao.js`: a lista "Últimas decisões" (aba Histórico, 5 linhas com "Ver mais", repetidas agrupadas) e a linha "Última decisão, 11:31: …" (aba Agora), de `/horta/decisoes`. Fica escondida se o firmware ainda não manda a decisão.
 - `qr.js`: desenha os QR codes (o do canal do Telegram no painel; o do site na `sobre.html`).
 - `teste.html`: a página do teste acende/apaga. Não tem link no site: abra pelo endereço direto (`/teste.html`).
 
@@ -190,11 +193,13 @@ O `index.html` tem quatro abas, logo abaixo do cabeçalho. Cada uma tem endereç
 | Aba | Endereço | O que tem |
 |---|---|---|
 | **Agora** | `index.html#agora` (padrão) | faixa "Pode regar agora?" com os semáforos; ao lado, o QR do canal do Telegram; os cartões Umidade do solo (com os tracinhos de liga 35% / desliga 60%), Bomba, Clima agora e Água economizada; a linha "Última decisão" |
-| **Água** | `index.html#agua` | água usada, timer fixo e economia; "Em coisas do dia a dia"; cota de hoje; gráfico "Água por dia" (7/14/30 dias); tabela por dia e últimas regas |
-| **Histórico** | `index.html#historico` | gráfico da umidade com as faixas desliga / liga / crítico e as regas em pontos azuis; lista "Últimas decisões" |
+| **Água** | `index.html#agua` | um período só (Desde o início · 7 dias · 30 dias) para frase, números, equivalências, gráfico, tabela e regas; o bloco "Hoje" com a cota; "Como calculamos" recolhido |
+| **Histórico** | `index.html#historico` | gráfico da umidade com as faixas desliga / liga / crítico, as regas em pontos azuis e o dia das leituras; "Últimas decisões" (5 linhas, "Ver mais", repetidas agrupadas) |
 | **Demonstração** | `index.html#demo` | simular chuva e horário, recomeçar a cota, simular fim do dia, detectar falha, zerar contagem e o interruptor do modo projetor |
 
 - **Celular do visitante:** a primeira coisa abaixo do cabeçalho é "Pode regar agora?"; as abas ficam presas embaixo da tela.
+- **Tamanhos:** ficam em variáveis no topo do `style.css` (`--fs-gigante`, `--fs-numero`, `--fs-titulo`, `--fs-texto`, `--fs-nota`, `--espaco-cartao`, `--gap`). Os grandes usam `clamp()`: crescem no projetor de 1920 e encolhem em 1280. O texto pequeno nunca fica abaixo de 14 px. A aba Agora cabe sem rolar em 1366×768 e 1280×720 a 100% de zoom (no projetor, use tela cheia: F11).
+- **Sem sinal do ESP32:** o aviso diz desde quando ("ESP32 sem sinal há 18 h", o mesmo tempo do rodapé), a faixa vira uma linha e o cartão da bomba mostra "Sem sinal: controle pausado". Os 20 s (modo teste) / 2 min continuam decidindo quando o aviso aparece.
 - **Quem pode mexer:** a aba Demonstração e os botões que gravam no Firebase (Manual/Ligar, "Já resolvi", os botões da faixa) só aparecem em telas de **1024 px ou mais** (o computador do projetor). No celular, sem eles, a bomba mostra só "Modo: Automático" ou "Modo: Manual". Para a professora usar os controles no celular: **`index.html?demo=1`** (aparece uma nota avisando que o que mudar aparece para todos).
 - **Modo projetor:** **`index.html?tela=projetor`** (ou o interruptor "Modo projetor" na aba Demonstração, guardado no navegador) alterna Agora → Água → Histórico a cada **20 s**. Fica parado na aba Agora enquanto há falha, a bomba está ligada ou a decisão acabou de mudar (30 s). Um toque, clique ou tecla pausa a rotação por **2 min**. Três pontinhos no canto mostram a aba no ar (laranja = pausado). A Demonstração nunca entra na rotação. Em 1920×1080 e 1280×720, cada aba cabe sem rolar (no 720 p os gráficos ficam mais baixos).
 
@@ -298,11 +303,17 @@ Na época da feira quase nunca chove no DF, então a previsão real marca ~0% e 
 ## Água (estimativa)
 Ainda **não há sensor de fluxo**. Cada vez que a bomba desliga, o ESP32 grava a rega em `/horta/regas` com o tempo que ela ficou ligada e os litros **estimados**: `segundos / 60 × VAZAO_L_MIN` (1,5 L/min por padrão). Regas com menos de 1 s não contam; sem Wi-Fi, até 5 regas ficam guardadas para enviar depois.
 
-O cartão **"Água"** do painel mostra:
-- **Água usada:** soma dos litros e número de regas desde o início da medição;
-- **Um timer fixo teria usado:** 2 regas por dia × 5 min × 1,5 L/min, pelo tempo de medição (o dia de hoje conta pelas horas que já passaram);
-- **Economia:** a diferença em litros e em %, traduzida em banhos de 5 minutos (45 L) e garrafões de 20 L. Se a horta usou mais que o timer (acontece no teste, com o LED ligado no manual por muito tempo), o cartão diz isso.
-- **Zerar contagem** começa a medição de agora (grava `/horta/config/inicioMedicao`).
+A aba **Água** do painel tem **um período só para a aba inteira**: **Desde o início** (padrão) · **7 dias** · **30 dias**. O período escolhido muda junto a frase, os 3 números, as equivalências, o gráfico, a tabela por dia e as últimas regas. Ao lado do seletor: "medindo há 2 dias" (Desde o início) ou "5 dias sem medição não entram na conta".
+
+- **Frase:** "A horta usou 2,5 L. Um timer fixo teria usado 45 L." (em 7/30 dias: "Nos últimos 7 dias (4 com medição), a horta usou…").
+- **Horta** (litros e regas) · **Timer fixo** (2 regas por dia × 5 min × 1,5 L/min) · **Economia** (litros e "% menos"; se a horta usou mais, "X L a mais que o timer", com fundo de alerta).
+- **Equivalências:** garrafões de 20 L e banhos de 5 min (45 L). Abaixo de 1: "meio garrafão", "1/4 de garrafão", "meio banho"; abaixo de 1/4 de garrafão, só os litros.
+- **Timer só com medição:** o timer fixo e a horta só contam a partir do início da medição (`/horta/config/inicioMedicao`, ou a primeira rega). Dias sem medição não entram na conta: no gráfico aparecem hachurados com "sem medição" (sem barra de timer) e na tabela com "—". O dia em que a medição começou conta pelas horas medidas.
+- **Gráfico "Água por dia":** barras Horta (verde) e Timer fixo (cinza; o de hoje mais claro, porque o dia ainda está em andamento) e a cota pela ET₀ como um traço azul tracejado sobre cada dia.
+- **Hoje** (sempre o dia atual): "17,9 L usados · cota 1,5 L · limite com margem 2,2 L", com o usado em verde (até a cota), amarelo (até o limite) ou vermelho (acima), uma barra na mesma escala e o aviso "Passou N vezes do limite e o solo continua seco: confira o sensor e o canteiro".
+- **Recolhidos:** Como calculamos (a conta da cota do dia, o Kc, a vazão, o timer e a regra dos dias sem medição), Tabela por dia e Últimas regas.
+- O cartão **Água economizada** da aba Agora mostra o mesmo número de "Desde o início".
+- **Zerar contagem** (aba Demonstração) começa a medição de agora (grava `/horta/config/inicioMedicao`).
 
 As constantes do timer e das comparações ficam no topo do `web/agua.js`.
 
@@ -315,7 +326,28 @@ As constantes do timer e das comparações ficam no topo do `web/agua.js`.
 Repita 2 ou 3 vezes e use a média. Quando o sensor de fluxo YF-S201 chegar, ele vai medir o valor real.
 
 ## Planeje sua horta
-Página `planejar.html` (link na navegação). A pessoa desenha o terreno (largura e comprimento), gira a seta do norte e coloca os obstáculos com a altura de cada um: retângulos para muros e casas, círculos para árvores. O botão **Carregar exemplo** monta um terreno de 6 × 4 m com um muro de 2 m no lado norte e uma árvore de 4 m no canto leste. O desenho fica salvo no navegador.
+Página `planejar.html` (link na navegação). A pessoa desenha o terreno, marca o que faz sombra (com a altura) e escolhe as plantas.
+
+**Como a página é montada:** o **mapa fica sempre à vista**. No computador (900 px ou mais) ele fica preso à esquerda (~58%) e as etapas à direita (~42%), rolando sozinhas. No celular o mapa fica preso no topo (~40% da tela), com as abas logo abaixo; o botão **Recolher mapa** dá espaço para o teclado. Na barra do mapa ficam as chaves **Mapa | Desenho** e **Hoje | Verão | Inverno | Equinócio | Ano** (o 📅 escolhe outro dia); embaixo, o status e a legenda.
+
+As etapas são abas, e cada uma tem endereço próprio:
+
+| Aba | Endereço | O que tem |
+|---|---|---|
+| **1 Terreno** | `planejar.html#terreno` | Mapa: busca, minha localização, nomes de ruas, desenhar terreno. Desenho: largura, comprimento, norte, latitude e longitude. Carregar exemplo e Começar do zero |
+| **2 Sombras** | `planejar.html#sombras` | Casa ou muro e Árvore (os mesmos botões nos dois modos), a lista e o editor dos obstáculos |
+| **3 Plantas** | `planejar.html#plantas` | "Onde plantar" (uma linha por planta: número, cor, horas, lugar e selo), sugerir de novo, filtro e a escolha das plantas |
+| **4 Salvar** | `planejar.html#salvar` | nome, Salvar na nuvem, Abrir pelo código, Salvar planta ▾ (PNG, imprimir, copiar link, backup), Minhas hortas |
+
+A página abre em **Plantas** quando já há terreno (senão, em Terreno). O link antigo com o desenho (`#p=…`) e o da horta na nuvem (`?h=CODIGO`) continuam funcionando.
+
+**No mapa:** cada canteiro tem a **cor da planta** (a mesma da lista, da planta PNG e da folha impressa) e um selo no canto: ✓ recomendado, ! aceitável (também com a borda tracejada), ✕ não recomendado. O rótulo é o nome; sem espaço (canteiro pequeno, mapa estreito ou outro rótulo no lugar), vira o número da planta na lista. Os nomes dos obstáculos desviam dos das plantas (saem da forma, com uma linha). Tocar numa linha da lista destaca o canteiro, e vice-versa.
+
+**Escolha das plantas:** agrupadas por sol (Pleno sol, 4 h ou mais, Meia-sombra). A área (aceita "0,5" e "0.5") e a umidade ideal aparecem quando a planta é marcada. Na lista, o motivo de um "Aceitável" fica claro: "~5 h em média, mas parte do canteiro passa de 6 h" ou "falta ~1,5 h".
+
+A tabela **Umidade e sol por cultura** fica na página Sobre.
+
+O botão **Carregar exemplo** monta um terreno de 6 × 4 m com um muro de 2 m no lado norte e uma árvore no canto leste. O desenho fica salvo no navegador.
 
 Como o mapa de sol é calculado (`web/sol.js`):
 1. O terreno é dividido em quadradinhos de 0,25 m.
@@ -325,17 +357,17 @@ Como o mapa de sol é calculado (`web/sol.js`):
 
 Dá para ver o mapa de um dia (Hoje, Verão, Inverno, Equinócio) ou do **Ano todo (pior caso)**: o menor valor de cada ponto entre os 12 meses. Em **O que você quer plantar?**, a pessoa marca as plantas e a área de cada uma. As que precisam de mais sol escolhem primeiro; cada uma ganha uma região junta, com as horas de sol que ela precisa, e uma explicação em texto.
 
-**Roteiro para a feira:** Carregar exemplo → mostrar a sombra do muro no mapa → trocar para **Inverno (21/06)** e mostrar a sombra maior (o sol fica mais baixo, ao norte) → marcar tomate e alface → mostrar onde cada um ficou e ler a explicação.
+**Roteiro para a feira:** Carregar exemplo → mostrar a sombra do muro no mapa → trocar para **Inverno** e mostrar a sombra maior (o sol fica mais baixo, ao norte) → aba **3 Plantas**: marcar tomate e alface → mostrar onde cada um ficou (o mapa muda na hora, sem rolar a página) e ler o motivo na lista.
 
 ### Modo "Sobre o mapa"
-A página abre no modo **Sobre o mapa**: a imagem de satélite do lugar, para desenhar o terreno por cima. O modo **Desenho livre** (o canvas) continua existindo, para quem não quer usar o mapa ou está sem internet boa.
+A página abre no modo **Mapa** ("Sobre o mapa"): a imagem de satélite do lugar, para desenhar o terreno por cima. O modo **Desenho** (desenho livre, no canvas) continua existindo, para quem não quer usar o mapa ou está sem internet boa. O zoom vai até 23 (as imagens são até o 19; depois esticam), para uma horta pequena aparecer grande; o exemplo já enquadra o terreno.
 
 - **Encontrar o lugar:** busque o endereço (ex.: "CED São Bartolomeu, São Sebastião, DF") ou toque em **Usar minha localização**. A busca só acontece quando a pessoa toca em **Buscar**.
 - **Desenhar:** **Desenhar terreno** (arraste no mapa), **Casa ou muro** e **Árvore**. Toque numa forma para selecionar: os quadradinhos mudam o tamanho, a bolinha ↻ gira e arrastar o meio move. Ao criar, escolha o tipo sugerido (casa térrea 3 m, sobrado 6 m, muro 2 m, árvore média 5 m) e ajuste o nome e a altura no painel. A imagem mostra onde as coisas estão; **a altura você informa**.
 - No mapa o **norte é sempre para cima** (rosa dos ventos fixa). O cálculo usa a latitude e a longitude do centro do terreno.
 - **Como o cálculo usa o desenho:** tudo vira metros num plano em volta do terreno (1° de latitude ≈ 111 320 m; 1° de longitude ≈ 111 320 × cos(latitude) m). A grade de quadradinhos segue os lados do terreno, mesmo girado, e o `sol.js` faz a mesma conta do Desenho livre.
 - O mapa de calor fica por cima da imagem, só dentro do terreno, com a transparência ajustável (30% a 90%).
-- **Salvar e compartilhar:** o desenho fica salvo no navegador. **Copiar link** põe o desenho inteiro no endereço (`#p=...`): quem abrir o link vê a mesma horta, com as mesmas plantas marcadas.
+- **Salvar e compartilhar:** o desenho fica salvo no navegador. **Copiar link** (no menu Salvar planta) põe o desenho inteiro no endereço (`#p=...`): quem abrir o link vê a mesma horta, com as mesmas plantas marcadas.
 
 **Bibliotecas e atribuições (obrigatórias):**
 - Mapa: [Leaflet](https://leafletjs.com) 1.9.4, carregado pelo cdnjs.
@@ -348,7 +380,7 @@ A página abre no modo **Sobre o mapa**: a imagem de satélite do lugar, para de
 ### Hortas na nuvem sem login
 Em **Salvar e compartilhar**, o botão **Salvar na nuvem** guarda a horta no Firebase **sem criar conta**. Não pedimos nem guardamos dados pessoais: só o nome da horta e o desenho (por isso o aviso para não pôr nome completo ou telefone no nome).
 
-- **Código:** na primeira vez a horta ganha um código de 8 letras e números, como `HX7K-2Q9M` (sem 0/O e 1/I/L, que confundem). Aparece um quadro com o código, o link (`planejar.html?h=HX7K2Q9M`) e o QR code. Em outro aparelho, abra pelo link ou digite o código em **Tenho um código** (com ou sem hífen, maiúsculas ou minúsculas).
+- **Código:** na primeira vez a horta ganha um código de 8 letras e números, como `HX7K-2Q9M` (sem 0/O e 1/I/L, que confundem). Aparece um quadro com o código, o link (`planejar.html?h=HX7K2Q9M`) e o QR code. Em outro aparelho, abra pelo link ou digite o código em **Abrir pelo código** (aba 4 Salvar) (com ou sem hífen, maiúsculas ou minúsculas).
 - **Salvamento automático:** depois de salvar uma vez, cada mudança vai para a nuvem 3 s depois que a pessoa para de mexer. Sem internet, fica salvo no aparelho e é enviado quando a conexão volta.
 - **Edição ao mesmo tempo:** se outra aba ou aparelho salvar a mesma horta, aparece o aviso para **Recarregar** a versão nova ou **Continuar com a minha** (que salva por cima).
 - **Histórico:** as 10 últimas versões (uma a cada **Salvar na nuvem** e uma a cada 5 minutos de edição). **Restaurar esta versão** guarda antes a atual, para poder desfazer.
