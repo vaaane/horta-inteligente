@@ -4,8 +4,11 @@
 //
 // Cada planta escolhida vira um retângulo alinhado à grade do terreno
 // (x, y, w, h em metros; x para a direita, y para baixo), com a área escolhida.
-// A cor diz se o lugar é bom para ela, pelas horas de sol (culturas.js):
-// verde ✓ Recomendado, amarelo ! Aceitável, vermelho ✕ Não recomendado.
+// O canteiro tem a COR DA PLANTA (a mesma da lista). Se o lugar é bom, pelas
+// horas de sol (culturas.js), aparece num selo no canto: ✓ Recomendado,
+// ! Aceitável (e a borda tracejada), ✕ Não recomendado.
+// O rótulo é o nome; sem espaço (canteiro pequeno, mapa estreito ou outro
+// rótulo no lugar), vira o número da planta na lista "Onde plantar".
 import {
   CULTURAS, NECESSIDADE, NIVEIS, avaliarRegiao, textoAvaliacao, tamanhoDoCanteiro, encaixar, validarCanteiro,
   melhorPosicao, sugerirCanteiros, descreverLugar
@@ -16,10 +19,32 @@ const numero = (v, casas = 1) => Number(v).toLocaleString("pt-BR", { maximumFrac
 const MOTIVOS = { fora: "Aqui não dá: fora do terreno", obstaculo: "Aqui não dá: obstáculo" };
 
 const VIZINHAS_M = 0.5;  // canteiros a menos de 0,5 m um do outro são vizinhos
-const LADO_MINIMO_PX = 40;  // menor que isso na tela: o nome sai para fora, com uma linha
+const MAPA_ESTREITO_PX = 500;  // desenho mais estreito que isso: só números nos canteiros
 
 // Duas caixas (x, y, w, h) se encostam?
 const baterem = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+// Selo da avaliação: bolinha com ✓ ! ✕ na cor do nível (também na planta salva, planta.js)
+export function desenharSelo(ctx, x, y, raio, nivelId) {
+  const nivel = NIVEIS[nivelId];
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, raio, 0, Math.PI * 2);
+  ctx.fillStyle = nivel.cor;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.5, raio * 0.2);
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  ctx.fillStyle = nivelId === "aceitavel" ? "#1b2a1c" : "#ffffff";
+  ctx.font = `bold ${Math.round(raio * 1.25)}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(nivel.icone, x, y + raio * 0.08);
+  ctx.restore();
+}
+
+// Ordem das plantas (a mesma da lista "Onde plantar"): o número de cada uma
+export const ordemDasPlantas = (escolhidas) => CULTURAS.filter((c) => c.id in escolhidas).map((c) => c.id);
 
 // Os dois canteiros se sobrepõem (por dentro, não só encostando)?
 function sobrepoe(a, b) {
@@ -151,8 +176,10 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
     balaoDepois = null;
     if (!mapa || !terreno) return;
     const { sobrepostas } = convivencia();
-    const nomes = [];
-    for (const id of Object.keys(escolhidas)) {
+    const estreito = (ctx.canvas.clientWidth || 2000) < MAPA_ESTREITO_PX;
+    const ordem = ordemDasPlantas(escolhidas);
+    const rotulos = [];
+    for (const id of ordem) {
       const emArraste = arraste && arraste.id === id;
       const r = emArraste ? arraste.candidato : posicoes[id];
       if (!r) continue;
@@ -162,38 +189,40 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
       cantos.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
       ctx.closePath();
       const invalido = emArraste && !arraste.valido;
-      const nivel = invalido ? null : NIVEIS[avaliar(id, r).nivel];
-      // Sobreposta a outra planta: contorno vermelho
-      const cor = invalido ? "#616161" : sobrepostas.has(id) ? "#c62828" : nivel.cor;
+      const nivelId = invalido ? null : avaliar(id, r).nivel;
+      // Cor da planta; sobreposta a outra planta: contorno vermelho tracejado
+      const cor = invalido ? "#616161" : sobrepostas.has(id) ? "#c62828" : cultura.cor;
       ctx.save();
-      ctx.globalAlpha = invalido ? 0.3 : 0.4;       // preenchimento semitransparente
-      ctx.fillStyle = invalido ? "#9e9e9e" : nivel.cor;
+      ctx.globalAlpha = invalido ? 0.3 : 0.45;       // preenchimento semitransparente
+      ctx.fillStyle = invalido ? "#9e9e9e" : cultura.cor;
       ctx.fill();
       ctx.globalAlpha = 1;
+      // Borda branca por baixo: o canteiro aparece sobre qualquer cor do mapa de sol
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.stroke();
       ctx.lineWidth = id === selecionada || emArraste || sobrepostas.has(id) ? 4 : 3;
       ctx.strokeStyle = cor;
       if (invalido) ctx.setLineDash([6, 4]);        // cinza tracejado: aqui não dá
       else if (sobrepostas.has(id)) ctx.setLineDash([10, 4]);
+      else if (nivelId === "aceitavel") ctx.setLineDash([8, 5]);  // aceitável: não depende só da cor
       ctx.stroke();
       ctx.restore();
 
-      // Nome com o ícone (✓ ! ✕): a avaliação nunca depende só da cor.
-      // Os nomes são desenhados depois de todas as regiões (para desviarem uns dos outros).
-      const meio = pt(r.x + r.w / 2, r.y + r.h / 2);
-      const texto = invalido ? `${cultura.nome} · ${MOTIVOS[arraste.motivo]}` : `${nivel.icone} ${cultura.nome}`;
-      const lado = Math.min(Math.hypot(cantos[1].x - cantos[0].x, cantos[1].y - cantos[0].y),
-        Math.hypot(cantos[2].x - cantos[1].x, cantos[2].y - cantos[1].y));
       const xs = cantos.map((p) => p.x);
       const ys = cantos.map((p) => p.y);
-      nomes.push({ id, texto, cor, meio, lado,
-        caixa: { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) } });
+      const caixa = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+      const lado = Math.min(Math.hypot(cantos[1].x - cantos[0].x, cantos[1].y - cantos[0].y),
+        Math.hypot(cantos[2].x - cantos[1].x, cantos[2].y - cantos[1].y));
+      const comprido = Math.max(Math.hypot(cantos[1].x - cantos[0].x, cantos[1].y - cantos[0].y),
+        Math.hypot(cantos[2].x - cantos[1].x, cantos[2].y - cantos[1].y));
+      rotulos.push({ id, nome: invalido ? `${cultura.nome} · ${MOTIVOS[arraste.motivo]}` : cultura.nome, numero: ordem.indexOf(id) + 1,
+        cor, meio: pt(r.x + r.w / 2, r.y + r.h / 2), lado, comprido, caixa, nivelId, canto: cantos[0], forcarNome: invalido });
 
       // Balão com a avaliação: durante o arraste e na planta tocada
       if (emArraste || id === selecionada) {
         const balao = invalido ? MOTIVOS[arraste.motivo] : textoAvaliacao(cultura, avaliar(id, r)) + (anoTodo ? " (pior mês)" : "");
-        const ys = cantos.map((p) => p.y);
-        const xs = cantos.map((p) => p.x);
-        balaoDepois = { texto: balao, x: (Math.min(...xs) + Math.max(...xs)) / 2, topo: Math.min(...ys), base: Math.max(...ys), cor };
+        balaoDepois = { texto: balao, x: (caixa.x + caixa.x + caixa.w) / 2, topo: caixa.y, base: caixa.y + caixa.h, cor };
       }
 
       // Botão ↻ (girar 90°) no canto de cima à direita da planta selecionada
@@ -214,51 +243,72 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
         ctx.fillText("↻", botaoGirar.x, botaoGirar.y + 1);
       }
     }
-    espalharNomes(ctx, nomes);
+    colocarRotulos(ctx, rotulos, estreito);
     if (balaoDepois) desenharBalao(ctx, balaoDepois);
   }
 
-  // Põe cada nome no meio da região ou, se ela for pequena na tela (ou o
-  // lugar já estiver ocupado por outro nome), do lado de fora com uma linha.
-  // Testa posições em volta e fica com a primeira livre.
-  function espalharNomes(ctx, nomes) {
-    const larguraTela = ctx.canvas.clientWidth || 2000;
-    const alturaTela = ctx.canvas.clientHeight || 2000;
+  // Rótulo de cada canteiro, dentro dele: o nome se couber e não bater em
+  // outro rótulo; senão, o número (o mesmo da lista "Onde plantar").
+  // E o selo da avaliação no canto.
+  let selosNoDesenho = [];   // onde ficaram os selos (os rótulos dos obstáculos desviam deles também)
+  function colocarRotulos(ctx, rotulos, estreito) {
     ctx.font = "bold 13px system-ui, sans-serif";
     const ocupadas = [];
-    for (const n of nomes) {
-      const w = ctx.measureText(n.texto).width + 12;
-      const h = 22;
-      const { x, y, w: cw, h: ch } = n.caixa;
-      const caixaEm = (cx, cy) => ({ x: cx - w / 2, y: cy - h / 2, w, h });
-      const candidatos = [];
-      if (n.lado >= LADO_MINIMO_PX) candidatos.push([n.meio.x, n.meio.y, false]);
-      for (const d of [10, 34, 58]) {
-        candidatos.push(
-          [x + cw / 2, y - h / 2 - d, true], [x + cw / 2, y + ch + h / 2 + d, true],
-          [x + cw + w / 2 + d, y + ch / 2, true], [x - w / 2 - d, y + ch / 2, true],
-          [x + cw + w / 2 + d, y - h / 2 - d, true], [x - w / 2 - d, y - h / 2 - d, true],
-          [x + cw + w / 2 + d, y + ch + h / 2 + d, true], [x - w / 2 - d, y + ch + h / 2 + d, true]
-        );
-      }
-      const cabe = (c) => c.x >= 2 && c.y >= 2 && c.x + c.w <= larguraTela - 2 && c.y + c.h <= alturaTela - 2;
-      let escolhido = candidatos.find(([cx, cy]) => {
-        const c = caixaEm(cx, cy);
-        return cabe(c) && !ocupadas.some((o) => baterem(c, o));
-      }) || candidatos[0];
-      const caixa = caixaEm(escolhido[0], escolhido[1]);
-      if (escolhido[2]) {
-        // Linha fina ligando o nome à região
-        ctx.beginPath();
-        ctx.moveTo(n.meio.x, n.meio.y);
-        ctx.lineTo(escolhido[0], escolhido[1]);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = n.cor;
-        ctx.stroke();
+    selosNoDesenho = [];
+    for (const n of rotulos) {
+      const larguraNome = ctx.measureText(n.nome).width + 12;
+      const caixaNome = { x: n.meio.x - larguraNome / 2, y: n.meio.y - 11, w: larguraNome, h: 22 };
+      const cabeNome = n.forcarNome || (!estreito && n.comprido >= larguraNome + 4 && n.lado >= 26);
+      let caixa;
+      if (cabeNome && (n.forcarNome || !ocupadas.some((o) => baterem(caixaNome, o)))) {
+        caixa = etiqueta(ctx, n.nome, n.meio.x, n.meio.y, n.cor);
+      } else {
+        // O número fica no meio do canteiro; se ali já tem outro rótulo, ao lado (com uma linha)
+        const raio = 11;
+        const { x, y, w, h } = n.caixa;
+        const lugares = [[n.meio.x, n.meio.y], [x + w + raio + 4, n.meio.y], [x - raio - 4, n.meio.y],
+          [n.meio.x, y - raio - 4], [n.meio.x, y + h + raio + 4], [x + w + raio + 4, y - raio - 4], [x - raio - 4, y + h + raio + 4]];
+        const livre = lugares.find(([cx, cy]) => !ocupadas.some((o) => baterem({ x: cx - raio, y: cy - raio, w: 2 * raio, h: 2 * raio }, o))) || lugares[0];
+        if (livre !== lugares[0]) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(n.meio.x, n.meio.y);
+          ctx.lineTo(livre[0], livre[1]);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = n.cor;
+          ctx.stroke();
+          ctx.restore();
+        }
+        caixa = numeroNoCanteiro(ctx, n.numero, livre[0], livre[1], n.cor);
       }
       ocupadas.push(caixa);
-      caixasNomes.push({ id: n.id, ...etiqueta(ctx, n.texto, escolhido[0], escolhido[1], n.cor) });
+      caixasNomes.push({ id: n.id, ...caixa });
+      if (n.nivelId) {
+        const raio = n.lado < 30 ? 7 : 9;
+        desenharSelo(ctx, n.canto.x, n.canto.y, raio, n.nivelId);
+        selosNoDesenho.push({ x: n.canto.x - raio, y: n.canto.y - raio, w: 2 * raio, h: 2 * raio });
+      }
     }
+  }
+
+  // Bolinha branca com o número da planta
+  function numeroNoCanteiro(ctx, numero, x, y, cor) {
+    const raio = 11;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, raio, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = cor;
+    ctx.stroke();
+    ctx.fillStyle = "#1b2a1c";
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(numero), x, y + 0.5);
+    ctx.restore();
+    return { x: x - raio, y: y - raio, w: raio * 2, h: raio * 2 };
   }
 
   // Balão de texto colado à região (em cima; se não couber, embaixo)
@@ -487,6 +537,8 @@ export function iniciarPlantas({ lista, vazio, avisos, resumo, botaoSugerir, bot
     desenhar,
     tocar,
     obterPosicoes: () => posicoes,
+    // Onde ficaram os rótulos das plantas no último desenho (os dos obstáculos desviam deles)
+    caixasOcupadas: () => [...caixasNomes.map(({ x, y, w, h }) => ({ x, y, w, h })), ...selosNoDesenho],
     // Planta do filtro "Mostrar só as áreas boas para…" (ou null)
     filtroCultura: () => (filtroId ? culturaDe(filtroId) : null),
     definirPosicoes: (novas) => { posicoes = novas && typeof novas === "object" ? { ...novas } : {}; selecionada = null; }

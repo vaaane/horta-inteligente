@@ -24,6 +24,7 @@ import { desenharQR } from "./qr.js";
 import { ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
 import { iniciarAbas } from "./abas.js";
+import { rotularObstaculos } from "./rotulos.js";
 
 iniciarCabecalho();
 ligarLinksTelegram();  // link "Alertas no Telegram" do rodapé
@@ -66,6 +67,7 @@ let aoMudarProjeto = null; // avisado a cada mudança salva (a nuvem usa para o 
 const projetoMudou = () => { if (aoMudarProjeto) aoMudarProjeto(); };
 let terreno = carregar() || copia(PADRAO);
 let selecionado = -1;     // índice do obstáculo selecionado (-1 = nenhum)
+let plantasProntas = false; // o plantas.js já foi iniciado? (o primeiro desenho vem antes dele)
 let arrastando = null;    // { tipo: "obstaculo" | "norte", dx, dy }
 
 const canvas = document.getElementById("terreno");
@@ -164,6 +166,14 @@ function desenharLivre() {
   desenharRegua(L, C);
   terreno.obstaculos.forEach((ob, i) => desenharObstaculo(ob, i === selecionado));
   for (const camada of camadasPorCima) camada(ctx, { paraPxX, paraPxY, escala, terreno });
+  // Nomes dos obstáculos por último: desviam dos rótulos das plantas
+  rotularObstaculos(ctx, terreno.obstaculos.map((ob) => {
+    const c = centroObstaculo(ob);
+    const caixa = ob.tipo === "retangulo"
+      ? { x: paraPxX(ob.x), y: paraPxY(ob.y), w: ob.largura * escala, h: ob.profundidade * escala }
+      : { x: paraPxX(ob.x - ob.raio), y: paraPxY(ob.y - ob.raio), w: 2 * ob.raio * escala, h: 2 * ob.raio * escala };
+    return { texto: `${ob.nome} (${numero(ob.altura, 1)} m)`, centro: { x: paraPxX(c.x), y: paraPxY(c.y) }, caixa };
+  }), plantasProntas ? plantas.caixasOcupadas() : []);
   desenharBussola();
 }
 
@@ -206,19 +216,7 @@ function desenharObstaculo(ob, destacado) {
     ctx.fill();
     ctx.stroke();
   }
-  // Nome e altura
-  const centro = centroObstaculo(ob);
-  const texto = `${ob.nome} (${numero(ob.altura, 1)} m)`;
-  ctx.font = "bold 12px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const px = paraPxX(centro.x);
-  const py = paraPxY(centro.y);
-  const largura = ctx.measureText(texto).width + 8;
-  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-  ctx.fillRect(px - largura / 2, py - 9, largura, 18);
-  ctx.fillStyle = "#1b2a1c";
-  ctx.fillText(texto, px, py);
+  // (o nome e a altura vêm depois das plantas, em desenharLivre)
 }
 
 const centroObstaculo = (ob) => (ob.tipo === "retangulo"
@@ -826,6 +824,8 @@ const plantas = iniciarPlantas({
   }
 });
 
+plantasProntas = true;
+
 // Depois do cálculo (ou quando mudam as plantas): cada planta ganha ou mantém o seu canteiro
 function calcularSugestoes() {
   plantas.atualizar(mapa, terrenoCalculado, escolhidas, anoTodo);
@@ -860,6 +860,7 @@ const modoMapa = iniciarModoMapa({
   },
   aoMudarVista: () => salvarMapa(),
   textoDoPonto: textoDaDica,
+  rotulosOcupados: () => plantas.caixasOcupadas(),
   // Toque numa planta: o plantas.js cuida (e o mapa não anda enquanto ela é arrastada)
   pegarToque: (p) => {
     const t = modoMapa.pontoNoTerreno(p);
@@ -1177,6 +1178,12 @@ function abrirImpressao() {
       tr.append(td);
     }
     if (l.av) tr.children[6].className = `impressao-nivel nivel-${l.av.nivel}`;
+    // Planta: a cor (a mesma do desenho) e o número da lista
+    const cor = document.createElement("span");
+    cor.className = "planejar-cor impressao-cor";
+    cor.style.background = l.cultura.cor;
+    tr.children[0].textContent = ` ${linhas.indexOf(l) + 1}. ${l.cultura.nome}`;
+    tr.children[0].prepend(cor);
     return tr;
   }));
   $("impressao-sem-plantas").hidden = linhas.length > 0;

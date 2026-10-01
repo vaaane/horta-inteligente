@@ -1225,6 +1225,7 @@ body.imprimindo { overflow: hidden; }
 .impressao-tabela th, .impressao-tabela td { border: 1px solid #9aa89a; padding: 4px 6px; text-align: left; vertical-align: top; }
 .impressao-tabela th { background: #eef3ed; }
 .impressao-nivel { font-weight: 700; white-space: nowrap; }
+.impressao-cor { width: 14px; height: 12px; vertical-align: -1px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .impressao-nivel.nivel-recomendado { color: #2e7d32; }
 .impressao-nivel.nivel-aceitavel { color: #8a5a00; }
 .impressao-nivel.nivel-nao { color: #c62828; }

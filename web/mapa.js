@@ -15,6 +15,8 @@
 //     (É uma aproximação ótima para distâncias de poucas centenas de metros.)
 //   - Na imagem, o NORTE É SEMPRE PARA CIMA.
 
+import { rotularObstaculos } from "./rotulos.js";
+
 const CENTRO_INICIAL = [-15.90, -47.78];  // São Sebastião (DF)
 const ZOOM_INICIAL = 17;
 
@@ -63,7 +65,8 @@ export function metrosParaForma(e, n, angulo) {
 export function iniciarModoMapa(opcoes) {
   const {
     elemento, busca, buscaTexto, buscaStatus, botaoLocalizacao, camadaNomes,
-    lista, editor, ferramentaStatus, aoMudar, textoDoPonto, aoMudarVista, pegarToque
+    lista, editor, ferramentaStatus, aoMudar, textoDoPonto, aoMudarVista, pegarToque,
+    rotulosOcupados = () => []
   } = opcoes;
 
   let mapa = null;          // o mapa do Leaflet (criado na primeira vez que aparece)
@@ -91,15 +94,15 @@ export function iniciarModoMapa(opcoes) {
     mapa = L.map(elemento, {
       center: vista.centro,
       zoom: vista.zoom,
-      maxZoom: 21,
+      maxZoom: 23,          // horta pequena (6 × 4 m) precisa de mais zoom que o das imagens
       zoomAnimation: false  // o desenho por cima acompanha o zoom sem "pular"
     });
     L.tileLayer(URL_SATELITE, {
       maxNativeZoom: 19,  // as imagens vão até o zoom 19; depois disso, esticam
-      maxZoom: 21,
+      maxZoom: 23,
       attribution: ATRIBUICAO_ESRI
     }).addTo(mapa);
-    nomes = L.tileLayer(URL_NOMES, { maxNativeZoom: 19, maxZoom: 21 });
+    nomes = L.tileLayer(URL_NOMES, { maxNativeZoom: 19, maxZoom: 23 });
     L.control.scale({ imperial: false }).addTo(mapa);
 
     // Canvas por cima das imagens (e embaixo dos botões do mapa)
@@ -249,6 +252,21 @@ export function iniciarModoMapa(opcoes) {
     if (terreno) desenharTerreno();
     obstaculos.forEach((ob, i) => desenharObstaculo(ob, selecionado === i));
     for (const camada of camadasPorCima) camada(ctx, ferramentasDeDesenho());
+    // Nomes dos obstáculos por último: desviam dos rótulos das plantas
+    rotularObstaculos(ctx, obstaculos.map((ob) => {
+      const centro = mapa.latLngToContainerPoint(ob.centro);
+      let caixa;
+      if (ob.tipo === "circulo") {
+        const r = ob.raio * pixelsPorMetro(ob.centro);
+        caixa = { x: centro.x - r, y: centro.y - r, w: 2 * r, h: 2 * r };
+      } else {
+        const pts = cantos(ob);
+        const xs = pts.map((p) => p.x);
+        const ys = pts.map((p) => p.y);
+        caixa = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+      }
+      return { texto: `${ob.nome} (${numero(ob.altura)} m)`, centro, caixa };
+    }), [...rotulosOcupados()]);
     const forma = formaSelecionada();
     if (forma) desenharAlcas(forma);
     if (gesto && gesto.tipo === "criar") desenharPrevia();
@@ -290,6 +308,8 @@ export function iniciarModoMapa(opcoes) {
       const comp = Math.hypot(dx, dy) || 1;
       return { x: p.x + (dx / comp) * distancia, y: p.y + (dy / comp) * distancia };
     };
+    // Terreno pequeno na tela: as medidas cobririam as plantas (estão no painel)
+    if (Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) < 140) return;
     const cima = paraDentro({ x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }, 16);
     const direita = paraDentro({ x: (pts[1].x + pts[2].x) / 2, y: (pts[1].y + pts[2].y) / 2 }, 26);
     etiqueta(`${numero(terreno.largura)} m`, cima.x, cima.y);
@@ -311,8 +331,7 @@ export function iniciarModoMapa(opcoes) {
     }
     ctx.fill();
     ctx.stroke();
-    const c = mapa.latLngToContainerPoint(ob.centro);
-    etiqueta(`${ob.nome} (${numero(ob.altura)} m)`, c.x, c.y);
+    // (o nome e a altura vêm depois das plantas, em redesenhar)
   }
 
   const TAM_ALCA = 9;
@@ -785,7 +804,8 @@ export function iniciarModoMapa(opcoes) {
       { tipo: "circulo", nome: "Árvore", centro: deMetros(2.3, -1.2, centro), raio: 0.8, altura: 5 }
     ];
     selecionado = null;
-    if (mapa) mapa.setView(centro, 21);  // bem perto, para o terreno de 6 × 4 m aparecer grande
+    // Enquadra o terreno (6 × 4 m precisa de bem perto para as plantas caberem)
+    if (mapa) mapa.fitBounds([deMetros(-4, -3, centro), deMetros(4, 3, centro)], { maxZoom: 23 });
     redesenhar();
     mostrarPainel();
     aoMudar({});

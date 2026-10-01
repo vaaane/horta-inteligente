@@ -18,7 +18,7 @@
 // o norte fica para cima.
 import { classificar, SOMBRA, MEIA_SOMBRA, PLENO_SOL } from "./sol.js";
 import { CULTURAS, NECESSIDADE, NIVEIS, avaliarRegiao, validarCanteiro } from "./culturas.js";
-import { convivenciaEntre } from "./plantas.js";
+import { convivenciaEntre, desenharSelo, ordemDasPlantas } from "./plantas.js";
 
 export const CORES_SOL = { [SOMBRA]: "#253b6e", [MEIA_SOMBRA]: "#6fa8dc", [PLENO_SOL]: "#f4c430" };
 export const LEGENDA_SOL = [
@@ -401,17 +401,18 @@ export function desenharPlanta(canvas, projeto, { ladoMaior = 2400 } = {}) {
     nomes.push({ texto: `${ob.nome || "Obstáculo"} · ${numero(ob.altura)} m`, cor: "#424242", meio, pontos, tamanho: 15, raio });
   }
 
-  // ---------- Plantas: contorno na cor da avaliação, ícone e nome ----------
+  // ---------- Plantas: a cor da planta (a mesma da lista), o selo da avaliação e "1. Alface" ----------
+  const ordem = ordemDasPlantas(projeto.escolhidas || {});
+  const selos = [];
   for (const linha of avaliarPlantas(projeto)) {
     if (!linha.r || !linha.av) continue;
     const { r } = linha;
-    const nivel = NIVEIS[linha.av.nivel];
-    const cor = linha.sobreposta ? "#c62828" : nivel.cor;
+    const cor = linha.sobreposta ? "#c62828" : linha.cultura.cor;
     const pontos = [pt(r.x, r.y), pt(r.x + r.w, r.y), pt(r.x + r.w, r.y + r.h), pt(r.x, r.y + r.h)];
     poligono(ctx, pontos);
     ctx.save();
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = nivel.cor;
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = linha.cultura.cor;
     ctx.fill();
     ctx.restore();
     ctx.save();
@@ -422,9 +423,12 @@ export function desenharPlanta(canvas, projeto, { ladoMaior = 2400 } = {}) {
     ctx.lineWidth = 3.5;
     ctx.strokeStyle = cor;
     if (linha.sobreposta) ctx.setLineDash([9, 4]);
+    else if (linha.av.nivel === "aceitavel") ctx.setLineDash([11, 6]);  // aceitável: não depende só da cor
     ctx.stroke();
     ctx.restore();
-    nomes.push({ texto: `${nivel.icone} ${linha.cultura.nome}`, cor, meio: pt(r.x + r.w / 2, r.y + r.h / 2), pontos, tamanho: 17 });
+    selos.push({ x: pontos[0].x, y: pontos[0].y, nivel: linha.av.nivel });
+    nomes.push({ texto: `${ordem.indexOf(linha.id) + 1}. ${linha.cultura.nome}`, cor: linha.cultura.cor,
+      meio: pt(r.x + r.w / 2, r.y + r.h / 2), pontos, tamanho: 17 });
   }
 
   // ---------- Nomes: dentro da região se couber; senão fora, com uma linha ----------
@@ -483,6 +487,7 @@ export function desenharPlanta(canvas, projeto, { ladoMaior = 2400 } = {}) {
     ctx.fill();
   }
   for (const n of colocados) etiqueta(ctx, n.texto, n.x, n.y, n.cor, n.tamanho);
+  for (const selo of selos) desenharSelo(ctx, selo.x, selo.y, 13, selo.nivel);
 
   // ---------- Legenda (cores + padrões + valores escritos) ----------
   const quadrado = 26;
@@ -509,18 +514,11 @@ export function desenharPlanta(canvas, projeto, { ladoMaior = 2400 } = {}) {
   x = MARGEM;
   y += quadrado + 16;
   itemLegenda((ax, ay) => { ctx.fillStyle = "#9e9e9e"; ctx.fillRect(ax, ay, quadrado, quadrado); }, "Obstáculo · altura");
-  for (const nivel of Object.values(NIVEIS)) {
+  for (const [id, nivel] of Object.entries(NIVEIS)) {
     itemLegenda((ax, ay) => {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(ax, ay, quadrado, quadrado);
-      ctx.lineWidth = 3.5;
-      ctx.strokeStyle = nivel.cor;
-      ctx.strokeRect(ax + 3, ay + 3, quadrado - 6, quadrado - 6);
-      ctx.fillStyle = "#1b2a1c";
-      ctx.font = `bold 16px ${FONTE}`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(nivel.icone, ax + quadrado / 2, ay + quadrado / 2 + 1);
+      desenharSelo(ctx, ax + quadrado / 2, ay + quadrado / 2, 11, id);
     }, nivel.texto);
   }
   y += quadrado + 14;
@@ -529,7 +527,7 @@ export function desenharPlanta(canvas, projeto, { ladoMaior = 2400 } = {}) {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   const grade = passoGrade === 1 ? "Grade de 1 m." : "Grade de 5 m.";
-  ctx.fillText(`${grade} Norte para cima. Plantas: a cor e o ícone mostram se o lugar tem o sol que ela precisa.`, MARGEM, y + 8);
+  ctx.fillText(`${grade} Norte para cima. Cada planta tem a sua cor; o selo mostra se o lugar tem o sol que ela precisa.`, MARGEM, y + 8);
 
   // ---------- Rodapé ----------
   ctx.strokeStyle = "#c9d3c9";
