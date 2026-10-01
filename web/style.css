@@ -129,7 +129,7 @@ main {
   font-weight: 600;
   color: var(--texto-suave);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;  /* com mais espaço, "UMIDADE DO SOLO" quebrava em cartão estreito */
 }
 
 /* Número grande da umidade */
@@ -169,6 +169,8 @@ main {
 /* Estado da bomba */
 .bomba {
   display: inline-block;
+  max-width: 100%;          /* "Desligada" nunca passa da largura do cartão */
+  overflow-wrap: anywhere;
   margin: 12px 0 0;
   padding: 12px 24px;
   border-radius: 999px;
@@ -704,7 +706,7 @@ main {
   .painel .area-grafico { height: 360px; }
 }
 
-/* Rodapé com o link discreto para a página de teste */
+/* Rodapé discreto (a página de teste continua em teste.html, citada só no README) */
 .rodape {
   text-align: center;
   padding: 0 16px 24px;
@@ -1543,4 +1545,11 @@ body.imprimindo { overflow: hidden; }
   .projetor .area-grafico { height: 330px; }
   .projetor .agua-nota, .projetor .agua-resumo { display: none; }
   .projetor .decisao-lista li:nth-child(n + 6) { display: none; }
+}
+
+/* Cartões da mesma fileira: mesma altura, conteúdo no topo; títulos numa linha só */
+@media (min-width: 1024px) {
+  .painel .cartoes { align-items: stretch; }
+  .painel .cartoes .cartao h2 { font-size: 0.85rem; }
+  .painel .bomba { font-size: 1.35rem; }
 }
