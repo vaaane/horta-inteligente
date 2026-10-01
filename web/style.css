@@ -698,7 +698,7 @@ main {
 @media (min-width: 1400px) {
   html { font-size: 20px; }
   .painel main { max-width: 1400px; }
-  .painel .numero { font-size: 5rem; }
+  .painel .numero { font-size: 4.5rem; }
   .painel .bomba { font-size: 1.8rem; padding: 12px 18px; }
   .painel .clima-valores dd { font-size: 1.7rem; }
   .painel .area-grafico { height: 360px; }
@@ -1493,3 +1493,54 @@ body.imprimindo { overflow: hidden; }
   transition: transform 0.2s;
 }
 .agua-tabela[open] > summary::before, .agua-lista[open] > summary::before { transform: rotate(90deg); }
+
+/* ================= Modo projetor (projetor.js) ================= */
+/* Pontinhos discretos no canto: qual aba está no ar */
+.projetor-indicador {
+  position: fixed;
+  right: 16px;
+  bottom: 12px;
+  z-index: 30;
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+.projetor-indicador span { width: 10px; height: 10px; border-radius: 50%; background: #c8d6c7; }
+.projetor-indicador span.ativo { background: var(--verde); }
+.projetor-indicador.pausado span.ativo { background: var(--aviso-texto); }  /* laranja: pausado por um toque */
+.projetor-indicador[hidden] { display: none; }
+/* Sem rolagem: rodapé some e o espaço fica mais justo */
+.projetor .rodape { display: none; }
+.projetor main { padding-top: 16px; padding-bottom: 16px; }
+
+/* ================= Tela grande: tudo mais justo, para caber sem rolar ================= */
+@media (min-width: 1024px) {
+  .painel .cartao { padding: 16px 18px; }
+  .painel .cartoes .cartao { margin-bottom: 0; }
+  .painel .cartoes { margin-bottom: 12px; }
+  .painel .numero { font-size: 4rem; }
+  .painel .bomba { margin-top: 4px; padding: 8px 18px; font-size: 1.5rem; }
+  .painel .controle { margin-top: 12px; }
+  .painel .trilho-limites { margin-top: 12px; }
+
+  /* Água: os números à esquerda, a água por dia à direita */
+  .agua-colunas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 24px; align-items: start; }
+  .agua-colunas .agua-valores { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .agua-colunas .agua-valores dd { font-size: 2rem; }
+  .agua-colunas .agua-dias { margin: 0; padding: 0 0 0 24px; border-top: none; border-left: 1px solid var(--borda); }
+  .agua-colunas .agua-grafico { height: 260px; }
+
+  /* Histórico: o gráfico e as últimas decisões lado a lado */
+  #painel-historico:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  #painel-historico .cartao { margin-bottom: 0; }
+}
+/* Projetor numa tela baixa (720 p): gráficos mais baixos, sem as notas pequenas */
+@media (min-width: 1024px) and (max-height: 800px) {
+  .projetor .agua-colunas .agua-grafico { height: 190px; }
+  .projetor .area-grafico { height: 330px; }
+  .projetor .agua-nota, .projetor .agua-resumo { display: none; }
+  .projetor .decisao-lista li:nth-child(n + 6) { display: none; }
+}

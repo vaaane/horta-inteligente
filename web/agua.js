@@ -95,6 +95,9 @@ export function iniciarAgua(db, raiz, opcoes = {}) {
 
   raiz.insertAdjacentHTML("beforeend", `
     <p data-agua="regando" class="agua-regando" hidden></p>
+    <!-- Na tela grande, duas colunas: os números à esquerda, a água por dia à direita -->
+    <div class="agua-colunas">
+    <div class="agua-coluna">
     <dl class="agua-valores">
       <div><dt>Água usada</dt><dd data-agua="usada">--</dd><p data-agua="regas" class="agua-sub"></p></div>
       <div><dt>Um timer fixo teria usado</dt><dd data-agua="timer">--</dd><p data-agua="timer-sub" class="agua-sub"></p></div>
@@ -122,6 +125,7 @@ export function iniciarAgua(db, raiz, opcoes = {}) {
     </div>
     <p class="agua-nota">Calculado pelo tempo de bomba ligada × vazão de ${numero(VAZAO_L_MIN)} L/min. Sem sensor de fluxo.
       Timer de comparação: ${TIMER_REGAS_POR_DIA} regas por dia de ${TIMER_MINUTOS_POR_REGA} min.</p>
+    </div>
 
     <section class="agua-dias">
       <h3 class="decisao-subtitulo">Água por dia</h3>
@@ -141,6 +145,7 @@ export function iniciarAgua(db, raiz, opcoes = {}) {
         </div>
       </details>
     </section>
+    </div>
 
     <details class="agua-lista">
       <summary>Últimas regas</summary>

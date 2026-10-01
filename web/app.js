@@ -15,6 +15,7 @@ import { desenharQR } from "./qr.js";
 import { CANAL_TELEGRAM, ligarLinksTelegram } from "./config.js";
 import { iniciarCabecalho } from "./cabecalho.js";
 import { iniciarAbas } from "./abas.js";
+import { iniciarProjetor } from "./projetor.js";
 
 iniciarCabecalho();
 
@@ -318,3 +319,6 @@ telaGrande.addEventListener("change", () => {
   aplicarPermissao();
   abas.atualizar();
 });
+
+// ---------- Modo projetor: alterna as abas sozinho (código em projetor.js) ----------
+iniciarProjetor(db, abas, document.getElementById("chave-projetor"));
